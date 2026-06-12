@@ -40,3 +40,10 @@ Start command:
 ```bash
 npm start
 ```
+
+
+## v12 Notes
+- Removed the Saved navigation/button from the field demo.
+- PIR and MEWP now use a Save PDF / Print workflow only.
+- Field users can save the PDF from the browser print screen, then use the phone share sheet to text/email it or send it to Dropbox.
+- PIR Inspection Report # auto-fills from date as MMDDYY, for example 10/02/2026 = 100226.

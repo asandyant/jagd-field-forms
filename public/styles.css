@@ -199,3 +199,7 @@
   .brand{margin-bottom:0;gap:8px}.brand img{width:64px}.brand strong{font-size:20px;line-height:1}.brand span{font-size:12px}.utilityNav{gap:6px}.utilityNav a{width:auto!important;min-width:58px;margin:0!important;padding:9px 10px;font-size:13px;border-radius:999px}
   .homeContainer{margin:14px auto;padding:0 12px}.homeIntro{padding:18px}.homeIntro h1{font-size:30px}.homeIntro p{font-size:16px}.formLibrary{grid-template-columns:1fr}.formCard{min-height:176px;padding:18px}.formCard h2{font-size:24px}.formCard strong{font-size:17px;padding:14px}.savedShortcut .btn{margin:0!important}
 }
+
+/* v12: PDF/share workflow only. No temporary Render saved submissions shown in the field demo. */
+.saveHelp{margin:2px 0 0;color:#333;font-size:12px}.utilityNav a{min-width:92px}
+@media(max-width:700px){.saveHelp{font-size:12px;line-height:1.35}.utilityNav a{min-width:72px}}
