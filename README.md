@@ -4,10 +4,21 @@ Web-based field forms for JAGD Construction.
 
 ## Forms included
 
-- PIR Questionnaire: mobile-friendly questionnaire that generates a printable Paint Inspection Report layout.
-- MEWP Daily Equipment Inspection: separate MEWP checklist form using the same field-form style as the existing Daily Equipment Inspection workflow, with photo uploads and printable output.
+- PIR Questionnaire
+- MEWP Daily Equipment Inspection
 
-## Run locally
+## v11 updates
+
+- Form library home screen is ready for adding more forms later.
+- PIR Inspection Report # auto-fills from the report date in MMDDYY format.
+  - Example: 10/02/2026 becomes 100226.
+- Saved records use the form name followed by the form date.
+  - Example: PIR - 10-02-26
+  - Example: MEWP - 10-02-26
+- Print-to-PDF title is also set to the form name and date when possible.
+- MEWP print preview includes current image attachments when printing from the form.
+
+## Local run
 
 ```bash
 npm install
@@ -16,21 +27,16 @@ npm start
 
 Open http://localhost:10000
 
-## Deploy on Render
+## Render
 
-This repo includes `render.yaml` with a persistent disk for saved submissions and uploaded photos.
+Build command:
 
-Recommended subdomain:
+```bash
+npm install
+```
 
-`forms.jagdapps.com`
+Start command:
 
-## Notes
-
-The PIR printable output is built to match the one-page PIR sample structure: project info, hold points, surface cleanliness/profile, instruments, ambient conditions, mixing/application, caulking, and signatures.
-
-
-## v9 polish
-- Cleaned up PIR print header spacing.
-- Slightly reduced logo/header height.
-- Made Hold Point list and Surface Cleanliness area easier to read.
-- Kept one-page print layout and mobile-friendly web form.
+```bash
+npm start
+```

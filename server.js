@@ -33,6 +33,18 @@ function writeSubmissions(rows) {
   fs.writeFileSync(SUBMISSIONS_FILE, JSON.stringify(rows, null, 2));
 }
 
+function dateToDisplay(dateValue) {
+  const d = String(dateValue || '');
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return d || 'No Date';
+  return `${m[2]}-${m[3]}-${m[1].slice(2)}`;
+}
+function formTitle(type, data) {
+  if (type === 'pir') return `PIR - ${dateToDisplay(data.reportDate)}`;
+  if (type === 'mewp') return `MEWP - ${dateToDisplay(data.inspectionDate)}`;
+  return `Form - ${dateToDisplay(data.reportDate || data.inspectionDate)}`;
+}
+
 app.get('/api/submissions', (req, res) => {
   const type = req.query.type;
   const rows = readSubmissions()
@@ -62,15 +74,13 @@ app.post('/api/submissions', upload.array('photos', 24), (req, res) => {
     mimetype: f.mimetype
   }));
   const id = nanoid(12);
-  const title = type === 'pir'
-    ? `PIR ${data.project || ''} ${data.reportDate || ''}`.trim()
-    : `MEWP ${data.equipmentId || ''} ${data.inspectionDate || ''}`.trim();
+  const title = formTitle(type, data);
 
   const record = { id, type, title, data, files, createdAt: new Date().toISOString() };
   const rows = readSubmissions();
   rows.push(record);
   writeSubmissions(rows);
-  res.json({ ok: true, id, record });
+  res.json({ ok: true, id, title, record });
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
