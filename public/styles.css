@@ -112,3 +112,75 @@
   .sigPrint{max-width:1.25in!important;max-height:.25in!important;}
   .pirRevV7{font-size:5.2px!important;}
 }
+
+/* v9: final PIR polish before field test — cleaner top header, more readable hold points, less cramped first sections */
+@media print{
+  .pirSheetV7{
+    width:8.22in!important;
+    height:10.75in!important;
+    font-size:6.9px!important;
+  }
+  .pirHeaderV7{
+    height:.64in!important;
+    grid-template-rows:.31in .33in!important;
+  }
+  .pirHeaderV7>div{
+    padding:2px 4px!important;
+    line-height:1.12!important;
+  }
+  .pirHLeft{
+    font-size:6.8px!important;
+  }
+  .pirHLogo img{
+    max-width:.74in!important;
+    max-height:.47in!important;
+    margin-top:.015in!important;
+  }
+  .pirHTitle{
+    font-size:11.2px!important;
+    padding-top:3px!important;
+  }
+  .pirHRight,.pirHDay,.pirHReport,.pirHPage{
+    font-size:6.8px!important;
+  }
+  .pirTopV7{
+    height:2.08in!important;
+    grid-template-columns:31% 31% 38%!important;
+  }
+  .pirTopBody{
+    height:1.92in!important;
+    padding:4px 5px!important;
+  }
+  .pirTopCol:first-child .pirTopBody{
+    font-size:6.45px!important;
+    line-height:1.18!important;
+    font-weight:650!important;
+  }
+  .pirTopCol:nth-child(2) .pirTopBody{
+    font-size:6.75px!important;
+    line-height:1.14!important;
+  }
+  .pirTestexStackV7{
+    height:1.92in!important;
+    padding:2px 3px!important;
+  }
+  .pirTestexPrint{
+    font-size:8.2px!important;
+  }
+  .pirIAV7{
+    height:1.32in!important;
+  }
+  .pirMixGridV7{
+    height:5.45in!important;
+  }
+  .mixGrid{
+    grid-auto-rows:.145in!important;
+  }
+  .mixRow{
+    height:.198in!important;
+  }
+  .mixHead{
+    height:.158in!important;
+    line-height:.158in!important;
+  }
+}

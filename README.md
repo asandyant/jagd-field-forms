@@ -27,3 +27,10 @@ Recommended subdomain:
 ## Notes
 
 The PIR printable output is built to match the one-page PIR sample structure: project info, hold points, surface cleanliness/profile, instruments, ambient conditions, mixing/application, caulking, and signatures.
+
+
+## v9 polish
+- Cleaned up PIR print header spacing.
+- Slightly reduced logo/header height.
+- Made Hold Point list and Surface Cleanliness area easier to read.
+- Kept one-page print layout and mobile-friendly web form.
