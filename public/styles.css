@@ -62,3 +62,53 @@
   .pirMixHeadV7{height:.16in;line-height:.16in;border-bottom:1px solid #000}.pirMixGridV7{height:5.14in;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;border-bottom:1px solid #000}.mixPrintBlock{border-right:1px solid #000;border-bottom:1px solid #000;overflow:hidden}.mixPrintBlock:nth-child(2),.mixPrintBlock:nth-child(4){border-right:0}.mixPrintBlock:nth-child(3),.mixPrintBlock:nth-child(4){border-bottom:0}.mixRow{height:.18in;display:grid;grid-template-columns:1fr .75in;border-bottom:1px solid #000}.mixRow span{padding:1px 2px;border-right:1px solid #000}.mixRow span:last-child{border-right:0}.mixHead{height:.14in;background:#d9d9d9!important;text-align:center;font-weight:800;border-bottom:1px solid #000;line-height:.14in}.mixHead span{margin-left:.12in;font-weight:600}.mixGrid{display:grid;grid-template-columns:1fr 1fr 1fr;grid-auto-rows:.135in}.mixGrid span{border-right:1px solid #000;border-bottom:1px solid #000;padding:1px 2px;overflow:hidden}.mixGrid span:nth-child(3n){border-right:0}.mixGrid.app{grid-template-columns:1fr 1fr 1fr}.mixGrid.app span:nth-child(7){grid-column:1/3}.mixGrid.app span:nth-child(8){grid-column:3/4}.mixGrid.app span:nth-child(3n){border-right:0}
   .pirCaulkHeadV7{height:.15in;line-height:.15in}.pirCaulkGridV7{height:.25in;display:grid;grid-template-columns:1.55in 1.65in 1.1in 1.1in 1fr;border-bottom:1px solid #000}.pirCaulkGridV7>div,.pirSigGridV7>div{border-right:1px solid #000;padding:2px;overflow:hidden}.pirCaulkGridV7>div:last-child,.pirSigGridV7>div:last-child{border-right:0}.pirSigGridV7{height:.31in;display:grid;grid-template-columns:31% 31% 38%;border-bottom:1px solid #000}.sigPrint{max-width:1.15in!important;max-height:.22in!important}.pirRevV7{position:absolute;left:2px;bottom:1px;font-size:4.8px}
 }
+
+/* v8: readability pass for PIR print — darker lines, larger text, less wasted space */
+@media print{
+  @page{size:letter portrait;margin:.12in!important}
+  .pirSheetV7{
+    width:8.20in!important;
+    height:10.75in!important;
+    font-size:6.85px!important;
+    line-height:1.12!important;
+    font-weight:500!important;
+    border:1.3px solid #000!important;
+  }
+  .pirSheetV7 b,
+  .pirBar,
+  .pirIAHead,
+  .pirMixHeadV7,
+  .pirCaulkHeadV7,
+  .mixHead{font-weight:900!important;}
+  .pirHeaderV7{height:.70in!important;grid-template-rows:.34in .36in!important;}
+  .pirHeaderV7>div{border-color:#000!important;padding:2px 4px!important;}
+  .pirHLogo img{max-width:.82in!important;max-height:.55in!important;margin-top:.02in!important;}
+  .pirHTitle{font-size:11px!important;line-height:1.15!important;}
+  .pirHRight{font-size:6.7px!important;}
+  .pirTopV7{height:2.00in!important;grid-template-columns:30% 32% 38%!important;}
+  .pirBar{height:.16in!important;line-height:.16in!important;font-size:6.1px!important;}
+  .pirTopBody{height:1.84in!important;padding:3px 4px!important;}
+  .pirTestexStackV7{height:1.84in!important;padding:2px!important;}
+  .pirTestexPrint{font-size:8px!important;}
+  .testexMeta{font-size:5.2px!important;}
+  .pirIAHead{height:.17in!important;line-height:.17in!important;font-size:6.2px!important;}
+  .pirIAV7{height:1.34in!important;}
+  .pirInstGrid{grid-template-columns:.34in 1.55in 1fr!important;grid-auto-rows:.148in!important;}
+  .pirAmbGrid{grid-template-columns:.90in repeat(4,1fr)!important;grid-auto-rows:.168in!important;}
+  .pirCell{border-color:#000!important;padding:1px 2.5px!important;}
+  .tinyCell{font-size:5.85px!important;line-height:1.05!important;}
+  .pirMixHeadV7{height:.17in!important;line-height:.17in!important;font-size:6.2px!important;}
+  .pirMixGridV7{height:5.52in!important;}
+  .mixPrintBlock{border-color:#000!important;}
+  .mixRow{height:.205in!important;grid-template-columns:1fr .82in!important;}
+  .mixRow span{border-color:#000!important;padding:2px 3px!important;}
+  .mixHead{height:.165in!important;line-height:.165in!important;font-size:6.15px!important;}
+  .mixGrid{grid-auto-rows:.147in!important;}
+  .mixGrid span{border-color:#000!important;padding:1.5px 3px!important;}
+  .pirCaulkHeadV7{height:.16in!important;line-height:.16in!important;font-size:6.2px!important;}
+  .pirCaulkGridV7{height:.26in!important;}
+  .pirSigGridV7{height:.33in!important;}
+  .pirCaulkGridV7>div,.pirSigGridV7>div{padding:2px 3px!important;border-color:#000!important;}
+  .sigPrint{max-width:1.25in!important;max-height:.25in!important;}
+  .pirRevV7{font-size:5.2px!important;}
+}
