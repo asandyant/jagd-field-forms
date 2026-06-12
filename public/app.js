@@ -58,7 +58,7 @@ function pirForm(){
   dateEl.value=new Date().toISOString().slice(0,10);
   updateDay();
   dateEl.addEventListener('change', updateDay);
-  document.getElementById('pirPrintBtn').onclick=()=>{buildPirPrint(); window.print();};
+  document.getElementById('pirPrintBtn').onclick=()=>{buildPirPrint(); setTimeout(()=>window.print(), 100);};
   document.getElementById('pirSaveBtn').onclick=()=>saveForm('pir', collectPir(), 'pirPhotos', 'pirMsg');
 }
 
@@ -85,7 +85,7 @@ function buildPirPrint(data=collectPir(), files=[]){
 function mewpForm(){
  app.innerHTML=`<div class="container printOnly"><h1>MEWP Daily Equipment Inspection</h1><div class="panel"><h2>Equipment / Job Information</h2><div class="grid three">${field('mewpJobName','Project / Job')} ${field('mewpLocation','Location / Work Area')} ${field('mewpDate','Inspection Date','date')} ${field('mewpTime','Inspection Time','time')} ${field('mewpInspector','Inspector Name')} ${field('mewpCompany','Company','text','value="JAGD Construction"')} ${field('mewpEquipmentId','Equipment ID / Unit #')} ${field('mewpMakeModel','Make / Model')} ${field('mewpSerial','Serial #')} ${field('mewpHours','Hour Meter')} ${field('mewpOperator','Operator')} ${selectField('mewpOverall','Overall Status',['Ready for Use','Do Not Use - Correction Required','N/A'])}</div></div><div class="panel"><h2>MEWP Checklist</h2>${mewpQuestions.map((q,i)=>`<div class="checkrow"><div class="questionTitle">${i+1}. ${q}</div><div class="choiceBtns"><label><input type="radio" name="mewpQ${i}" value="PASS">PASS</label><label><input type="radio" name="mewpQ${i}" value="FAIL">FAIL</label><label><input type="radio" name="mewpQ${i}" value="N/A">N/A</label></div><label>Notes / corrective action</label><textarea id="mewpNote${i}"></textarea></div>`).join('')}</div><div class="panel"><h2>Pictures / Signature</h2>${photoInput('mewpPhotos','Pictures')}${textarea('mewpGeneralNotes','General Notes')}${field('mewpSignature','Inspector Signature / Typed Name')}<div class="actions"><button class="btn" id="mewpPrintBtn">Preview / Print MEWP</button><button class="btn warn" id="mewpSaveBtn">Save MEWP Submission</button><button class="btn light" onclick="location.hash='#/'">Back</button></div><div id="mewpMsg"></div></div></div>`;
  setupPhotoPreview('mewpPhotos');
- document.getElementById('mewpPrintBtn').onclick=()=>{buildMewpPrint(); window.print();};
+ document.getElementById('mewpPrintBtn').onclick=()=>{buildMewpPrint(); setTimeout(()=>window.print(), 100);};
  document.getElementById('mewpSaveBtn').onclick=()=>saveForm('mewp', collectMewp(), 'mewpPhotos', 'mewpMsg');
 }
 function collectMewp(){return {jobName:val('mewpJobName'),location:val('mewpLocation'),inspectionDate:val('mewpDate'),time:val('mewpTime'),inspector:val('mewpInspector'),company:val('mewpCompany'),equipmentId:val('mewpEquipmentId'),makeModel:val('mewpMakeModel'),serial:val('mewpSerial'),hours:val('mewpHours'),operator:val('mewpOperator'),overall:val('mewpOverall'),generalNotes:val('mewpGeneralNotes'),signature:val('mewpSignature'),questions:mewpQuestions.map((q,i)=>({q,status:checked('mewpQ'+i),notes:val('mewpNote'+i)}))};}
@@ -93,6 +93,12 @@ function buildMewpPrint(data=collectMewp(), files=[]){const rows=(data.questions
 async function saveForm(type,data,photoInputId,msgId){const msg=document.getElementById(msgId); msg.innerHTML='<div class="notice">Saving...</div>'; const fd=new FormData(); fd.append('type',type); fd.append('data',JSON.stringify(data)); const inp=document.getElementById(photoInputId); if(inp){[...inp.files].forEach(f=>fd.append('photos',f));} try{const res=await fetch('/api/submissions',{method:'POST',body:fd}); const json=await res.json(); if(!res.ok) throw new Error(json.error||'Save failed'); msg.innerHTML=`<div class="success">Saved. Submission ID: ${esc(json.id)}. You can open it from Saved Submissions.</div>`;}catch(e){msg.innerHTML=`<div class="notice">Could not save: ${esc(e.message)}. You can still print from this screen.</div>`;}}
 async function submissions(){app.innerHTML=`<div class="container printOnly"><h1>Saved Submissions</h1><div class="actions"><button class="btn" onclick="loadSubmissions()">Refresh</button><a class="btn light" href="#/">Back</a></div><div id="savedList" class="panel">Loading...</div></div>`; await loadSubmissions();}
 async function loadSubmissions(){const box=document.getElementById('savedList'); try{const rows=await (await fetch('/api/submissions')).json(); if(!rows.length){box.innerHTML='<p>No saved submissions yet.</p>';return;} box.innerHTML=`<table class="table"><tr><th>Date</th><th>Type</th><th>Title</th><th>Project</th><th>Open</th></tr>${rows.map(r=>`<tr><td>${new Date(r.createdAt).toLocaleString()}</td><td>${esc(r.type).toUpperCase()}</td><td>${esc(r.title)}</td><td>${esc(r.project)}</td><td><button class="btn small" onclick="openSubmission('${r.id}')">Open</button></td></tr>`).join('')}</table>`;}catch(e){box.innerHTML=`<div class="notice">Could not load saved submissions: ${esc(e.message)}</div>`;}}
-async function openSubmission(id){const record=await (await fetch('/api/submissions/'+id)).json(); if(record.type==='pir') buildPirPrint(record.data, record.files||[]); else buildMewpPrint(record.data, record.files||[]); window.print();}
+async function openSubmission(id){const record=await (await fetch('/api/submissions/'+id)).json(); if(record.type==='pir') buildPirPrint(record.data, record.files||[]); else buildMewpPrint(record.data, record.files||[]); setTimeout(()=>window.print(), 100);}
 function router(){const h=location.hash||'#/'; if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else if(h.startsWith('#/submissions')) submissions(); else home();}
+
+window.addEventListener('beforeprint',()=>{
+  const h=location.hash||'#/';
+  if(h.startsWith('#/pir') && document.getElementById('pirProject')) buildPirPrint();
+  if(h.startsWith('#/mewp') && document.getElementById('mewpJobName')) buildMewpPrint();
+});
 window.addEventListener('hashchange',router); router();
