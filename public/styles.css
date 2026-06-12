@@ -184,3 +184,18 @@
     line-height:.158in!important;
   }
 }
+
+/* v10: scalable form-library home screen. Avoid duplicate form buttons in the top nav and home content. */
+.utilityNav{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:nowrap}
+.utilityNav a{min-width:86px;text-align:center}
+.homeContainer{max-width:920px}
+.homeIntro{background:#fff;border:1px solid #ddd;border-radius:18px;padding:22px 24px;margin-bottom:16px;box-shadow:0 8px 18px rgba(0,0,0,.04)}
+.homeIntro h1{font-size:34px;margin-bottom:8px}.homeIntro p{font-size:17px;margin:0;color:#444;max-width:720px}
+.formLibrary{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.formCard{background:#fff;border:1px solid #ddd;border-radius:18px;padding:20px;display:flex;flex-direction:column;justify-content:space-between;min-height:205px;text-decoration:none;color:#111;box-shadow:0 8px 18px rgba(0,0,0,.04)}
+.formCard:hover{border-color:#111}.formCard h2{font-size:25px;margin:8px 0}.formCard p{font-size:15px;color:#444;margin:0}.formCard strong{margin-top:18px;background:#111;color:#fff;border-radius:12px;text-align:center;padding:13px;font-size:17px}.formTag{display:inline-block;font-size:12px;font-weight:800;color:#111;background:#f0f0f0;border-radius:999px;padding:6px 10px}.savedShortcut{margin:16px 0}.savedShortcut .btn{width:100%;text-align:center;background:#f0f0f0;color:#111}
+@media(max-width:700px){
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;gap:8px}
+  .brand{margin-bottom:0;gap:8px}.brand img{width:64px}.brand strong{font-size:20px;line-height:1}.brand span{font-size:12px}.utilityNav{gap:6px}.utilityNav a{width:auto!important;min-width:58px;margin:0!important;padding:9px 10px;font-size:13px;border-radius:999px}
+  .homeContainer{margin:14px auto;padding:0 12px}.homeIntro{padding:18px}.homeIntro h1{font-size:30px}.homeIntro p{font-size:16px}.formLibrary{grid-template-columns:1fr}.formCard{min-height:176px;padding:18px}.formCard h2{font-size:24px}.formCard strong{font-size:17px;padding:14px}.savedShortcut .btn{margin:0!important}
+}

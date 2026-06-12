@@ -79,7 +79,33 @@ function sigPrint(dataUrl, typed){return dataUrl ? `<img class="sigPrint" src="$
 
 
 function home(){
-  app.innerHTML=`<div class="container printOnly"><section class="hero"><div><h1>JAGD Field Forms</h1><p>Web-based inspection forms for JAGD Construction. Built for field use on phones, tablets, and desktops with printable report output.</p><div class="actions"><a class="btn" href="#/pir">Open PIR Questionnaire</a><a class="btn" href="#/mewp">Open MEWP Inspection</a><a class="btn light" href="#/submissions">Saved Submissions</a></div></div><img src="${logo}" alt="JAGD logo"></section><div class="cards"><div class="card"><h2>PIR Questionnaire</h2><p>Guided sections for project data, hold points, surface prep, instruments, ambient readings, mixing/application, caulking, attachments, and signatures.</p></div><div class="card"><h2>MEWP Inspection</h2><p>Checklist form using the requested eight MEWP inspection questions with pass/fail/N/A, notes, corrective action, photos, signature, and print output.</p></div></div></div>`;
+  app.innerHTML=`<div class="container printOnly homeContainer">
+    <section class="homeIntro">
+      <h1>JAGD Field Forms</h1>
+      <p>Choose a form below. This screen is the form library, so more JAGD forms can be added here without doubling up the navigation.</p>
+    </section>
+    <section class="formLibrary" aria-label="Form Library">
+      <a class="formCard" href="#/pir">
+        <div>
+          <span class="formTag">Paint / QC</span>
+          <h2>PIR Questionnaire</h2>
+          <p>Field-friendly questionnaire that prints to the one-page Paint Inspection Report layout.</p>
+        </div>
+        <strong>Open</strong>
+      </a>
+      <a class="formCard" href="#/mewp">
+        <div>
+          <span class="formTag">Equipment</span>
+          <h2>MEWP Daily Inspection</h2>
+          <p>MEWP checklist with pass/fail/N/A, notes, pictures, and finger signature.</p>
+        </div>
+        <strong>Open</strong>
+      </a>
+    </section>
+    <section class="savedShortcut">
+      <a class="btn light" href="#/submissions">View Saved Submissions</a>
+    </section>
+  </div>`;
 }
 
 function pirForm(){
