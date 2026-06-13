@@ -340,3 +340,33 @@
   .dwlPrintFoot{height:.38in!important;grid-template-columns:2.45in 1fr 1.2in!important;gap:10px!important;align-items:end!important;font-size:8px!important;padding-top:2px!important}
   .bigDate2{font-size:18px!important;line-height:1!important;white-space:nowrap!important}
 }
+
+/* v25 DWL polish: cleaner phone dropdowns, bigger printed names, tighter boss layout */
+.dwlEntryTable input[list]::-webkit-calendar-picker-indicator{display:none!important;opacity:0!important}
+.dwlEntryTable input[list]{appearance:none;-webkit-appearance:none;background:#fff!important}
+.dwlEntryTable .dwlStraightBox{font-weight:900;text-align:center;cursor:pointer;background:#fff!important}
+.dwlEntryTable .dwlStraightBox:focus{outline:2px solid #111}
+.dwlActivitiesPanel{padding:8px 10px!important}
+.dwlActivitiesPanel h2{font-size:16px!important;margin-bottom:4px!important}
+.dwlActivityInfo{font-size:12px!important;line-height:1.1!important}
+.dwlActivityInfo td{padding:3px 5px!important}
+
+@media print{
+  .dwlPrintSheet{width:7.82in!important;height:10.28in!important;font-size:9.4px!important;overflow:hidden!important}
+  .dwlPrintTop{height:.34in!important}
+  .dwlBrand img{width:.28in!important;height:.28in!important}.dwlBrand b{font-size:12px!important}
+  .dwlHeadLine{height:.46in!important;grid-template-columns:1fr 2.0in!important;align-items:center!important;border-bottom:1.6px solid #000!important;padding:0 6px!important;font-size:10.5px!important;box-sizing:border-box!important}
+  .dwlHeadLine>div:first-child{padding-top:.08in!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px!important}
+  .dwlHeadLine>div:last-child{text-align:right!important;padding-top:0!important}
+  .bigDate{font-size:23px!important;font-weight:900!important;line-height:1!important}
+  .dwlWeatherLine{height:.29in!important;font-size:10px!important;grid-template-columns:1fr 1.65in 1.45in!important;padding:0 6px!important}
+  .dwlActivitiesPrint{font-size:8px!important}.dwlActivitiesPrint th{font-size:9.3px!important;height:.12in!important}.dwlActivitiesPrint td{font-size:8px!important;height:.135in!important;padding:1px 3px!important}
+  .dwlBox{height:.72in!important;font-size:10px!important}.dwlBox.small{height:.29in!important}.dwlBox b{font-size:10px!important;padding:1px 3px!important}.dwlBox div{padding:3px 4px!important}
+  .dwlPrintTable{font-size:9px!important}.dwlPrintTable th{font-size:8.3px!important;padding:1px!important}.dwlPrintTable td{height:.228in!important;padding:1px 2px!important;line-height:1.05!important}
+  .dwlPrintTable td:nth-child(2){font-size:13.6px!important;font-weight:900!important;letter-spacing:.1px!important}
+  .dwlPrintTable td:nth-child(4),.dwlPrintTable td:nth-child(5),.dwlPrintTable td:nth-child(6),.dwlPrintTable td:nth-child(7),.dwlPrintTable td:nth-child(8),.dwlPrintTable td:nth-child(9),.dwlPrintTable td:nth-child(10),.dwlPrintTable td:nth-child(11){font-size:12px!important;font-weight:900!important;text-align:center!important}
+  .dwlNoLunchPrint{font-size:12px!important;font-weight:900!important}
+  .dwlPrintFoot{height:.43in!important;grid-template-columns:2.5in 1fr 1.35in!important;gap:10px!important;font-size:8.8px!important;padding-top:3px!important;align-items:end!important}
+  .dwlPrintFoot>div{min-height:.28in!important}.dwlPrintFoot>div:last-child{text-align:right!important;overflow:visible!important;white-space:nowrap!important}
+  .bigDate2{font-size:18px!important;line-height:1!important;font-weight:900!important}
+}
