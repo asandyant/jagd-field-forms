@@ -103,6 +103,20 @@ function dateToSlashYYYY(dateValue){ const d=String(dateValue||''); const m=d.ma
 function fileProjectName(projectName){ return String(projectName||'').trim().replace(/[\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').replace(/_+/g,'_').slice(0,120); }
 function dsifSaveTitle(dateValue, projectName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); return projectPart ? `DSIF_${datePart}_${projectPart}` : `DSIF_${datePart}`; }
 function dwlSaveTitle(dateValue, projectName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); return projectPart ? `DWL_${datePart}_${projectPart}` : `DWL_${datePart}`; }
+
+function openPrintNow(msgId){
+  const msg = msgId ? document.getElementById(msgId) : null;
+  if (msg) msg.innerHTML = '';
+  try {
+    if (typeof window.print !== 'function') throw new Error('Print is not available in this browser');
+    window.focus();
+    window.print();
+  } catch (err) {
+    if (msg) msg.innerHTML = `<div class="notice">Print preview could not open: ${esc(err.message)}. Use the browser Share button and choose Print / Save as PDF.</div>`;
+    console.error(err);
+  }
+}
+
 function printPdfHelp(type){
   const label = type === 'pir' ? 'PIR' : (type === 'dsif' ? 'DSIF' : 'MEWP');
   return `<p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p>`;
