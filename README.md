@@ -19,3 +19,6 @@ Daily Work Log notes:
 - Weather can auto-fill from browser location with manual override.
 - Crew dropdown has Crew 1 through Crew 7 plus Other.
 - PDF title format is `DWL_MM.DD.YY_Project_Name`.
+
+
+V24: Based on v22 active worker list only. Removed the large DWL suggestion popup; employee suggestions now show inline under the employee field. Did not merge the Worker Summary Sheet names.

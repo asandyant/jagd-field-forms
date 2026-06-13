@@ -567,7 +567,7 @@ async function loadActiveWorkers(){
   if(activeWorkers.length) return activeWorkers;
   activeWorkers = Array.isArray(EMBEDDED_ACTIVE_WORKERS) ? EMBEDDED_ACTIVE_WORKERS.slice() : [];
   try{
-    const res = await fetch('/data/active-workers.json?v=20260613', {cache:'no-store'});
+    const res = await fetch('/data/active-workers.json?v=20260613v24', {cache:'no-store'});
     if(res.ok){
       const json = await res.json();
       if(Array.isArray(json) && json.length) activeWorkers = json;
@@ -585,7 +585,7 @@ function findWorkerByName(name){
   return activeWorkers.find(w=>String(w.fullName||'').trim().toLowerCase()===n) || activeWorkers.find(w=>`${w.firstName||''} ${w.lastName||''}`.trim().toLowerCase()===n) || null;
 }
 function dwlRow(i){
-  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false" list="dwlWorkerList"></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" inputmode="numeric"></td><td><input id="dwlClass${i}"></td><td><input id="dwlLocal${i}"></td><td><input id="dwlStraight${i}" inputmode="decimal"></td><td><input id="dwlOver${i}" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" inputmode="decimal"></td><td><input id="dwlRT${i}" inputmode="decimal"></td></tr>`;
+  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" inputmode="numeric"></td><td><input id="dwlClass${i}"></td><td><input id="dwlLocal${i}"></td><td><input id="dwlStraight${i}" inputmode="decimal"></td><td><input id="dwlOver${i}" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" inputmode="decimal"></td><td><input id="dwlRT${i}" inputmode="decimal"></td></tr>`;
 }
 function applyWorkerToDwlRow(i,w){
   if(!w) return;
@@ -594,47 +594,42 @@ function applyWorkerToDwlRow(i,w){
   const cls=document.getElementById('dwlClass'+i); if(cls) cls.value = w.class || '';
   const loc=document.getElementById('dwlLocal'+i); if(loc) loc.value = cleanWorkerLocal(w.local);
 }
-function getDwlSuggestPortal(){
-  let box=document.getElementById('dwlSuggestPortal');
-  if(!box){
-    box=document.createElement('div');
-    box.id='dwlSuggestPortal';
-    box.className='dwlSuggestPortal';
-    document.body.appendChild(box);
-  }
-  return box;
+function getDwlSuggestBox(i){
+  return document.getElementById('dwlSuggest'+i);
 }
 function hideDwlSuggestions(){
-  const box=document.getElementById('dwlSuggestPortal');
-  if(box){ box.innerHTML=''; box.style.display='none'; }
-}
-function positionDwlSuggestions(input, box){
-  const r=input.getBoundingClientRect();
-  const maxW=Math.max(260, Math.min(420, window.innerWidth-20));
-  const left=Math.min(Math.max(10, r.left), window.innerWidth-maxW-10);
-  const top=Math.min(r.bottom+4, window.innerHeight-250);
-  box.style.left=left+'px';
-  box.style.top=top+'px';
-  box.style.width=Math.min(maxW, Math.max(r.width, 280))+'px';
+  document.querySelectorAll('.dwlSuggest').forEach(box=>{
+    box.style.display='none';
+    box.innerHTML='';
+  });
 }
 function showDwlSuggestions(i){
-  const emp=document.getElementById('dwlEmp'+i), box=getDwlSuggestPortal();
-  if(!emp||!box) return;
-  const q=emp.value.trim().toLowerCase();
+  const emp=document.getElementById('dwlEmp'+i), box=getDwlSuggestBox(i);
+  if(!emp || !box) return;
+  const q=emp.value.toLowerCase().trim();
   if(q.length<1){ hideDwlSuggestions(); return; }
-  const matches=dwlMatchesForQuery(q);
+  const matches=dwlMatchesForQuery(q).slice(0,7);
   if(!matches.length){ hideDwlSuggestions(); return; }
-  box.innerHTML=matches.map((w,idx)=>`<button type="button" data-idx="${idx}"><b>${esc(workerDisplayName(w))}</b><span>${esc(w.class||'')}${w.local?` • Local ${esc(cleanWorkerLocal(w.local))}`:''}</span></button>`).join('');
-  positionDwlSuggestions(emp, box);
+  document.querySelectorAll('.dwlSuggest').forEach(other=>{
+    if(other!==box){ other.style.display='none'; other.innerHTML=''; }
+  });
+  box.innerHTML=matches.map((w,idx)=>`<button type="button" data-idx="${idx}"><b>${esc(workerDisplayName(w))}</b>${(w.class||w.local)?`<span>${esc(w.class||'')}${w.local?` • Local ${esc(cleanWorkerLocal(w.local))}`:''}</span>`:''}</button>`).join('');
   box.style.display='block';
-  [...box.querySelectorAll('button')].forEach((btn,idx)=>{
-    btn.addEventListener('pointerdown',e=>{
+  box.querySelectorAll('button').forEach(btn=>{
+    btn.onmousedown=(e)=>{
       e.preventDefault();
+      const idx=Number(btn.dataset.idx);
       applyWorkerToDwlRow(i,matches[idx]);
       hideDwlSuggestions();
       const next=document.getElementById('dwlLoc'+i);
       if(next) next.focus();
-    });
+    };
+    btn.onclick=(e)=>{
+      e.preventDefault();
+      const idx=Number(btn.dataset.idx);
+      applyWorkerToDwlRow(i,matches[idx]);
+      hideDwlSuggestions();
+    };
   });
 }
 
