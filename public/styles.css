@@ -403,3 +403,13 @@
   .dwlPrintFoot>div:last-child{text-align:right!important;overflow:visible!important;white-space:nowrap!important;}
   .bigDate2{font-size:20px!important;font-weight:900!important;}
 }
+
+
+/* v27 DWL print polish */
+@media print {
+  .dwlActivitiesPrint th{font-size:9.5px!important;height:.13in!important;padding:0!important;}
+  .dwlActivitiesPrint td{width:50%!important;font-size:8.7px!important;height:.145in!important;padding:1px 3px!important;font-weight:900!important;}
+  .dwlPrintFoot{grid-template-columns:2.65in 1fr 1.15in!important;gap:10px!important;}
+  .bigDate2{font-size:16px!important;font-weight:900!important;line-height:1!important;}
+  .dwlPrintFoot>div:last-child{font-size:8px!important;text-align:right!important;overflow:visible!important;}
+}
