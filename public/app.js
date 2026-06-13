@@ -237,7 +237,7 @@ function pirForm(){
   pirMixCount=1; renderPirMixBlocks();
   document.getElementById('addPirMixBlock').onclick=()=>{pirMixCount=Math.min(4,pirMixCount+1); renderPirMixBlocks();};
   initSignatureButtons();
-  document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); document.title = formSaveTitle('pir', data.reportDate, data.project); buildPirPrint(data); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
+  document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); document.title = formSaveTitle('pir', data.reportDate, data.project); buildPirPrint(data); openPrintNow('pirMsg');}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
 }
 
 function collectPir(){
@@ -300,7 +300,7 @@ function mewpForm(){
  setupPhotoPreview('mewpPhotos');
  document.getElementById('mewpDate').value=new Date().toISOString().slice(0,10);
  initSignatureButtons();
- document.getElementById('mewpPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectMewp(); document.title = formSaveTitle('mewp', data.inspectionDate, data.jobName); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){const msg=document.getElementById('mewpMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
+ document.getElementById('mewpPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectMewp(); document.title = formSaveTitle('mewp', data.inspectionDate, data.jobName); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); openPrintNow('mewpMsg');}catch(err){const msg=document.getElementById('mewpMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
 }
 function collectMewp(){return {jobName:projectValue('mewpJobName'),location:val('mewpLocation'),inspectionDate:val('mewpDate'),time:val('mewpTime'),inspector:val('mewpInspector'),company:val('mewpCompany'),equipmentId:val('mewpEquipmentId'),makeModel:val('mewpMakeModel'),serial:val('mewpSerial'),hours:val('mewpHours'),operator:val('mewpOperator'),overall:val('mewpOverall'),generalNotes:val('mewpGeneralNotes'),signature:val('mewpSignature'),signatureData:signatureStore.mewpSignature||'',questions:mewpQuestions.map((q,i)=>({q,status:checked('mewpQ'+i),notes:val('mewpNote'+i)}))};}
 function buildMewpPrint(data=collectMewp(), files=[]){const rows=(data.questions||[]).map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.q)}</td><td>${esc(x.status)}</td><td>${esc(x.notes)}</td></tr>`).join(''); const html=`<div class="mewpSheet"><div class="mewpHeader"><img src="${logo}"><div class="mewpTitle">MEWP Daily Equipment Inspection<br><span style="font-size:12px;font-weight:400">JAGD Construction</span></div></div><table class="printTable"><tr><td><b>Project / Job:</b> ${esc(data.jobName)}</td><td><b>Location:</b> ${esc(data.location)}</td><td><b>Date:</b> ${esc(data.inspectionDate)}</td></tr><tr><td><b>Inspector:</b> ${esc(data.inspector)}</td><td><b>Time:</b> ${esc(data.time)}</td><td><b>Overall Status:</b> ${esc(data.overall)}</td></tr><tr><td><b>Equipment ID:</b> ${esc(data.equipmentId)}</td><td><b>Make / Model:</b> ${esc(data.makeModel)}</td><td><b>Serial #:</b> ${esc(data.serial)}</td></tr><tr><td><b>Hour Meter:</b> ${esc(data.hours)}</td><td><b>Operator:</b> ${esc(data.operator)}</td><td><b>Company:</b> ${esc(data.company)}</td></tr></table><h3>Inspection Checklist</h3><table class="printTable"><tr><th>#</th><th>Inspection Item</th><th>Status</th><th>Notes / Corrective Action</th></tr>${rows}</table><p><b>General Notes:</b> ${esc(data.generalNotes)}</p><p><b>Inspector Signature:</b> ${data.signatureData?`<img class="sigPrint" src="${data.signatureData}">`:esc(data.signature)}</p>${files.length?`<h3>Pictures</h3><div class="photoPrint">${files.filter(f=>String(f.mimetype||'').startsWith('image/')).map(f=>`<img src="${f.url}">`).join('')}</div>`:''}</div>`; setPrint(html); return html;}
@@ -329,7 +329,7 @@ function dailyEquipmentForm(){
   DAILY_EQUIPMENT_CHECKLISTS.forEach((_,pi)=>setupPhotoPreview('dailyPhotos'+pi));
   initSignatureButtons();
   document.getElementById('dailyResetBtn').onclick=()=>{ if(confirm('Reset this Daily Equipment Inspection form?')) dailyEquipmentForm(); };
-  document.getElementById('dailyPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDailyEquipment(); document.title=formSaveTitle('daily', data.date, data.project); buildDailyEquipmentPrint(data); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){document.getElementById('dailyMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  document.getElementById('dailyPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDailyEquipment(); document.title=formSaveTitle('daily', data.date, data.project); buildDailyEquipmentPrint(data); openPrintNow('dailyMsg');}catch(err){document.getElementById('dailyMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
 function collectDailyEquipment(){return {project:projectValue('dailyProject'),date:val('dailyDate'),inspector:val('dailyInspector'),signature:val('dailySignature'),signatureData:signatureStore.dailySignature||'',pages:DAILY_EQUIPMENT_CHECKLISTS.map((page,pi)=>({title:page.title,na:document.getElementById('dailyNa'+pi)?.checked||false,items:page.items.map((q,ii)=>({q:q.replace('&quot;','"'),status:checked('daily_'+pi+'_'+ii),comment:val('dailyComment_'+pi+'_'+ii)})),additional:val('dailyAdditional'+pi),photos:localPhotoFiles('dailyPhotos'+pi)}))};}
 function buildDailyEquipmentPrint(data=collectDailyEquipment()){
@@ -426,7 +426,7 @@ function dsifForm(){
   const updateDay=()=>{ if(!dateEl.value){dayEl.value='';return;} const d=new Date(dateEl.value+'T00:00:00'); dayEl.value=d.toLocaleDateString(undefined,{weekday:'long'}) + ' (Day)'; };
   dateEl.value=new Date().toISOString().slice(0,10); updateDay(); dateEl.addEventListener('change',updateDay);
   initSignatureButtons();
-  document.getElementById('dsifPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDsif(); document.title=formSaveTitle('dsif', data.reportDate, data.project); buildDsifPrint(data); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){document.getElementById('dsifMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  document.getElementById('dsifPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDsif(); document.title=formSaveTitle('dsif', data.reportDate, data.project); buildDsifPrint(data); openPrintNow('dsifMsg');}catch(err){document.getElementById('dsifMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
 function collectDsif(){
   return {project:projectValue('dsifProject'),reportDate:val('dsifReportDate'),day:val('dsifDay'),weather:val('dsifWeather'),attachedPages:val('dsifAttachedPages'),competentPerson:val('dsifCompetentPerson'),signature:val('dsifSignature'),signatureData:signatureStore.dsifSignature||'',visible:{location:val('dsifVELocation'),time:val('dsifVETime'),observation:val('dsifVEObservation'),emission:val('dsifVEEmission')},corrections:val('dsifCorrections'),sections:DSIF_SECTIONS.map((sec,si)=>({title:sec.title,sub:sec.sub,commentHeader:sec.commentHeader,questions:sec.questions.map((q,qi)=>({q,status:checked('dsif_'+si+'_'+qi),comment:val('dsifComment_'+si+'_'+qi)}))}))};
@@ -532,7 +532,7 @@ function renderWeeklyLive(meeting){
   live.style.display='block';
   live.innerHTML = `<h2>Live Sign-In</h2><div class="weeklyLiveGrid"><div><div class="qrCard"><img src="${weeklyQrUrl(meeting.id)}" alt="QR code for worker sign-in"><p class="tiny">Workers scan this QR code with their phones.</p></div><input class="copyLink" value="${esc(link)}" readonly><div class="actions"><button class="btn light" id="weeklyCopyBtn" type="button">Copy Sign-In Link</button><button class="btn" id="weeklyPrintBtn" type="button">Save PDF / Print Meeting</button></div></div><div><h3>Workers Signed In: <span id="weeklyCount">0</span></h3><div id="weeklyAttendees" class="attendeeList">Waiting for workers to sign in...</div></div></div>`;
   document.getElementById('weeklyCopyBtn').onclick=()=>navigator.clipboard?.writeText(link);
-  document.getElementById('weeklyPrintBtn').onclick=async()=>{ const latest=await fetchWeeklyMeeting(meeting.id); document.title=weeklyTitle(latest); buildWeeklyPrint(latest); requestAnimationFrame(()=>setTimeout(()=>window.print(),150)); };
+  document.getElementById('weeklyPrintBtn').onclick=async()=>{ const latest=await fetchWeeklyMeeting(meeting.id); document.title=weeklyTitle(latest); buildWeeklyPrint(latest); openPrintNow(); };
   pollWeekly(meeting.id);
   weeklyPollTimer = setInterval(()=>pollWeekly(meeting.id),3000);
 }
@@ -749,7 +749,7 @@ async function dwlForm(){
   populateDwlWorkerDatalist(); setupDwlRows(); initSignatureButtons();
   document.getElementById('dwlAddPageBtn').onclick=addDwlPageRows;
   setTimeout(()=>autoFillWeather(),350);
-  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); buildDwlPrint(data); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); buildDwlPrint(data); openPrintNow('dwlMsg');}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
 function collectDwl(){
   const rows=[]; for(let i=1;i<=40;i++){
