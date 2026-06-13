@@ -40,6 +40,9 @@ const PROJECT_OPTIONS = [
   'Other'
 ];
 const DAILY_EQUIPMENT_URL = 'https://jagdconstruction.github.io/daily_equipment_inspection/';
+let activeWorkers = [];
+const CREW_OPTIONS = ['', 'Crew 1', 'Crew 2', 'Crew 3', 'Crew 4', 'Crew 5', 'Crew 6', 'Crew 7', 'Other'];
+const DWL_ACTIVITIES = ['01 - Setup','02 - Rigging','03 - Build Containment','04 - Washing','05 - Blast & Prime','06 - Additional Coat','07 - Power Tool','08 - Intermediate','09 - Finish','10 - Remove Containment','11 - Remove Rigging','12 - Caulking'];
 
 const mewpQuestions = [
   'Is the machine’s exterior in safe condition?',
@@ -75,11 +78,15 @@ function selectField(id,label,opts){return `<div><label for="${id}">${label}</la
 function projectField(id,label='Project / Job'){return `<div><label for="${id}">${label}</label><select id="${id}" class="projectSelect">${PROJECT_OPTIONS.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select><input id="${id}Other" class="projectOther" type="text" placeholder="Enter project name" style="display:none;margin-top:8px"></div>`;}
 function setupOtherProject(id){const sel=document.getElementById(id), other=document.getElementById(id+'Other'); if(!sel||!other)return; const sync=()=>{other.style.display = sel.value==='Other' ? 'block' : 'none'; if(sel.value==='Other') other.focus();}; sel.addEventListener('change',sync); sync();}
 function projectValue(id){const sel=document.getElementById(id); if(!sel)return ''; return sel.value==='Other' ? val(id+'Other') : sel.value;}
+function crewField(id,label='Crew'){return `<div><label for="${id}">${label}</label><select id="${id}" class="crewSelect">${CREW_OPTIONS.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select><input id="${id}Other" class="projectOther" type="text" placeholder="Enter crew" style="display:none;margin-top:8px"></div>`;}
+function setupOtherCrew(id){const sel=document.getElementById(id), other=document.getElementById(id+'Other'); if(!sel||!other)return; const sync=()=>{other.style.display = sel.value==='Other' ? 'block' : 'none'; if(sel.value==='Other') other.focus();}; sel.addEventListener('change',sync); sync();}
+function crewValue(id){const sel=document.getElementById(id); if(!sel)return ''; return sel.value==='Other' ? val(id+'Other') : sel.value;}
 function dateToMMDDYY(dateValue){ const d = String(dateValue||''); const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return ''; return `${m[2]}${m[3]}${m[1].slice(2)}`; }
 function dateToDisplay(dateValue){ const d = String(dateValue||''); const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return d; return `${m[2]}-${m[3]}-${m[1].slice(2)}`; }
 function cleanFilePart(v){ return String(v||'').trim().replace(/[\/:*?"<>|]+/g,'-').replace(/\s+/g,' ').slice(0,80); }
 function formSaveTitle(type, dateValue, projectName=''){
   if(type === 'dsif') return dsifSaveTitle(dateValue, projectName);
+  if(type === 'dwl') return dwlSaveTitle(dateValue, projectName);
   const prefix = type === 'pir' ? 'PIR' : (type === 'mewp' ? 'MEWP' : 'Daily Equipment Inspection');
   const datePart = dateToDisplay(dateValue) || 'No Date';
   const projectPart = cleanFilePart(projectName);
@@ -89,6 +96,7 @@ function dateToDotMMDDYY(dateValue){ const d=String(dateValue||''); const m=d.ma
 function dateToSlashYYYY(dateValue){ const d=String(dateValue||''); const m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return d; return `${m[2]}/${m[3]}/${m[1]}`; }
 function fileProjectName(projectName){ return String(projectName||'').trim().replace(/[\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').replace(/_+/g,'_').slice(0,120); }
 function dsifSaveTitle(dateValue, projectName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); return projectPart ? `DSIF_${datePart}_${projectPart}` : `DSIF_${datePart}`; }
+function dwlSaveTitle(dateValue, projectName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); return projectPart ? `DWL_${datePart}_${projectPart}` : `DWL_${datePart}`; }
 function printPdfHelp(type){
   const label = type === 'pir' ? 'PIR' : (type === 'dsif' ? 'DSIF' : 'MEWP');
   return `<p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p>`;
@@ -184,6 +192,14 @@ function home(){
           <span class="formTag">Safety Meeting</span>
           <h2>Weekly Safety Meeting</h2>
           <p>Foreman starts a meeting, displays a QR code, and workers sign in from their phones.</p>
+        </div>
+        <strong>Open</strong>
+      </a>
+      <a class="formCard" href="#/dwl">
+        <div>
+          <span class="formTag">Daily Log</span>
+          <h2>Daily Work Log</h2>
+          <p>DWL 3.0 field log with employee autocomplete, no-lunch tracking, crews, weather, and one-page PDF output.</p>
         </div>
         <strong>Open</strong>
       </a>
@@ -545,7 +561,116 @@ function buildWeeklyPrint(meeting){
   setPrint(html); return html;
 }
 
-function router(){const h=location.hash||'#/'; if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else home();}
+
+async function loadActiveWorkers(){
+  if(activeWorkers.length) return activeWorkers;
+  try{
+    const res = await fetch('/data/active-workers.json?v=20260613');
+    activeWorkers = await res.json();
+  }catch(e){ activeWorkers = []; console.error('Could not load worker list', e); }
+  return activeWorkers;
+}
+function workerOptionsHtml(){return `<datalist id="workerNames">${activeWorkers.map(w=>`<option value="${esc(w.fullName || `${w.firstName} ${w.lastName}`.trim())}"></option>`).join('')}</datalist>`;}
+function findWorkerByName(name){
+  const n=String(name||'').trim().toLowerCase();
+  if(!n) return null;
+  return activeWorkers.find(w=>String(w.fullName||'').trim().toLowerCase()===n) || activeWorkers.find(w=>`${w.firstName||''} ${w.lastName||''}`.trim().toLowerCase()===n) || null;
+}
+function dwlRow(i){
+  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td><input id="dwlEmp${i}" list="workerNames" autocomplete="off"></td><td><input id="dwlLoc${i}"></td><td><select id="dwlAct${i}"><option></option>${DWL_ACTIVITIES.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('')}</select></td><td><input id="dwlClass${i}"></td><td><input id="dwlLocal${i}"></td><td><input id="dwlStraight${i}" inputmode="decimal"></td><td><input id="dwlOver${i}" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" type="checkbox"></td><td><input id="dwlPT${i}" inputmode="decimal"></td><td><input id="dwlRT${i}" inputmode="decimal"></td></tr>`;
+}
+function setupDwlWorkerAutofill(){
+  for(let i=1;i<=40;i++){
+    const emp=document.getElementById('dwlEmp'+i);
+    if(!emp) continue;
+    emp.addEventListener('change',()=>{
+      const w=findWorkerByName(emp.value);
+      if(!w) return;
+      document.getElementById('dwlClass'+i).value = w.class || '';
+      document.getElementById('dwlLocal'+i).value = w.local || '';
+      if(!document.getElementById('dwlLoc'+i).value && w.currentJob) document.getElementById('dwlLoc'+i).value = w.currentJob;
+    });
+  }
+}
+function setupDwlRows(){
+  const tbody=document.getElementById('dwlRows');
+  tbody.innerHTML = Array.from({length:20},(_,idx)=>dwlRow(idx+1)).join('');
+  setupDwlWorkerAutofill();
+}
+function addDwlPageRows(){
+  const tbody=document.getElementById('dwlRows');
+  const current=tbody.querySelectorAll('tr').length;
+  if(current>=40) return;
+  tbody.insertAdjacentHTML('beforeend', Array.from({length:20},(_,idx)=>dwlRow(current+idx+1)).join(''));
+  setupDwlWorkerAutofill();
+}
+function activityCodesTable(){
+  const rows=[]; for(let i=0;i<DWL_ACTIVITIES.length;i+=2){rows.push(`<tr><td>${esc(DWL_ACTIVITIES[i]||'')}</td><td>${esc(DWL_ACTIVITIES[i+1]||'')}</td></tr>`)}
+  return rows.join('');
+}
+async function autoFillWeather(){
+  const box=document.getElementById('dwlWeatherMsg');
+  const weatherEl=document.getElementById('dwlWeather');
+  if(!navigator.geolocation){ if(box) box.textContent='Weather auto-fill not available on this device.'; return; }
+  if(box) box.textContent='Getting weather...';
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    try{
+      const {latitude, longitude}=pos.coords;
+      const url=`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,precipitation,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+      const res=await fetch(url); const data=await res.json(); const c=data.current||{};
+      const code=Number(c.weather_code); const desc = code===0?'Clear':([1,2,3].includes(code)?'Partly cloudy':([45,48].includes(code)?'Fog':([51,53,55,61,63,65,80,81,82].includes(code)?'Rain':([71,73,75,77,85,86].includes(code)?'Snow':([95,96,99].includes(code)?'Thunderstorm':'Cloudy')))));
+      weatherEl.value = `${desc}, ${Math.round(c.temperature_2m)}°F, Wind ${Math.round(c.wind_speed_10m||0)} mph`;
+      if(box) box.textContent='Weather filled. You can edit it if needed.';
+    }catch(e){ if(box) box.textContent='Could not auto-fill weather. Type it manually.'; }
+  }, err=>{ if(box) box.textContent='Location permission denied or unavailable. Type weather manually.'; }, {enableHighAccuracy:false, timeout:8000, maximumAge:600000});
+}
+async function dwlForm(){
+  await loadActiveWorkers();
+  app.innerHTML=`<div class="container printOnly dwlContainer"><h1>Daily Work Log</h1>
+    <div class="panel"><h2>Project / Report Information</h2><div class="grid three">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')}</div><div class="actions"><button class="btn light" type="button" id="dwlWeatherBtn">Auto Fill Weather</button></div><p class="tiny" id="dwlWeatherMsg">Weather can auto-fill from the phone location, or be typed manually.</p></div>
+    <div class="panel"><h2>Activities Performed</h2><div class="activityCheckGrid">${DWL_ACTIVITIES.map((a,idx)=>`<label><input type="checkbox" id="dwlActivity${idx}" value="${esc(a)}"> ${esc(a)}</label>`).join('')}</div></div>
+    <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
+    <div class="panel"><h2>Crew / Employees</h2><p class="tiny"><b>Worker list loaded:</b> ${activeWorkers.length} active workers. Start typing a name and select it to auto-fill Class and Local. If the worker is not found, keep typing manually and fill Class/Local by hand.</p>${workerOptionsHtml()}<div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
+    <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p><div id="dwlMsg"></div></div>
+  </div>`;
+  setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
+  const dateEl=document.getElementById('dwlReportDate'), dayEl=document.getElementById('dwlDay');
+  const updateDay=()=>{ if(!dateEl.value){dayEl.value='';return;} const d=new Date(dateEl.value+'T00:00:00'); dayEl.value=d.toLocaleDateString(undefined,{weekday:'long'}); };
+  dateEl.value=new Date().toISOString().slice(0,10); updateDay(); dateEl.addEventListener('change',updateDay);
+  setupDwlRows(); initSignatureButtons();
+  document.getElementById('dwlAddPageBtn').onclick=addDwlPageRows;
+  document.getElementById('dwlWeatherBtn').onclick=autoFillWeather;
+  setTimeout(()=>autoFillWeather(),350);
+  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); buildDwlPrint(data); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+}
+function collectDwl(){
+  const rows=[]; for(let i=1;i<=40;i++){
+    const emp=document.getElementById('dwlEmp'+i); if(!emp) continue;
+    const row={num:i, employee:val('dwlEmp'+i), location:val('dwlLoc'+i), activity:val('dwlAct'+i), class:val('dwlClass'+i), local:val('dwlLocal'+i), straight:val('dwlStraight'+i), over:val('dwlOver'+i), noLunch:document.getElementById('dwlNoLunch'+i)?.checked||false, pt:val('dwlPT'+i), rt:val('dwlRT'+i)};
+    rows.push(row);
+  }
+  return {project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:DWL_ACTIVITIES.filter((_,idx)=>document.getElementById('dwlActivity'+idx)?.checked),description:val('dwlDescription'),notes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows};
+}
+function dwlWorkerRowsPrint(rows, start, count){
+  const slice=rows.slice(start,start+count);
+  while(slice.length<count) slice.push({num:start+slice.length+1});
+  return slice.map(r=>`<tr><td>${esc(r.num||'')}</td><td>${esc(r.employee||'')}</td><td>${esc(r.location||'')}</td><td>${esc(r.activity||'')}</td><td>${esc(r.class||'')}</td><td>${esc(r.local||'')}</td><td>${esc(r.straight||'')}</td><td>${esc(r.over||'')}</td><td class="dwlNoLunchPrint">${r.noLunch?'X':''}</td><td>${esc(r.pt||'')}</td><td>${esc(r.rt||'')}</td></tr>`).join('');
+}
+function buildDwlSheet(data, pageIndex, totalPages){
+  const dateSlash=dateToSlashYYYY(data.reportDate); const dateDot=dateToDotMMDDYY(data.reportDate);
+  const rowsPerPage=20; const start=(pageIndex-1)*rowsPerPage;
+  return `<div class="dwlPrintSheet"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 3.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Crew:</b> ${esc(data.crew)}</div></div><table class="dwlActivitiesPrint"><tr><th colspan="4">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.notes)}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b><br><span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
+}
+function buildDwlPrint(data){
+  const filledRows=data.rows.filter(r=>r.employee || r.location || r.activity || r.class || r.local || r.straight || r.over || r.noLunch || r.pt || r.rt);
+  const needed=Math.max(1, Math.ceil(Math.max(filledRows.length,20)/20));
+  const rowsForPrint = data.rows.slice(0, needed*20);
+  const d={...data, rows:rowsForPrint};
+  const html=Array.from({length:needed},(_,i)=>buildDwlSheet(d,i+1,needed)).join('');
+  setPrint(html); return html;
+}
+
+function router(){const h=location.hash||'#/'; if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/dwl')) dwlForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else home();}
 
 window.addEventListener('beforeprint',()=>{
   const h=location.hash||'#/';
@@ -553,5 +678,6 @@ window.addEventListener('beforeprint',()=>{
   if(h.startsWith('#/mewp') && document.getElementById('mewpJobName')) { const data=collectMewp(); document.title=formSaveTitle('mewp', data.inspectionDate, data.jobName); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); }
   if(h.startsWith('#/daily-equipment') && document.getElementById('dailyProject')) { const data=collectDailyEquipment(); document.title=formSaveTitle('daily', data.date, data.project); buildDailyEquipmentPrint(data); }
   if(h.startsWith('#/dsif') && document.getElementById('dsifProject')) { const data=collectDsif(); document.title=formSaveTitle('dsif', data.reportDate, data.project); buildDsifPrint(data); }
+  if(h.startsWith('#/dwl') && document.getElementById('dwlProject')) { const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); buildDwlPrint(data); }
 });
 window.addEventListener('hashchange',router); router();

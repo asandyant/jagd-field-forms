@@ -261,3 +261,29 @@
 .signaturePreview.signatureBtn img{max-height:84px}
 .workerSign .signaturePreview.signatureBtn{min-height:112px;font-size:18px;padding:18px}
 .workerSign .signatureBtn{width:auto;font-size:18px;padding:18px}
+
+/* DWL Daily Work Log */
+.dwlContainer .activityCheckGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.dwlContainer .activityCheckGrid label{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fafafa;font-weight:700}
+.dwlTableWrap{overflow:auto;border:1px solid #ddd;border-radius:12px;background:#fff}
+.dwlEntryTable{width:100%;min-width:1100px;border-collapse:collapse;font-size:13px}
+.dwlEntryTable th{background:#eee;position:sticky;top:0;z-index:1}
+.dwlEntryTable th,.dwlEntryTable td{border:1px solid #ddd;padding:4px;vertical-align:middle}
+.dwlEntryTable input,.dwlEntryTable select{border:0;border-radius:0;padding:7px;background:#fff;font-size:14px;width:100%}
+.dwlEntryTable .dwlNum{font-weight:800;text-align:center;background:#f6f6f6;width:30px}
+.dwlEntryTable .center{text-align:center}.dwlEntryTable input[type="checkbox"]{width:24px;height:24px}
+@media(max-width:700px){.dwlContainer .activityCheckGrid{grid-template-columns:1fr}.dwlTableWrap{margin-left:-4px;margin-right:-4px}.dwlEntryTable{font-size:12px}.dwlEntryTable input,.dwlEntryTable select{font-size:16px;padding:9px}.dwlContainer h1{font-size:30px}}
+
+@media print{
+  .dwlPrintSheet{width:7.9in;height:10.55in;margin:0 auto;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:9px;line-height:1.05;overflow:hidden;position:relative;page-break-after:always;box-sizing:border-box}
+  .dwlPrintSheet:last-child{page-break-after:avoid}
+  .dwlPrintTop{display:flex;align-items:center;justify-content:space-between;height:.42in;font-size:12px}
+  .dwlBrand{display:flex;align-items:center;gap:7px}.dwlBrand img{width:.30in;height:.30in;object-fit:contain}.dwlBrand b{font-size:12px}
+  .dwlHeadLine{height:.50in;display:grid;grid-template-columns:1fr 2.2in;align-items:end;border-bottom:1.4px solid #000;padding:0 4px 2px}.bigDate{font-size:28px;font-weight:900;line-height:1}
+  .dwlWeatherLine{height:.32in;display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;padding:0 4px;border-bottom:1px solid #000}
+  .dwlActivitiesPrint{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.2px}.dwlActivitiesPrint th{background:#d9d9d9!important;border:1px solid #000;padding:2px;font-size:10px}.dwlActivitiesPrint td{border:1px solid #000;padding:2px;font-weight:800}
+  .dwlBox{border-left:1px solid #000;border-right:1px solid #000;border-bottom:1px solid #000;min-height:.82in}.dwlBox b{display:block;background:#d9d9d9!important;border-bottom:1px solid #000;padding:2px;font-size:11px}.dwlBox div{padding:3px;white-space:pre-wrap}.dwlBox.small{min-height:.40in}
+  .dwlPrintTable{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.2px}.dwlPrintTable th{background:#d9d9d9!important;border:1px solid #000;padding:2px;font-size:9.5px}.dwlPrintTable td{border:1px solid #000;padding:2px;height:.235in;vertical-align:middle;overflow:hidden}.dwlPrintTable th:nth-child(1),.dwlPrintTable td:nth-child(1){width:.23in;text-align:center}.dwlPrintTable th:nth-child(2),.dwlPrintTable td:nth-child(2){width:2.25in}.dwlPrintTable th:nth-child(3),.dwlPrintTable td:nth-child(3){width:.58in}.dwlPrintTable th:nth-child(4),.dwlPrintTable td:nth-child(4){width:.58in}.dwlPrintTable th:nth-child(5),.dwlPrintTable td:nth-child(5){width:.56in}.dwlPrintTable th:nth-child(6),.dwlPrintTable td:nth-child(6){width:.56in}.dwlPrintTable th:nth-child(7),.dwlPrintTable td:nth-child(7),.dwlPrintTable th:nth-child(8),.dwlPrintTable td:nth-child(8),.dwlPrintTable th:nth-child(9),.dwlPrintTable td:nth-child(9),.dwlPrintTable th:nth-child(10),.dwlPrintTable td:nth-child(10),.dwlPrintTable th:nth-child(11),.dwlPrintTable td:nth-child(11){width:.54in;text-align:center}.dwlNoLunchPrint{font-weight:900;font-size:12px}
+  .dwlPrintFoot{height:.48in;display:grid;grid-template-columns:2.6in 1fr 1.1in;align-items:end;gap:12px;padding:4px 0 0}.dwlPrintFoot>div{border-bottom:1px solid #000;min-height:.32in}.dwlPrintFoot>div:last-child{border-bottom:0;text-align:right}.bigDate2{font-size:20px;font-weight:900}.dwlPageNum{position:absolute;bottom:1px;left:50%;transform:translateX(-50%);font-size:6px;color:#777}
+  .dwlPrintSheet .sigPrint{max-width:2.2in!important;max-height:.30in!important}
+}
