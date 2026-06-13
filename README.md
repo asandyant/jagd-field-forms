@@ -1,24 +1,9 @@
-# JAGD Field Forms
+# JAGD Field Forms v26
 
-Version v19 adds Daily Work Log with the exported active worker CSV embedded for employee autocomplete.
-
-Current forms:
-- Paint Inspection Report
-- MEWP Daily Inspection
-- Daily Equipment Inspection
-- Daily Safety Inspection Form
-- Weekly Safety Meeting
-- Daily Work Log
-
-Daily Work Log notes:
-- Uses `/public/data/active-workers.json` generated from `jagd-active-workers-2026-06-13.csv`.
-- Employee fields autocomplete from active workers.
-- Selecting an exact worker auto-fills Class and Local.
-- If a worker is not found, the field user can keep typing manually and fill Class/Local manually.
-- Report Date auto-fills today, Day auto-fills from date.
-- Weather can auto-fill from browser location with manual override.
-- Crew dropdown has Crew 1 through Crew 7 plus Other.
-- PDF title format is `DWL_MM.DD.YY_Project_Name`.
-
-
-V24: Based on v22 active worker list only. Removed the large DWL suggestion popup; employee suggestions now show inline under the employee field. Did not merge the Worker Summary Sheet names.
+DWL polish:
+- Straight time tap-to-fill 8, but editable after filling; max 8.
+- Local dropdown sorted in numeric order.
+- DWL print values made consistently bold/readable for office review.
+- DWL print top header/date tightened.
+- Location/Description box border fixed.
+- Print sheet uses more of the page to reduce unused bottom space.

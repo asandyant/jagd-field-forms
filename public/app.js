@@ -45,7 +45,7 @@ const EMBEDDED_ACTIVE_WORKERS = [{"firstName":"Adderlyn","lastName":"Reyes","ful
 const CREW_OPTIONS = ['', 'Crew 1', 'Crew 2', 'Crew 3', 'Crew 4', 'Crew 5', 'Crew 6', 'Crew 7', 'Other'];
 const DWL_ACTIVITIES = ['01 - Setup','02 - Rigging','03 - Build Containment','04 - Washing','05 - Blast & Prime','06 - Additional Coat','07 - Power Tool','08 - Intermediate','09 - Finish','10 - Remove Containment','11 - Remove Rigging','12 - Caulking'];
 const DWL_CLASS_OPTIONS = ['JM','FM','QC','Steward','1st','2nd','3rd','4th'];
-const DWL_LOCAL_OPTIONS = ['806','2353','476','1331','361','1','40','155','2011','6'];
+const DWL_LOCAL_OPTIONS = ['1','6','40','155','361','476','806','1331','2011','2353'];
 const DWL_ACTIVITY_NUMBERS = Array.from({length:12},(_,i)=>String(i+1));
 const DWL_OVER_OPTIONS = Array.from({length:24},(_,i)=>String(i+1));
 const DWL_SMALL_HOUR_OPTIONS = Array.from({length:10},(_,i)=>String(i+1));
@@ -612,7 +612,7 @@ function cleanDwlLocal(v){
 }
 
 function dwlRow(i){
-  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" list="dwlActivityList" inputmode="numeric"></td><td><input id="dwlClass${i}" list="dwlClassList" autocapitalize="characters"></td><td><input id="dwlLocal${i}" list="dwlLocalList" inputmode="numeric"></td><td><input id="dwlStraight${i}" class="dwlStraightBox" readonly inputmode="none" title="Tap to set 8 hours"></td><td><input id="dwlOver${i}" list="dwlOverList" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" list="dwlSmallHourList" inputmode="decimal"></td><td><input id="dwlRT${i}" list="dwlSmallHourList" inputmode="decimal"></td></tr>`;
+  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" list="dwlActivityList" inputmode="numeric"></td><td><input id="dwlClass${i}" list="dwlClassList" autocapitalize="characters"></td><td><input id="dwlLocal${i}" list="dwlLocalList" inputmode="numeric"></td><td><input id="dwlStraight${i}" class="dwlStraightBox" inputmode="decimal" title="Tap to set 8 hours; edit if needed"></td><td><input id="dwlOver${i}" list="dwlOverList" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" list="dwlSmallHourList" inputmode="decimal"></td><td><input id="dwlRT${i}" list="dwlSmallHourList" inputmode="decimal"></td></tr>`;
 }
 function applyWorkerToDwlRow(i,w){
   if(!w) return;
@@ -694,7 +694,8 @@ function setupDwlWorkerAutofill(){
     const st=document.getElementById('dwlStraight'+i);
     if(st && st.dataset.ready!=='1'){
       st.dataset.ready='1';
-      st.addEventListener('click',()=>{ st.value = st.value.trim()==='8' ? '' : '8'; });
+      st.addEventListener('click',()=>{ if(!st.value.trim()){ st.value='8'; setTimeout(()=>{ try{ st.select(); }catch(e){} },0); } });
+      st.addEventListener('input',()=>{ const n=parseFloat(st.value); if(!isNaN(n) && n>8) st.value='8'; });
     }
     const nl=document.getElementById('dwlNoLunch'+i);
     if(nl && nl.dataset.ready!=='1'){

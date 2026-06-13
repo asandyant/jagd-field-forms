@@ -370,3 +370,36 @@
   .dwlPrintFoot>div{min-height:.28in!important}.dwlPrintFoot>div:last-child{text-align:right!important;overflow:visible!important;white-space:nowrap!important}
   .bigDate2{font-size:18px!important;line-height:1!important;font-weight:900!important}
 }
+
+
+/* v26 DWL final polish */
+.dwlEntryTable select,.dwlEntryTable input[list]{background:#fff!important;}
+.dwlEntryTable input[list]::-webkit-calendar-picker-indicator{display:none!important;opacity:0!important;}
+.dwlEntryTable .dwlStraightBox{font-weight:900;text-align:center;cursor:text!important;}
+@media print{
+  @page{size:letter portrait;margin:.12in!important}
+  .dwlPrintSheet{width:8.05in!important;height:10.72in!important;font-size:10px!important;overflow:hidden!important;}
+  .dwlPrintTop{height:.34in!important;}
+  .dwlHeadLine{height:.42in!important;grid-template-columns:1fr 1.72in!important;align-items:center!important;border-bottom:1.7px solid #000!important;padding:0 6px!important;font-size:10.8px!important;}
+  .dwlHeadLine>div:first-child{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;font-size:11px!important;padding-top:0!important;}
+  .dwlHeadLine>div:last-child{text-align:right!important;}
+  .bigDate{font-size:22px!important;font-weight:900!important;line-height:1!important;}
+  .dwlWeatherLine{height:.30in!important;font-size:10.5px!important;grid-template-columns:1fr 1.55in 1.45in!important;padding:0 6px!important;}
+  .dwlActivitiesPrint{font-size:8.7px!important;}
+  .dwlActivitiesPrint th{font-size:9.5px!important;height:.13in!important;padding:0!important;}
+  .dwlActivitiesPrint td{font-size:8.7px!important;height:.145in!important;padding:1px 3px!important;font-weight:900!important;}
+  .dwlBox{border:1.4px solid #000!important;height:.82in!important;font-size:11.5px!important;margin:0!important;}
+  .dwlBox.small{height:.35in!important;}
+  .dwlBox b{font-size:10.3px!important;padding:1px 3px!important;background:#d9d9d9!important;border-bottom:1px solid #000!important;}
+  .dwlBox div{padding:3px 5px!important;white-space:pre-wrap!important;}
+  .dwlPrintTable{font-size:10px!important;}
+  .dwlPrintTable th{font-size:8.8px!important;padding:1px!important;background:#d9d9d9!important;}
+  .dwlPrintTable td{height:.252in!important;padding:1px 2px!important;line-height:1.05!important;vertical-align:middle!important;font-weight:900!important;}
+  .dwlPrintTable td:nth-child(2){font-size:14.4px!important;font-weight:900!important;letter-spacing:.1px!important;}
+  .dwlPrintTable td:nth-child(3){font-size:10px!important;}
+  .dwlPrintTable td:nth-child(4),.dwlPrintTable td:nth-child(5),.dwlPrintTable td:nth-child(6),.dwlPrintTable td:nth-child(7),.dwlPrintTable td:nth-child(8),.dwlPrintTable td:nth-child(9),.dwlPrintTable td:nth-child(10),.dwlPrintTable td:nth-child(11){font-size:12.5px!important;text-align:center!important;}
+  .dwlPrintFoot{height:.52in!important;grid-template-columns:2.6in 1fr 1.45in!important;gap:12px!important;font-size:9px!important;padding-top:4px!important;align-items:end!important;}
+  .dwlPrintFoot>div{min-height:.35in!important;}
+  .dwlPrintFoot>div:last-child{text-align:right!important;overflow:visible!important;white-space:nowrap!important;}
+  .bigDate2{font-size:20px!important;font-weight:900!important;}
+}
