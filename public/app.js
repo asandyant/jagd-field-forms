@@ -175,6 +175,14 @@ function home(){
         </div>
         <strong>Open</strong>
       </a>
+      <a class="formCard" href="#/weekly-safety">
+        <div>
+          <span class="formTag">Safety Meeting</span>
+          <h2>Weekly Safety Meeting</h2>
+          <p>Foreman starts a meeting, displays a QR code, and workers sign in from their phones.</p>
+        </div>
+        <strong>Open</strong>
+      </a>
     </section>
   </div>`;
 }
@@ -410,7 +418,127 @@ function buildDsifPrint(data=collectDsif()){
   setPrint(sheet1+sheet2); return sheet1+sheet2;
 }
 
-function router(){const h=location.hash||'#/'; if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else home();}
+
+const WEEKLY_TOPICS = [
+  '1. Safety culture: stop-work authority & reporting (OSHA: 29 CFR 1926.20, 1926.21)',
+  '2. Pre-job safety meeting & job hazard analysis (OSHA: 29 CFR 1926.20, 1926.21)',
+  '3. Daily/weekly inspections & documentation habits (OSHA: 29 CFR 1926.20(b), 1910.132(d))',
+  '4. PPE fundamentals: selection, limitations, and training (OSHA: 29 CFR 1926 Subpart E, 1910.132)',
+  '5. Head, eye, and face protection (OSHA: 29 CFR 1926.100, 1926.102; 1910.133)',
+  '6. Hand protection & chemical glove selection (OSHA: 29 CFR 1910.138, 1926.95)',
+  '7. Foot protection, work clothing, and skin exposure control (OSHA: 29 CFR 1926.96, 1926.28; 1910.132)',
+  '8. Hearing conservation & noise control (OSHA: 29 CFR 1926.52, 1910.95)',
+  '9. Respiratory protection overview & medical clearance (OSHA: 29 CFR 1910.134; 1926.103)',
+  '10. Fit testing & facial hair/fit issues (OSHA: 29 CFR 1910.134(f), (g))',
+  '11. User seal checks, cleaning, storage, and respirator inspections (OSHA: 29 CFR 1910.134 App B-1/B-2, (h))',
+  '12. Hazard communication: labels, SDS, and chemical inventory (OSHA: 29 CFR 1910.1200; 1926.59)',
+  '13. Chemical storage, mixing, and spill prevention (OSHA: 29 CFR 1910.1200, 1910.106; 1926.152)',
+  '14. Flammable liquids & ignition control during painting operations (OSHA: 29 CFR 1910.106; 1926.152)',
+  '15. Fire prevention, hot work, and extinguishers (PASS) (OSHA: 29 CFR 1926 Subpart F; 1910.157)',
+  '16. Housekeeping & slip/trip/fall prevention (OSHA: 29 CFR 1926.25; 1910.22)',
+  '17. Ladder safety: selection, inspection, and setup (OSHA: 29 CFR 1926 Subpart X; 1910.23)',
+  '18. Scaffold safety: competent person, access, and daily inspections (OSHA: 29 CFR 1926 Subpart L)',
+  '19. Scaffold platforms & falling-object protection (OSHA: 29 CFR 1926.451(g), (h))',
+  '20. Fall protection fundamentals: 6-foot rule and beyond (OSHA: 29 CFR 1926 Subpart M)',
+  '21. Harness use, inspection, and 100% tie-off practices (OSHA: 29 CFR 1926.502(d))',
+  '22. Fall rescue planning & suspension trauma awareness (OSHA: 29 CFR 1926.502(d)(20))',
+  '23. Aerial lifts: inspection, operation, and tie-off (OSHA: 29 CFR 1926.453; 1910.67)',
+  '24. Electrical safety: GFCI, cords, lighting, and temporary power (OSHA: 29 CFR 1926 Subpart K)',
+  '25. Lockout/Tagout & control of hazardous energy (OSHA: 29 CFR 1910.147; 1926.417)',
+  '26. Hand & power tool safety (OSHA: 29 CFR 1926 Subpart I)',
+  '27. High-pressure hoses, whip checks, and injection hazards (OSHA: 29 CFR 1926.302(b))',
+  '28. Compressed air: safe blow-down and alternatives (OSHA: 29 CFR 1910.242(b))',
+  '29. Abrasive blasting SOP & required PPE (OSHA: 29 CFR 1926.57; 1910.94(a))',
+  '30. Blasting ventilation, airflow checks, and negative pressure (OSHA: 29 CFR 1926.57)',
+  '31. Containment integrity, dust control, and HEPA housekeeping (OSHA: 29 CFR 1926.57; 1926.62)',
+  '32. Regulated areas, signs, and access control (OSHA: 29 CFR 1926.62(e))',
+  '33. Lead awareness: hazards, symptoms, and hygiene rules (OSHA: 29 CFR 1926.62)',
+  '34. Lead controls: exposure assessment and medical surveillance (OSHA: 29 CFR 1926.62)',
+  '35. Decontamination: change areas, showers, and cleaning logs (OSHA: 29 CFR 1926.62(j))',
+  '36. Personal hygiene: handwashing, break areas, and prohibited items (OSHA: 29 CFR 1926.62(j))',
+  '37. Confined space basics: identification and hazards (OSHA: 29 CFR 1910.146)',
+  '38. Confined space permits & roles (OSHA: 29 CFR 1910.146)',
+  '39. Atmospheric testing & ventilation for confined spaces (OSHA: 29 CFR 1910.146(d)(5))',
+  '40. Confined space rescue & retrieval systems (OSHA: 29 CFR 1910.146(k))',
+  '41. Ergonomics & material handling (OSH Act General Duty Clause; 29 CFR 1926.250)',
+  '42. Rigging & hoisting basics (OSHA: 29 CFR 1926.251)',
+  '43. Crane safety: signaling, swing radius, and power lines (OSHA: 29 CFR 1926 Subpart CC)',
+  '44. Forklift safety & load handling (OSHA: 29 CFR 1910.178; 1926.602)',
+  '45. Line-of-fire awareness & working around mobile equipment (OSHA: 29 CFR 1926.600, 1926.602; 1926.21)',
+  '46. Temporary traffic control & flagging fundamentals (OSHA: 29 CFR 1926.200–1926.203)',
+  '47. Railroad safety & working near tracks/third rail (OSH Act General Duty Clause; 29 CFR 1926.21)',
+  '48. Environmental controls: hazardous waste, decon water, and site boundaries (OSHA: 29 CFR 1910.120; 1926.65; 1910.1200)',
+  '49. Emergency action plan: communications and muster (OSHA: 29 CFR 1926.35; 1910.38)',
+  '50. First aid, eyewash, and chemical exposure response (OSHA: 29 CFR 1926.50; 1910.151)',
+  '51. Incident/near-miss reporting, investigation, and root cause (OSHA: 29 CFR 1904.39; 1926.20)'
+];
+let weeklyPollTimer = null;
+
+function weeklySafetyForm(){
+  if(weeklyPollTimer) { clearInterval(weeklyPollTimer); weeklyPollTimer = null; }
+  app.innerHTML = `<div class="container weeklyContainer"><h1>Weekly Safety Meeting</h1>
+    <div class="panel"><h2>Start Meeting</h2><div class="grid two">${projectField('weeklyProject','Project')} ${field('weeklyDate','Meeting Date','date')} ${field('weeklyForeman','Foreman / Field Person')} ${selectField('weeklyTopic','Safety Topic (one per meeting)',['','Random Topic',...WEEKLY_TOPICS])}</div>
+    <div class="actions"><button class="btn" id="weeklyStartBtn" type="button">Start Meeting</button></div><p class="tiny">This works like the existing weekly safety meeting app: start the meeting, show the QR code, and worker names appear as they sign in.</p><div id="weeklyMsg"></div></div>
+    <div id="weeklyLive" class="panel weeklyLive" style="display:none"></div>
+  </div>`;
+  setupOtherProject('weeklyProject');
+  document.getElementById('weeklyDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('weeklyStartBtn').onclick = startWeeklyMeeting;
+}
+
+async function startWeeklyMeeting(){
+  const payload = { project: projectValue('weeklyProject'), date: val('weeklyDate'), foreman: val('weeklyForeman'), topic: val('weeklyTopic') };
+  if(!payload.project || !payload.date || !payload.topic){ document.getElementById('weeklyMsg').innerHTML='<div class="notice">Project, meeting date, and safety topic are required.</div>'; return; }
+  const res = await fetch('/api/weekly-meetings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const json = await res.json();
+  if(!res.ok){ document.getElementById('weeklyMsg').innerHTML=`<div class="notice">${esc(json.error||'Could not start meeting.')}</div>`; return; }
+  renderWeeklyLive(json.meeting);
+}
+
+function weeklySignUrl(id){ return `${location.origin}/#/weekly-sign/${encodeURIComponent(id)}`; }
+function weeklyQrUrl(id){ return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(weeklySignUrl(id))}`; }
+function weeklyTitle(data){ const project=fileProjectName(data.project); const date=dateToDotMMDDYY(data.date)||'No.Date'; return project ? `Weekly_Safety_Meeting_${date}_${project}` : `Weekly_Safety_Meeting_${date}`; }
+
+function renderWeeklyLive(meeting){
+  const live=document.getElementById('weeklyLive');
+  if(!live) return;
+  const link=weeklySignUrl(meeting.id);
+  live.style.display='block';
+  live.innerHTML = `<h2>Live Sign-In</h2><div class="weeklyLiveGrid"><div><div class="qrCard"><img src="${weeklyQrUrl(meeting.id)}" alt="QR code for worker sign-in"><p class="tiny">Workers scan this QR code with their phones.</p></div><input class="copyLink" value="${esc(link)}" readonly><div class="actions"><button class="btn light" id="weeklyCopyBtn" type="button">Copy Sign-In Link</button><button class="btn" id="weeklyPrintBtn" type="button">Save PDF / Print Meeting</button></div></div><div><h3>Workers Signed In: <span id="weeklyCount">0</span></h3><div id="weeklyAttendees" class="attendeeList">Waiting for workers to sign in...</div></div></div>`;
+  document.getElementById('weeklyCopyBtn').onclick=()=>navigator.clipboard?.writeText(link);
+  document.getElementById('weeklyPrintBtn').onclick=async()=>{ const latest=await fetchWeeklyMeeting(meeting.id); document.title=weeklyTitle(latest); buildWeeklyPrint(latest); requestAnimationFrame(()=>setTimeout(()=>window.print(),150)); };
+  pollWeekly(meeting.id);
+  weeklyPollTimer = setInterval(()=>pollWeekly(meeting.id),3000);
+}
+async function fetchWeeklyMeeting(id){ const res=await fetch(`/api/weekly-meetings/${encodeURIComponent(id)}`); const json=await res.json(); if(!res.ok) throw new Error(json.error||'Meeting not found'); return json.meeting; }
+async function pollWeekly(id){
+  try{ const meeting=await fetchWeeklyMeeting(id); const box=document.getElementById('weeklyAttendees'), count=document.getElementById('weeklyCount'); if(!box) return; const rows=meeting.attendees||[]; if(count) count.textContent=rows.length; box.innerHTML = rows.length ? rows.map((a,i)=>`<div class="attendeeRow"><b>${i+1}. ${esc(a.name)}</b>${a.company?`<span>${esc(a.company)}</span>`:''}<small>${new Date(a.signedAt).toLocaleTimeString()}</small></div>`).join('') : 'Waiting for workers to sign in...'; }catch(e){ console.error(e); }
+}
+
+async function weeklySignForm(id){
+  if(weeklyPollTimer) { clearInterval(weeklyPollTimer); weeklyPollTimer = null; }
+  let meeting;
+  try{ meeting=await fetchWeeklyMeeting(id); }catch(e){ app.innerHTML=`<div class="container"><div class="panel"><h1>Meeting Not Found</h1><p>${esc(e.message)}</p></div></div>`; return; }
+  app.innerHTML=`<div class="container workerSign"><div class="panel"><img src="${logo}" class="smallLogo"><h1>Weekly Safety Meeting Sign-In</h1><p><b>Project:</b> ${esc(meeting.project)}</p><p><b>Date:</b> ${esc(dateToSlashYYYY(meeting.date))}</p><p><b>Topic:</b> ${esc(meeting.topic)}</p><div class="grid one">${field('workerName','Worker Name')} ${field('workerCompany','Company','text','value="JAGD Construction"')}</div><div class="actions"><button class="btn" id="workerSignBtn" type="button">Sign In</button></div><div id="workerSignMsg"></div></div></div>`;
+  document.getElementById('workerSignBtn').onclick=async()=>{
+    const name=val('workerName'); const company=val('workerCompany');
+    if(!name){document.getElementById('workerSignMsg').innerHTML='<div class="notice">Enter your name to sign in.</div>'; return;}
+    const res=await fetch(`/api/weekly-meetings/${encodeURIComponent(id)}/sign`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,company})});
+    const json=await res.json();
+    if(!res.ok){document.getElementById('workerSignMsg').innerHTML=`<div class="notice">${esc(json.error||'Could not sign in.')}</div>`;return;}
+    document.getElementById('workerSignMsg').innerHTML='<div class="notice success">You are signed in. You can close this page.</div>';
+    document.getElementById('workerSignBtn').disabled=true;
+  };
+}
+
+function buildWeeklyPrint(meeting){
+  const rows=(meeting.attendees||[]).map((a,i)=>`<tr><td>${i+1}</td><td>${esc(a.name)}</td><td>${esc(a.company||'')}</td><td>${esc(new Date(a.signedAt).toLocaleString())}</td><td></td></tr>`).join('');
+  const blanks=Array.from({length:Math.max(8,18-(meeting.attendees||[]).length)},(_,i)=>`<tr><td>${(meeting.attendees||[]).length+i+1}</td><td></td><td></td><td></td><td></td></tr>`).join('');
+  const html=`<div class="weeklySheet"><div class="weeklyPrintHeader"><img src="${logo}"><div><h1>Weekly Safety Meeting</h1><p><b>Project:</b> ${esc(meeting.project)}</p><p><b>Meeting Date:</b> ${esc(dateToSlashYYYY(meeting.date))}</p><p><b>Foreman:</b> ${esc(meeting.foreman||'')}</p></div></div><div class="topicBox"><b>Safety Topic:</b><br>${esc(meeting.topic)}</div><table class="weeklyTable"><tr><th>#</th><th>Worker Name</th><th>Company</th><th>Signed In</th><th>Signature / Initials</th></tr>${rows}${blanks}</table><div class="weeklyFoot">Weekly Safety Meeting</div></div>`;
+  setPrint(html); return html;
+}
+
+function router(){const h=location.hash||'#/'; if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else home();}
 
 window.addEventListener('beforeprint',()=>{
   const h=location.hash||'#/';
