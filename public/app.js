@@ -580,7 +580,7 @@ function findWorkerByName(name){
   return activeWorkers.find(w=>String(w.fullName||'').trim().toLowerCase()===n) || activeWorkers.find(w=>`${w.firstName||''} ${w.lastName||''}`.trim().toLowerCase()===n) || null;
 }
 function dwlRow(i){
-  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" placeholder="First name"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><select id="dwlAct${i}"><option></option>${DWL_ACTIVITIES.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('')}</select></td><td><input id="dwlClass${i}"></td><td><input id="dwlLocal${i}"></td><td><input id="dwlStraight${i}" inputmode="decimal"></td><td><input id="dwlOver${i}" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" inputmode="decimal"></td><td><input id="dwlRT${i}" inputmode="decimal"></td></tr>`;
+  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off"></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" inputmode="numeric"></td><td><input id="dwlClass${i}"></td><td><input id="dwlLocal${i}"></td><td><input id="dwlStraight${i}" inputmode="decimal"></td><td><input id="dwlOver${i}" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" inputmode="decimal"></td><td><input id="dwlRT${i}" inputmode="decimal"></td></tr>`;
 }
 function applyWorkerToDwlRow(i,w){
   if(!w) return;
@@ -589,16 +589,48 @@ function applyWorkerToDwlRow(i,w){
   const cls=document.getElementById('dwlClass'+i); if(cls) cls.value = w.class || '';
   const loc=document.getElementById('dwlLocal'+i); if(loc) loc.value = cleanWorkerLocal(w.local);
 }
+function getDwlSuggestPortal(){
+  let box=document.getElementById('dwlSuggestPortal');
+  if(!box){
+    box=document.createElement('div');
+    box.id='dwlSuggestPortal';
+    box.className='dwlSuggestPortal';
+    document.body.appendChild(box);
+  }
+  return box;
+}
+function hideDwlSuggestions(){
+  const box=document.getElementById('dwlSuggestPortal');
+  if(box){ box.innerHTML=''; box.style.display='none'; }
+}
+function positionDwlSuggestions(input, box){
+  const r=input.getBoundingClientRect();
+  const maxW=Math.max(260, Math.min(420, window.innerWidth-20));
+  const left=Math.min(Math.max(10, r.left), window.innerWidth-maxW-10);
+  const top=Math.min(r.bottom+4, window.innerHeight-250);
+  box.style.left=left+'px';
+  box.style.top=top+'px';
+  box.style.width=Math.min(maxW, Math.max(r.width, 280))+'px';
+}
 function showDwlSuggestions(i){
-  const emp=document.getElementById('dwlEmp'+i), box=document.getElementById('dwlSuggest'+i);
+  const emp=document.getElementById('dwlEmp'+i), box=getDwlSuggestPortal();
   if(!emp||!box) return;
   const q=emp.value.trim().toLowerCase();
-  if(q.length<1){ box.innerHTML=''; box.style.display='none'; return; }
-  const matches=activeWorkers.filter(w=>workerSearchText(w).includes(q)).sort((a,b)=>workerDisplayName(a).localeCompare(workerDisplayName(b))).slice(0,8);
-  if(!matches.length){ box.innerHTML=''; box.style.display='none'; return; }
+  if(q.length<1){ hideDwlSuggestions(); return; }
+  const matches=activeWorkers.filter(w=>workerSearchText(w).includes(q)).sort((a,b)=>workerDisplayName(a).localeCompare(workerDisplayName(b))).slice(0,12);
+  if(!matches.length){ hideDwlSuggestions(); return; }
   box.innerHTML=matches.map((w,idx)=>`<button type="button" data-idx="${idx}"><b>${esc(workerDisplayName(w))}</b><span>${esc(w.class||'')}${w.local?` • Local ${esc(cleanWorkerLocal(w.local))}`:''}</span></button>`).join('');
+  positionDwlSuggestions(emp, box);
   box.style.display='block';
-  [...box.querySelectorAll('button')].forEach((btn,idx)=>btn.addEventListener('mousedown',e=>{e.preventDefault(); applyWorkerToDwlRow(i,matches[idx]); box.innerHTML=''; box.style.display='none';}));
+  [...box.querySelectorAll('button')].forEach((btn,idx)=>{
+    btn.addEventListener('pointerdown',e=>{
+      e.preventDefault();
+      applyWorkerToDwlRow(i,matches[idx]);
+      hideDwlSuggestions();
+      const next=document.getElementById('dwlLoc'+i);
+      if(next) next.focus();
+    });
+  });
 }
 function setupDwlWorkerAutofill(){
   for(let i=1;i<=80;i++){
@@ -633,26 +665,23 @@ function activityCodesTable(){
   return rows.join('');
 }
 async function autoFillWeather(){
-  const box=document.getElementById('dwlWeatherMsg');
   const weatherEl=document.getElementById('dwlWeather');
-  if(!navigator.geolocation){ if(box) box.textContent='Weather auto-fill not available on this device.'; return; }
-  if(box) box.textContent='Getting weather...';
+  if(!weatherEl || !navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(async pos=>{
     try{
       const {latitude, longitude}=pos.coords;
       const url=`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,precipitation,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
       const res=await fetch(url); const data=await res.json(); const c=data.current||{};
       const code=Number(c.weather_code); const desc = code===0?'Clear':([1,2,3].includes(code)?'Partly cloudy':([45,48].includes(code)?'Fog':([51,53,55,61,63,65,80,81,82].includes(code)?'Rain':([71,73,75,77,85,86].includes(code)?'Snow':([95,96,99].includes(code)?'Thunderstorm':'Cloudy')))));
-      weatherEl.value = `${desc}, ${Math.round(c.temperature_2m)}°F, Wind ${Math.round(c.wind_speed_10m||0)} mph`;
-      if(box) box.textContent='Weather filled. You can edit it if needed.';
-    }catch(e){ if(box) box.textContent='Could not auto-fill weather. Type it manually.'; }
-  }, err=>{ if(box) box.textContent='Location permission denied or unavailable. Type weather manually.'; }, {enableHighAccuracy:false, timeout:8000, maximumAge:600000});
+      if(!weatherEl.value.trim()) weatherEl.value = `${desc}, ${Math.round(c.temperature_2m)}°F, Wind ${Math.round(c.wind_speed_10m||0)} mph`;
+    }catch(e){ /* silent: field remains manually editable */ }
+  }, ()=>{}, {enableHighAccuracy:false, timeout:8000, maximumAge:600000});
 }
 async function dwlForm(){
   await loadActiveWorkers();
   app.innerHTML=`<div class="container printOnly dwlContainer"><h1>Daily Work Log</h1>
     <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')}</div></div>
-    <div class="panel"><h2>Activities Performed</h2><div class="activityCheckGrid">${DWL_ACTIVITIES.map((a,idx)=>`<label><input type="checkbox" id="dwlActivity${idx}" value="${esc(a)}"> ${esc(a)}</label>`).join('')}</div></div>
+    <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
     <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
     <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p><div id="dwlMsg"></div></div>
@@ -672,7 +701,7 @@ function collectDwl(){
     const row={num:i, employee:val('dwlEmp'+i), location:val('dwlLoc'+i), activity:val('dwlAct'+i), class:val('dwlClass'+i), local:val('dwlLocal'+i), straight:val('dwlStraight'+i), over:val('dwlOver'+i), noLunch:val('dwlNoLunch'+i), pt:val('dwlPT'+i), rt:val('dwlRT'+i)};
     rows.push(row);
   }
-  return {project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:DWL_ACTIVITIES.filter((_,idx)=>document.getElementById('dwlActivity'+idx)?.checked),description:val('dwlDescription'),notes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows};
+  return {project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:[],description:val('dwlDescription'),notes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows};
 }
 function dwlWorkerRowsPrint(rows, start, count){
   const slice=rows.slice(start,start+count);
@@ -682,7 +711,7 @@ function dwlWorkerRowsPrint(rows, start, count){
 function buildDwlSheet(data, pageIndex, totalPages){
   const dateSlash=dateToSlashYYYY(data.reportDate); const dateDot=dateToDotMMDDYY(data.reportDate);
   const rowsPerPage=20; const start=(pageIndex-1)*rowsPerPage;
-  return `<div class="dwlPrintSheet"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 3.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Crew:</b> ${esc(data.crew)}</div></div><table class="dwlActivitiesPrint"><tr><th colspan="4">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.notes)}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b><br><span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
+  return `<div class="dwlPrintSheet"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 3.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Crew:</b> ${esc(data.crew)}</div></div><table class="dwlActivitiesPrint"><tr><th colspan="4">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.notes)}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b> <span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
 }
 function buildDwlPrint(data){
   const filledRows=data.rows.filter(r=>r.employee || r.location || r.activity || r.class || r.local || r.straight || r.over || r.noLunch || r.pt || r.rt);

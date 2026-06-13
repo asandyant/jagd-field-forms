@@ -308,3 +308,35 @@
   .dwlEmpCell{min-width:230px}
   .dwlSuggest button{font-size:17px;padding:14px 12px}
 }
+/* v21 DWL fixes */
+.dwlActivitiesPanel{padding:10px 12px!important}
+.dwlActivitiesPanel h2{margin:0 0 6px!important;font-size:18px!important}
+.dwlActivityInfo{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;background:#fff}
+.dwlActivityInfo td{border:1px solid #111;padding:4px 6px;font-weight:800}
+.dwlEmpCell{position:relative;min-width:220px}
+.dwlSuggestPortal{display:none;position:fixed;z-index:999999;background:#fff;border:2px solid #111;border-radius:8px;box-shadow:0 10px 22px rgba(0,0,0,.25);max-height:280px;overflow:auto}
+.dwlSuggestPortal button{display:block;width:100%;text-align:left;border:0;background:#fff;padding:12px 14px;font-size:16px;border-bottom:1px solid #eee;color:#111}
+.dwlSuggestPortal button:active,.dwlSuggestPortal button:hover{background:#f2f2f2}
+.dwlSuggestPortal span{display:block;font-size:12px;color:#555;margin-top:2px}
+.dwlEntryTable input::placeholder{color:transparent!important}
+.dwlEntryTable select{appearance:auto}
+@media(max-width:700px){
+  .dwlActivityInfo{font-size:12px}.dwlActivityInfo td{padding:4px}
+  .dwlSuggestPortal button{font-size:18px;padding:15px 14px}
+  .dwlEntryTable{min-width:1050px}
+}
+@media print{
+  .dwlPrintSheet{width:7.92in!important;height:10.35in!important;font-size:9.2px!important;padding:0!important}
+  .dwlPrintTop{height:.36in!important;font-size:12px!important}
+  .dwlPrintTop img{width:.32in!important;height:.32in!important}
+  .dwlHeadLine{height:.33in!important;grid-template-columns:1fr 2.05in!important;font-size:9.5px!important}
+  .bigDate{font-size:28px!important;line-height:.28in!important}
+  .dwlWeatherLine{height:.24in!important;font-size:9px!important;grid-template-columns:1fr 1.45in 1.55in!important}
+  .dwlActivitiesPrint{width:100%!important;font-size:8.5px!important;margin-bottom:0!important}
+  .dwlActivitiesPrint th{height:.13in!important;padding:0!important}
+  .dwlActivitiesPrint td{height:.145in!important;padding:1px 3px!important}
+  .dwlBox{height:.76in!important;font-size:9px!important}.dwlBox.small{height:.30in!important}
+  .dwlPrintTable{font-size:8.5px!important}.dwlPrintTable th{font-size:8.5px!important;padding:1px!important}.dwlPrintTable td{height:.232in!important;padding:1px 2px!important}
+  .dwlPrintFoot{height:.38in!important;grid-template-columns:2.45in 1fr 1.2in!important;gap:10px!important;align-items:end!important;font-size:8px!important;padding-top:2px!important}
+  .bigDate2{font-size:18px!important;line-height:1!important;white-space:nowrap!important}
+}
