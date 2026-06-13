@@ -4,6 +4,40 @@ let currentPrint = '';
 let pirMixCount = 1;
 const signatureStore = {};
 
+const PROJECT_OPTIONS = [
+  '',
+  '69th St. Transfer Bridge',
+  'BA-2024-RE-102-CM Mid-Hudson Bridge',
+  'BRX9579 - Boston Road Bridge',
+  'BW96 & VN12 - Whitestone Hellman Platforms',
+  'C35311 - Dyre Ave. Line',
+  'D214898 - TANE22-29 Restani T&M',
+  'D264324 - Westchester County Field Metalizing',
+  'D264965 - Highway bridge repair W&W',
+  'D265046 - Highway bridge repair W&W',
+  'D265307 - WO03',
+  'D265343 - Bove W&W 2',
+  'Devon Bridge',
+  'DMB-25-01',
+  'FCC 2056',
+  'Gold Star Memorial Bridge',
+  'Governors Island',
+  'Grand Concourse',
+  'GW 244.289 Lemoine Ave',
+  'GWB Cables',
+  'HB1070MD - Macombs Dam Bridge',
+  'HBKBQE - NYCDOT Bove',
+  'K7279 & K6176 Gordie Howe',
+  'Park Avenue',
+  'Pulaski 8B',
+  'QBB-2017',
+  'RK90',
+  'Sandy Relief',
+  'VN81X',
+  'VN-84B - Verrazzano Bridge Ramps Brooklyn',
+  'Warehouse'
+];
+const DAILY_EQUIPMENT_URL = 'https://jagdconstruction.github.io/daily_equipment_inspection/';
 
 const mewpQuestions = [
   'Is the machine’s exterior in safe condition?',
@@ -38,7 +72,13 @@ function textarea(id,label){return `<div><label for="${id}">${label}</label><tex
 function selectField(id,label,opts){return `<div><label for="${id}">${label}</label><select id="${id}">${opts.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></div>`;}
 function dateToMMDDYY(dateValue){ const d = String(dateValue||''); const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return ''; return `${m[2]}${m[3]}${m[1].slice(2)}`; }
 function dateToDisplay(dateValue){ const d = String(dateValue||''); const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return d; return `${m[2]}-${m[3]}-${m[1].slice(2)}`; }
-function formSaveTitle(type, dateValue){ return `${type === 'pir' ? 'PIR' : 'MEWP'} - ${dateToDisplay(dateValue) || 'No Date'}`; }
+function cleanFilePart(v){ return String(v||'').trim().replace(/[\/:*?"<>|]+/g,'-').replace(/\s+/g,' ').slice(0,80); }
+function formSaveTitle(type, dateValue, projectName=''){
+  const prefix = type === 'pir' ? 'PIR' : (type === 'mewp' ? 'MEWP' : 'Daily Equipment Inspection');
+  const datePart = dateToDisplay(dateValue) || 'No Date';
+  const projectPart = cleanFilePart(projectName);
+  return projectPart ? `${prefix} - ${datePart} - ${projectPart}` : `${prefix} - ${datePart}`;
+}
 function printPdfHelp(type){
   const label = type === 'pir' ? 'PIR' : 'MEWP';
   return `<p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p>`;
@@ -90,14 +130,14 @@ function home(){
   app.innerHTML=`<div class="container printOnly homeContainer">
     <section class="homeIntro">
       <h1>JAGD Field Forms</h1>
-      <p>Choose a form below. Each form can be printed or saved as a PDF from the phone, then texted, emailed, or sent to Dropbox.</p>
+      <p>Choose a form below. Each form is field-friendly for phones and can be saved as a PDF, then texted, emailed, or sent to Dropbox.</p>
     </section>
     <section class="formLibrary" aria-label="Form Library">
       <a class="formCard" href="#/pir">
         <div>
           <span class="formTag">Paint / QC</span>
-          <h2>PIR Questionnaire</h2>
-          <p>Field-friendly questionnaire that prints to the one-page Paint Inspection Report layout.</p>
+          <h2>Paint Inspection Report</h2>
+          <p>Questionnaire-style field form that prints to the one-page PIR layout.</p>
         </div>
         <strong>Open</strong>
       </a>
@@ -105,7 +145,15 @@ function home(){
         <div>
           <span class="formTag">Equipment</span>
           <h2>MEWP Daily Inspection</h2>
-          <p>MEWP checklist with pass/fail/N/A, notes, pictures, and finger signature.</p>
+          <p>Separate MEWP checklist with pass/fail/N/A, notes, pictures, and finger signature.</p>
+        </div>
+        <strong>Open</strong>
+      </a>
+      <a class="formCard" href="#/daily-equipment">
+        <div>
+          <span class="formTag">Original Equipment</span>
+          <h2>Daily Equipment Inspection</h2>
+          <p>The existing JAGD web-based form, kept with the same source/format the PM already built.</p>
         </div>
         <strong>Open</strong>
       </a>
@@ -115,7 +163,7 @@ function home(){
 
 function pirForm(){
   app.innerHTML=`<div class="container printOnly"><h1>Paint Inspection Report Questionnaire</h1><div class="pirOnePage">
-    <div id="pir-project" class="panel"><h2>Project Information</h2><div class="grid three">${field('pirProject','Project')} ${field('pirReportDate','Report Date','date')} ${field('pirDay','Day','text','readonly')} ${field('pirWeatherAM','Weather AM')} ${field('pirWeatherPM','Weather PM')} ${field('pirInspectionReport','Inspection Report #')}</div></div>
+    <div id="pir-project" class="panel"><h2>Project Information</h2><div class="grid three">${selectField('pirProject','Project',PROJECT_OPTIONS)} ${field('pirReportDate','Report Date','date')} ${field('pirDay','Day','text','readonly')} ${field('pirWeatherAM','Weather AM')} ${field('pirWeatherPM','Weather PM')} ${field('pirInspectionReport','Inspection Report #')}</div></div>
     <div id="pir-hold" class="panel"><h2>Hold Point Inspections Performed</h2><div class="grid two">${pirHoldPoints.map((q,i)=>`<div class="checkrow"><div class="questionTitle">${q}</div>${radioBlock('pirHold'+i)}</div>`).join('')}</div></div>
     <div id="pir-surface" class="panel"><h2>Surface Cleanliness / Profile Measurement</h2><div class="grid three">${field('pirSurfacesPrepared','Surfaces Prepared Per Specification')} ${field('pirSSPC','SSPC/NACE SP')} ${field('pirSpecifiedProfile','Specified Profile')} ${field('pirProfileCheck','Profile Check')} ${selectField('pirAbrasiveTest','Abrasive Test Acceptable',['','YES','NO','N/A'])} ${selectField('pirBlotterTest','Blotter Test Acceptable',['','YES','NO','N/A'])} ${field('pirChloride1','Chloride ug/cm²')} ${field('pirChloride2','Chloride ug/cm²')} ${selectField('pirIllumination','Illumination Acceptable',['','YES','NO','N/A'])}</div></div>
     <div id="pir-testex" class="panel"><h2>Testex Tape Inserts</h2><div class="testexScreenGrid">${[1,2,3].map(i=>`<div class="testexCard"><div class="testexBox screen"><span>Insert Testex Tape Here</span></div>${field('pirTestexLoc'+i,'Tape '+i+' Location / Area')}${field('pirTestexReading'+i,'Tape '+i+' Profile Reading')}${field('pirTestexNotes'+i,'Tape '+i+' Notes')}</div>`).join('')}</div></div>
@@ -136,7 +184,7 @@ function pirForm(){
   pirMixCount=1; renderPirMixBlocks();
   document.getElementById('addPirMixBlock').onclick=()=>{pirMixCount=Math.min(4,pirMixCount+1); renderPirMixBlocks();};
   initSignatureButtons();
-  document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); document.title = formSaveTitle('pir', data.reportDate); buildPirPrint(data); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
+  document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); document.title = formSaveTitle('pir', data.reportDate, data.project); buildPirPrint(data); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
 }
 
 function collectPir(){
@@ -194,11 +242,11 @@ function buildPirPrint(data=collectPir(), files=[]){
 }
 
 function mewpForm(){
- app.innerHTML=`<div class="container printOnly"><h1>MEWP Daily Equipment Inspection</h1><div class="panel"><h2>Equipment / Job Information</h2><div class="grid three">${field('mewpJobName','Project / Job')} ${field('mewpLocation','Location / Work Area')} ${field('mewpDate','Inspection Date','date')} ${field('mewpTime','Inspection Time','time')} ${field('mewpInspector','Inspector Name')} ${field('mewpCompany','Company','text','value="JAGD Construction"')} ${field('mewpEquipmentId','Equipment ID / Unit #')} ${field('mewpMakeModel','Make / Model')} ${field('mewpSerial','Serial #')} ${field('mewpHours','Hour Meter')} ${field('mewpOperator','Operator')} ${selectField('mewpOverall','Overall Status',['Ready for Use','Do Not Use - Correction Required','N/A'])}</div></div><div class="panel"><h2>MEWP Checklist</h2>${mewpQuestions.map((q,i)=>`<div class="checkrow"><div class="questionTitle">${i+1}. ${q}</div><div class="choiceBtns"><label><input type="radio" name="mewpQ${i}" value="PASS">PASS</label><label><input type="radio" name="mewpQ${i}" value="FAIL">FAIL</label><label><input type="radio" name="mewpQ${i}" value="N/A">N/A</label></div><label>Notes / corrective action</label><textarea id="mewpNote${i}"></textarea></div>`).join('')}</div><div class="panel"><h2>Pictures / Signature</h2>${photoInput('mewpPhotos','Pictures')}${textarea('mewpGeneralNotes','General Notes')}${sigField('mewpSignature','Inspector Signature')}<div class="actions"><button class="btn" id="mewpPrintBtn">Save PDF / Print MEWP</button></div>${printPdfHelp('mewp')}<div id="mewpMsg"></div></div></div>`;
+ app.innerHTML=`<div class="container printOnly"><h1>MEWP Daily Equipment Inspection</h1><div class="panel"><h2>Equipment / Job Information</h2><div class="grid three">${selectField('mewpJobName','Project / Job',PROJECT_OPTIONS)} ${field('mewpLocation','Location / Work Area')} ${field('mewpDate','Inspection Date','date')} ${field('mewpTime','Inspection Time','time')} ${field('mewpInspector','Inspector Name')} ${field('mewpCompany','Company','text','value="JAGD Construction"')} ${field('mewpEquipmentId','Equipment ID / Unit #')} ${field('mewpMakeModel','Make / Model')} ${field('mewpSerial','Serial #')} ${field('mewpHours','Hour Meter')} ${field('mewpOperator','Operator')} ${selectField('mewpOverall','Overall Status',['Ready for Use','Do Not Use - Correction Required','N/A'])}</div></div><div class="panel"><h2>MEWP Checklist</h2>${mewpQuestions.map((q,i)=>`<div class="checkrow"><div class="questionTitle">${i+1}. ${q}</div><div class="choiceBtns"><label><input type="radio" name="mewpQ${i}" value="PASS">PASS</label><label><input type="radio" name="mewpQ${i}" value="FAIL">FAIL</label><label><input type="radio" name="mewpQ${i}" value="N/A">N/A</label></div><label>Notes / corrective action</label><textarea id="mewpNote${i}"></textarea></div>`).join('')}</div><div class="panel"><h2>Pictures / Signature</h2>${photoInput('mewpPhotos','Pictures')}${textarea('mewpGeneralNotes','General Notes')}${sigField('mewpSignature','Inspector Signature')}<div class="actions"><button class="btn" id="mewpPrintBtn">Save PDF / Print MEWP</button></div>${printPdfHelp('mewp')}<div id="mewpMsg"></div></div></div>`;
  setupPhotoPreview('mewpPhotos');
  document.getElementById('mewpDate').value=new Date().toISOString().slice(0,10);
  initSignatureButtons();
- document.getElementById('mewpPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectMewp(); document.title = formSaveTitle('mewp', data.inspectionDate); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){const msg=document.getElementById('mewpMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
+ document.getElementById('mewpPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectMewp(); document.title = formSaveTitle('mewp', data.inspectionDate, data.jobName); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){const msg=document.getElementById('mewpMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
 }
 function collectMewp(){return {jobName:val('mewpJobName'),location:val('mewpLocation'),inspectionDate:val('mewpDate'),time:val('mewpTime'),inspector:val('mewpInspector'),company:val('mewpCompany'),equipmentId:val('mewpEquipmentId'),makeModel:val('mewpMakeModel'),serial:val('mewpSerial'),hours:val('mewpHours'),operator:val('mewpOperator'),overall:val('mewpOverall'),generalNotes:val('mewpGeneralNotes'),signature:val('mewpSignature'),signatureData:signatureStore.mewpSignature||'',questions:mewpQuestions.map((q,i)=>({q,status:checked('mewpQ'+i),notes:val('mewpNote'+i)}))};}
 function buildMewpPrint(data=collectMewp(), files=[]){const rows=(data.questions||[]).map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.q)}</td><td>${esc(x.status)}</td><td>${esc(x.notes)}</td></tr>`).join(''); const html=`<div class="mewpSheet"><div class="mewpHeader"><img src="${logo}"><div class="mewpTitle">MEWP Daily Equipment Inspection<br><span style="font-size:12px;font-weight:400">JAGD Construction</span></div></div><table class="printTable"><tr><td><b>Project / Job:</b> ${esc(data.jobName)}</td><td><b>Location:</b> ${esc(data.location)}</td><td><b>Date:</b> ${esc(data.inspectionDate)}</td></tr><tr><td><b>Inspector:</b> ${esc(data.inspector)}</td><td><b>Time:</b> ${esc(data.time)}</td><td><b>Overall Status:</b> ${esc(data.overall)}</td></tr><tr><td><b>Equipment ID:</b> ${esc(data.equipmentId)}</td><td><b>Make / Model:</b> ${esc(data.makeModel)}</td><td><b>Serial #:</b> ${esc(data.serial)}</td></tr><tr><td><b>Hour Meter:</b> ${esc(data.hours)}</td><td><b>Operator:</b> ${esc(data.operator)}</td><td><b>Company:</b> ${esc(data.company)}</td></tr></table><h3>Inspection Checklist</h3><table class="printTable"><tr><th>#</th><th>Inspection Item</th><th>Status</th><th>Notes / Corrective Action</th></tr>${rows}</table><p><b>General Notes:</b> ${esc(data.generalNotes)}</p><p><b>Inspector Signature:</b> ${data.signatureData?`<img class="sigPrint" src="${data.signatureData}">`:esc(data.signature)}</p>${files.length?`<h3>Pictures</h3><div class="photoPrint">${files.filter(f=>String(f.mimetype||'').startsWith('image/')).map(f=>`<img src="${f.url}">`).join('')}</div>`:''}</div>`; setPrint(html); return html;}
@@ -206,11 +254,23 @@ async function saveForm(type,data,photoInputId,msgId){const msg=document.getElem
 async function submissions(){app.innerHTML=`<div class="container printOnly"><h1>Saved Submissions</h1><div class="actions"><button class="btn" onclick="loadSubmissions()">Refresh</button><a class="btn light" href="#/">Back</a></div><div id="savedList" class="panel">Loading...</div></div>`; await loadSubmissions();}
 async function loadSubmissions(){const box=document.getElementById('savedList'); try{const rows=await (await fetch('/api/submissions')).json(); if(!rows.length){box.innerHTML='<p>No saved submissions yet.</p>';return;} box.innerHTML=`<table class="table"><tr><th>Saved</th><th>Form</th><th>Saved Name</th><th>Project / Job</th><th>Open</th></tr>${rows.map(r=>`<tr><td>${new Date(r.createdAt).toLocaleString()}</td><td>${esc(r.type).toUpperCase()}</td><td>${esc(r.title)}</td><td>${esc(r.project)}</td><td><button class="btn small" onclick="openSubmission('${r.id}')">Open</button></td></tr>`).join('')}</table>`;}catch(e){box.innerHTML=`<div class="notice">Could not load saved submissions: ${esc(e.message)}</div>`;}}
 async function openSubmission(id){const record=await (await fetch('/api/submissions/'+id)).json(); if(record.type==='pir') buildPirPrint(record.data, record.files||[]); else buildMewpPrint(record.data, record.files||[]); setTimeout(()=>window.print(), 100);}
-function router(){const h=location.hash||'#/'; if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else home();}
+
+function dailyEquipmentForm(){
+  app.innerHTML=`<div class="container printOnly dailyEmbedContainer">
+    <div class="panel dailyEmbedIntro">
+      <h1>Daily Equipment Inspection</h1>
+      <p>This opens the existing JAGD Daily Equipment Inspection form with the same source/format the PM already built. Use its built-in <b>Save PDF</b> button, then text/email/send to Dropbox from the phone.</p>
+      <div class="actions"><a class="btn" href="${DAILY_EQUIPMENT_URL}" target="_blank" rel="noopener">Open Full Screen</a></div>
+    </div>
+    <iframe class="dailyEquipmentFrame" title="JAGD Daily Equipment Inspection" src="${DAILY_EQUIPMENT_URL}"></iframe>
+  </div>`;
+}
+
+function router(){const h=location.hash||'#/'; if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else home();}
 
 window.addEventListener('beforeprint',()=>{
   const h=location.hash||'#/';
-  if(h.startsWith('#/pir') && document.getElementById('pirProject')) { const data=collectPir(); document.title=formSaveTitle('pir', data.reportDate); buildPirPrint(data); }
-  if(h.startsWith('#/mewp') && document.getElementById('mewpJobName')) { const data=collectMewp(); document.title=formSaveTitle('mewp', data.inspectionDate); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); }
+  if(h.startsWith('#/pir') && document.getElementById('pirProject')) { const data=collectPir(); document.title=formSaveTitle('pir', data.reportDate, data.project); buildPirPrint(data); }
+  if(h.startsWith('#/mewp') && document.getElementById('mewpJobName')) { const data=collectMewp(); document.title=formSaveTitle('mewp', data.inspectionDate, data.jobName); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); }
 });
 window.addEventListener('hashchange',router); router();

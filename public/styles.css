@@ -203,3 +203,8 @@
 /* v12: PDF/share workflow only. No temporary Render saved submissions shown in the field demo. */
 .saveHelp{margin:2px 0 0;color:#333;font-size:12px}.utilityNav a{min-width:92px}
 @media(max-width:700px){.saveHelp{font-size:12px;line-height:1.35}.utilityNav a{min-width:72px}}
+
+/* v13: project dropdowns on all JAGD-owned forms + original Daily Equipment Inspection source embedded as its own form card. */
+.dailyEmbedContainer{max-width:1120px}.dailyEmbedIntro{margin-bottom:12px}.dailyEquipmentFrame{width:100%;height:calc(100vh - 210px);min-height:720px;border:1px solid #bbb;border-radius:16px;background:#fff;box-shadow:0 8px 18px rgba(0,0,0,.04)}
+@media(max-width:700px){.dailyEquipmentFrame{height:calc(100vh - 155px);min-height:650px;border-radius:12px}.dailyEmbedIntro p{font-size:14px}.dailyEmbedIntro .actions{margin-bottom:0}.formCard{min-height:168px}}
+@media print{.dailyEmbedContainer{display:none!important}}
