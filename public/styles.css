@@ -218,3 +218,31 @@
   .dailyPrintSheet{width:7.95in;height:10.42in;margin:0 auto .12in auto;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;page-break-after:always;break-after:page;position:relative;font-size:11px;overflow:hidden}
   .dailyPrintSheet:last-child{page-break-after:auto;break-after:auto}.dailyPrintHeader{height:.92in;display:grid;grid-template-columns:1.25in 1fr .35in;align-items:start;gap:.1in}.dailyPrintHeader img{width:1.05in;max-height:.78in;object-fit:contain}.dailyPrintHeader h1{font-size:20px;text-align:center;margin:0 0 2px 0;line-height:1.05}.dailyPrintHeader h2{font-size:16px;text-align:center;margin:0;line-height:1.1}.dailyPrintHeader span{text-align:right;font-size:8px}.dailyProjectLine{height:.38in;display:flex;align-items:end;font-size:12px;padding-left:.02in}.dailyPrintTable{width:100%;border-collapse:collapse;table-layout:fixed}.dailyPrintTable th,.dailyPrintTable td{border:1px solid #000;padding:4px 6px;vertical-align:middle;height:.25in}.dailyPrintTable th{background:#d9d9d9!important;text-align:left;font-size:11px}.dailyPrintTable th:nth-child(1){width:48%}.dailyPrintTable th:nth-child(2){width:8%;text-align:center}.dailyPrintTable th:nth-child(3){width:13%;text-align:center}.dailyPrintTable th:nth-child(4){width:31%}.centerMark{text-align:center;font-size:14px;font-weight:800}.dailyPrintSheet h3{font-size:12px;margin:.18in 0 .05in 0}.dailyPhotoBoxes{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1.62in 1.62in;border-left:1px solid #000;border-top:1px solid #000}.dailyPhotoBoxes>div{border-right:1px solid #000;border-bottom:1px solid #000;display:flex;align-items:center;justify-content:center;overflow:hidden}.dailyPhotoBoxes img{max-width:100%;max-height:100%;object-fit:contain}.dailyComments{height:.82in;margin:.22in 0 0 0;font-size:11px}.dailyPrintSig{position:absolute;bottom:.08in;left:0;right:0;display:grid;grid-template-columns:1fr 1fr .9in;gap:.05in;align-items:end;font-size:12px}.dailyPrintSig span{border-bottom:1px solid #000;min-height:.25in}.dailyPrintSig .sigPrint{max-width:1.7in!important;max-height:.42in!important}
 }
+
+/* v15: Daily Safety Inspection Form (DSIF) added to the form library. Prints as the 2-page DSIF B/P layout with DSIF_MM.DD.YY_Project file naming. */
+.dsifContainer{max-width:980px}.dsifSection h2{margin-bottom:4px}.dsifChoice{grid-template-columns:repeat(3,1fr)}.dsifChoice label{text-align:center}.formLibrary{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+@media(max-width:700px){.dsifChoice{display:grid!important;grid-template-columns:repeat(3,1fr)!important}.dsifContainer h1{font-size:26px}}
+@media print{
+  @page{size:letter portrait;margin:.16in!important}
+  html,body{background:#fff!important;width:8.5in!important;height:auto!important;margin:0!important;overflow:visible!important}
+  .topbar,#app,.no-print{display:none!important}
+  .printPage{display:block!important;margin:0!important;padding:0!important;width:100%!important;height:auto!important}
+  .dsifSheet{width:8.18in;height:10.68in;margin:0 auto;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;page-break-after:always;break-after:page;position:relative;overflow:hidden;font-size:8.2px;line-height:1.06}
+  .dsifSheet:last-child{page-break-after:auto;break-after:auto}
+  .dsifHeader{display:grid;grid-template-columns:.72in 1.48in 1.45in 1.05in 1fr 1.1in;grid-template-rows:.23in .24in .24in .24in;align-items:end;column-gap:.05in;margin-bottom:.04in;font-size:10px}
+  .dsifHeader .dsifTitle{grid-column:1/7;grid-row:1;text-align:center;font-size:13px;align-self:center}
+  .dsifHeader .dsifLogo{grid-column:6;grid-row:1/5;text-align:right;align-self:start;position:relative}
+  .dsifHeader .dsifLogo img{width:.42in;height:.42in;object-fit:contain;object-position:center;margin-top:.02in}
+  .dsifHeader .dsifLogo span{font-size:4.7px;position:absolute;right:0;top:0}
+  .dsifHeader>div:not(.dsifTitle):not(.dsifLogo){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dsifHeader b{font-size:10.5px}.dsifHeader span{border-bottom:1px solid #000;display:inline-block;min-width:.55in;vertical-align:bottom}
+  .dsifTable{width:100%;border-collapse:collapse;table-layout:fixed;margin:0}
+  .dsifTable th,.dsifTable td{border:1px solid #000;padding:2px 3px;vertical-align:top;line-height:1.08}
+  .dsifTable th{background:#c9c9c9!important;text-align:center;font-weight:900}
+  .dsifTable .dsifSec{width:50%;font-size:8.2px}.dsifTable .dsifSec span{font-size:7.6px}.dsifTable th:nth-child(2),.dsifTable th:nth-child(3){width:.31in}.dsifTable th:nth-child(4){width:42%}
+  .dsifTable td:nth-child(1){width:50%;font-size:8px}.dsifTable td:nth-child(2),.dsifTable td:nth-child(3){width:.31in;text-align:center;font-size:10px;font-weight:900;vertical-align:middle}.dsifTable td:nth-child(4){font-size:8px;font-weight:500}
+  .mark{text-align:center;font-size:11px;font-weight:900}
+  .dsifVisible{width:100%;border-collapse:collapse;table-layout:fixed;margin:0}.dsifVisible th,.dsifVisible td{border:1px solid #000;padding:3px;vertical-align:middle}.dsifVisible th{background:#c9c9c9!important;text-align:center}.dsifVisible th:first-child{width:48%;font-size:10px}.dsifVisible td{height:.24in}
+  .dsifSign{position:absolute;bottom:.27in;left:0;right:0;display:grid;grid-template-columns:1fr 1fr;border:1px solid #000;border-top:0;height:.28in;align-items:end;font-size:10px}.dsifSign>div{padding:2px 4px;border-right:1px solid #000}.dsifSign>div:last-child{border-right:0}.dsifSign .sigPrint{max-width:1.15in!important;max-height:.25in!important}
+  .dsifFoot{position:absolute;bottom:.03in;left:0;right:0;display:flex;justify-content:space-between;font-size:4.8px;color:#000}
+}

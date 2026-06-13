@@ -79,13 +79,18 @@ function dateToMMDDYY(dateValue){ const d = String(dateValue||''); const m = d.m
 function dateToDisplay(dateValue){ const d = String(dateValue||''); const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return d; return `${m[2]}-${m[3]}-${m[1].slice(2)}`; }
 function cleanFilePart(v){ return String(v||'').trim().replace(/[\/:*?"<>|]+/g,'-').replace(/\s+/g,' ').slice(0,80); }
 function formSaveTitle(type, dateValue, projectName=''){
+  if(type === 'dsif') return dsifSaveTitle(dateValue, projectName);
   const prefix = type === 'pir' ? 'PIR' : (type === 'mewp' ? 'MEWP' : 'Daily Equipment Inspection');
   const datePart = dateToDisplay(dateValue) || 'No Date';
   const projectPart = cleanFilePart(projectName);
   return projectPart ? `${prefix} - ${datePart} - ${projectPart}` : `${prefix} - ${datePart}`;
 }
+function dateToDotMMDDYY(dateValue){ const d=String(dateValue||''); const m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return ''; return `${m[2]}.${m[3]}.${m[1].slice(2)}`; }
+function dateToSlashYYYY(dateValue){ const d=String(dateValue||''); const m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return d; return `${m[2]}/${m[3]}/${m[1]}`; }
+function fileProjectName(projectName){ return String(projectName||'').trim().replace(/[\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').replace(/_+/g,'_').slice(0,120); }
+function dsifSaveTitle(dateValue, projectName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); return projectPart ? `DSIF_${datePart}_${projectPart}` : `DSIF_${datePart}`; }
 function printPdfHelp(type){
-  const label = type === 'pir' ? 'PIR' : 'MEWP';
+  const label = type === 'pir' ? 'PIR' : (type === 'dsif' ? 'DSIF' : 'MEWP');
   return `<p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p>`;
 }
 function localPhotoFiles(inputId){ const inp=document.getElementById(inputId); if(!inp) return []; return [...inp.files].filter(f=>f.type.startsWith('image/')).map(f=>({originalName:f.name, mimetype:f.type, url:URL.createObjectURL(f)})); }
@@ -159,6 +164,14 @@ function home(){
           <span class="formTag">Original Equipment</span>
           <h2>Daily Equipment Inspection</h2>
           <p>The existing JAGD web-based form, kept with the same source/format the PM already built.</p>
+        </div>
+        <strong>Open</strong>
+      </a>
+      <a class="formCard" href="#/dsif">
+        <div>
+          <span class="formTag">Safety</span>
+          <h2>Daily Safety Inspection Form</h2>
+          <p>DSIF questionnaire that prints to the two-page safety inspection layout.</p>
         </div>
         <strong>Open</strong>
       </a>
@@ -293,12 +306,117 @@ function buildDailyEquipmentPrint(data=collectDailyEquipment()){
   setPrint(html); return html;
 }
 
-function router(){const h=location.hash||'#/'; if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else home();}
+const DSIF_SECTIONS = [
+  {key:'platform', title:'Platform/Scaffold/Engineered Platform & Shield Systems', sub:'OSHA 1926 Subpart L', commentHeader:'Platform Repairs Performed', questions:[
+    'Is the platform/scaffold/engineered system fully decked, secured, and free of loose or missing components?',
+    'Is platform deflection (sag) within allowable limits per approved plans?',
+    'Are all anchors, outriggers, and chokers properly installed, secured, and not overloaded?',
+    'Are fall protection systems in place, including guardrails or 100% tie-off, with properly rated anchor points (5,000 lbs or engineered) and appropriate lanyards/SRLs in use?',
+    'Are all rigging hoists and braking systems operational?',
+    'Has a functionality check been completed on all equipment prior to use?',
+    'Is safe access provided to all platforms/scaffolds/engineered systems?',
+    'Is the drop zone established and controlled?',
+    'Are wind and weather conditions verified to be within allowable limits for work? Wind Speed/Direction:',
+    'Are approved plans for the platform/scaffold/engineered system available on site?',
+    'Has a competent person inspection been completed, and is the system approved for use?'
+  ]},
+  {key:'blast', title:'Blast and Paint', sub:'Per OSHA 1926.57, 1910.107/AMPP/SSPC Guide 6&8', commentHeader:'Comments', questions:[
+    'Are blast hoods and required PPE in use and in serviceable condition?',
+    'Are all hoses, couplings, whip checks, and fittings properly secured and in good condition?',
+    'Are deadman controls installed on all blast hoses and functioning properly?',
+    'Are spray guns equipped with required safety devices (e.g., tip guards/knuckle guards), and are safety locks functional?',
+    'Are required filters (organic vapor and particulate) inspected and within their service life?',
+    'Are VOC and LEL levels within specified limits? Specification Limit:',
+    'Is the air purifying system identified, and are filter change dates documented?',
+    'Is a CO monitor present, calibrated, and functioning properly?',
+    'Is all required monitoring equipment within calibration and verified operational (bump tested) prior to use?'
+  ]},
+  {key:'decon', title:'Decontamination Area', sub:'OSHA 1926.62 (Lead Standard)', commentHeader:'Comments', questions:[
+    'Is a decontamination area/trailer present, accessible, and maintained in a clean and functional condition?',
+    'Are employees utilizing handwashing stations prior to breaks?',
+    'Does the decontamination trailer have required supplies (soap, water, towels, and clean work clothing)?',
+    'Are employees exposed above the PEL utilizing shower facilities at the end of the work shift?',
+    'Is contaminated (dirty) clothing handled, stored, and disposed of in accordance with project requirements?',
+    'Are street clothes stored separately from contaminated work areas (clean side of decontamination area)?',
+    'Are respirators properly maintained, cleaned, and stored?'
+  ]},
+  {key:'waste', title:'Waste Area', sub:'EPA 40 CFR 262/OSHA 1926.65', commentHeader:'Comments', questions:[
+    'Is the hazardous waste storage area secure and waste properly stored?',
+    'Is wastewater and paint waste properly contained and stored?',
+    'Has any hazardous waste exceeded allowable on-site storage time limits? Specified days allowed:',
+    'Was the hazardous waste storage area inspected for cleanliness?',
+    'Was any hazardous waste shipped off-site on this date?'
+  ]},
+  {key:'work', title:'Work Area', sub:'OSHA 1926.20, 1926.21', commentHeader:'Comments', questions:[
+    'Is the restricted work area properly segregated with required barriers, caution tape, and signage?',
+    'Are employees and authorized personnel within restricted areas utilizing required PPE?',
+    'Is the work area free of visible spills or dust accumulation at the end of work inspection?',
+    'Are tools tethered where required?',
+    'Are extension cords and electrical tools free of damage (no exposed wires or splices), and are GFCIs in use where required?',
+    'Are work area walkways maintained free of debris and tripping hazards?',
+    'Are any pre-existing conditions observed that require documentation? (If yes, document and photograph.)',
+    'Are any other trades or operations working near the work area?'
+  ]},
+  {key:'life', title:'Life Safety', sub:'', commentHeader:'Comments', questions:[
+    'Is required safety equipment (inside and outside containment) readily available and functional?',
+    'Are first aid kits, fire extinguishers, eye wash and emergency equipment present and readily accessible?',
+    'Are all required project plans (e.g., safety/work plans, waste management, rescue plans) available on site and implemented?',
+    'Are independent lifelines and rigging ropes in use, within rated capacity, and in good condition?',
+    'Was a daily toolbox talk conducted with crew attendance? If yes Topic:',
+    'Were any incidents or accidents reported on this date?',
+    'Were any verbal safety warnings issued on this date?'
+  ]},
+  {key:'testing', title:'Testing', sub:'OSHA 1926.62/AMPP/SSPC QP Standards', commentHeader:'Comments', questions:[
+    'Have all workers received medical clearance to wear a respirator and work with lead when applicable (including blood testing, respirator clearance and fit testing)?',
+    'Have all workers received annual lead training?',
+    'Was any monitoring performed today (e.g., air, wipe, water, soil, waste)? Chain of Custody (if applicable):'
+  ]},
+  {key:'containment', title:'Containment', sub:'OSHA 1926.57/AMPP/SSPC Guide 6 (Containment)', commentHeader:'Comments', questions:[
+    'Is the containment system intact and functioning in accordance with approved plans (are joints sealed? openings closed? floor covering in place? make-up air inlets and airlock access points operational)?',
+    'Were dust collectors and vacuum equipment operational throughout blasting activities?',
+    'Was adequate airflow/ventilation maintained throughout blasting operations?',
+    'Was negative pressure maintained within the containment? Visual/Magnehelic: Reading(if applicable):',
+    'Were airflow checks performed as required? Method: Airflow Readings:',
+    'Was a final cleanup inspection of the containment performed? Was the containment cleaned per spec?'
+  ]}
+];
+function dsifChoice(name){return `<div class="choiceBtns dsifChoice"><label><input type="radio" name="${name}" value="Yes">Yes</label><label><input type="radio" name="${name}" value="No">No</label><label><input type="radio" name="${name}" value="N/A">N/A</label></div>`;}
+function dsifForm(){
+  app.innerHTML=`<div class="container printOnly dsifContainer"><h1>Daily Safety Inspection Form</h1>
+    <div class="panel"><h2>Project / Report Information</h2><div class="grid three">${projectField('dsifProject','Project')} ${field('dsifReportDate','Report Date','date')} ${field('dsifDay','Day','text','readonly')} ${field('dsifWeather','Weather')} ${selectField('dsifAttachedPages','Attached Pages',['','Accident Report','Incident Report','Safety Violation','Accident Report + Incident Report','Accident Report + Safety Violation','Incident Report + Safety Violation'])}</div></div>
+    ${DSIF_SECTIONS.map((sec,si)=>`<div class="panel dsifSection"><h2>${sec.title}</h2>${sec.sub?`<p class="tiny"><b>${sec.sub}</b></p>`:''}${sec.questions.map((q,qi)=>`<div class="checkrow"><div class="questionTitle">${q}</div>${dsifChoice('dsif_'+si+'_'+qi)}<label>Comments / Corrections</label><textarea id="dsifComment_${si}_${qi}" placeholder="Not applicable for today, notes, readings, etc."></textarea></div>`).join('')}</div>`).join('')}
+    <div class="panel"><h2>Visible Emissions / Signature</h2><div class="grid four">${field('dsifVELocation','Visible Emissions Location')} ${field('dsifVETime','Time')} ${field('dsifVEObservation','Observation Period')} ${field('dsifVEEmission','Emission Time')}</div>${textarea('dsifCorrections','Comments / Corrections')}${field('dsifCompetentPerson','Competent Person (Print Name)')}${sigField('dsifSignature','Signature')}<div class="actions"><button class="btn" id="dsifPrintBtn" type="button">Save PDF / Print DSIF</button></div>${printPdfHelp('dsif')}<div id="dsifMsg"></div></div>
+  </div>`;
+  setupOtherProject('dsifProject');
+  const dateEl=document.getElementById('dsifReportDate'); const dayEl=document.getElementById('dsifDay');
+  const updateDay=()=>{ if(!dateEl.value){dayEl.value='';return;} const d=new Date(dateEl.value+'T00:00:00'); dayEl.value=d.toLocaleDateString(undefined,{weekday:'long'}) + ' (Day)'; };
+  dateEl.value=new Date().toISOString().slice(0,10); updateDay(); dateEl.addEventListener('change',updateDay);
+  initSignatureButtons();
+  document.getElementById('dsifPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDsif(); document.title=formSaveTitle('dsif', data.reportDate, data.project); buildDsifPrint(data); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){document.getElementById('dsifMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+}
+function collectDsif(){
+  return {project:projectValue('dsifProject'),reportDate:val('dsifReportDate'),day:val('dsifDay'),weather:val('dsifWeather'),attachedPages:val('dsifAttachedPages'),competentPerson:val('dsifCompetentPerson'),signature:val('dsifSignature'),signatureData:signatureStore.dsifSignature||'',visible:{location:val('dsifVELocation'),time:val('dsifVETime'),observation:val('dsifVEObservation'),emission:val('dsifVEEmission')},corrections:val('dsifCorrections'),sections:DSIF_SECTIONS.map((sec,si)=>({title:sec.title,sub:sec.sub,commentHeader:sec.commentHeader,questions:sec.questions.map((q,qi)=>({q,status:checked('dsif_'+si+'_'+qi),comment:val('dsifComment_'+si+'_'+qi)}))}))};
+}
+function markCell(status, want){return status===want ? 'X' : '';}
+function dsifSectionPrint(sec){
+  return `<table class="dsifTable"><tr><th class="dsifSec" colspan="1">${esc(sec.title)}${sec.sub?`<br><span>${esc(sec.sub)}</span>`:''}</th><th>Yes</th><th>No</th><th>${esc(sec.commentHeader||'Comments')}</th></tr>${sec.questions.map(item=>`<tr><td>${esc(item.q)}</td><td class="mark">${markCell(item.status,'Yes')}</td><td class="mark">${markCell(item.status,'No')}</td><td>${esc(item.comment)}</td></tr>`).join('')}</table>`;
+}
+function buildDsifPrint(data=collectDsif()){
+  const dateSlash=dateToSlashYYYY(data.reportDate); const page1=data.sections.slice(0,4); const page2=data.sections.slice(4);
+  const header=`<div class="dsifHeader"><div class="dsifTitle"><b>Daily Safety Inspection Form</b></div><div class="dsifLogo"><img src="${logo}"><span>Revision - 2</span></div><div><b>Project:</b> <span>${esc(data.project)}</span></div><div><b>Report Date:</b> <span>${esc(dateSlash)}</span></div><div><b>Day:</b> <span>${esc(data.day)}</span></div><div><b>Weather:</b> <span>${esc(data.weather)}</span></div><div><b>Attached Pages:</b> <span>${esc(data.attachedPages)}</span></div></div>`;
+  const sheet1=`<div class="dsifSheet">${header}${page1.map(dsifSectionPrint).join('')}<div class="dsifFoot"><span>DSIF B/P</span><span>Revision - 0</span></div></div>`;
+  const visible=`<table class="dsifVisible"><tr><th rowspan="3">Visible Emissions</th><th>Locations</th><th>Time</th><th>Observation<br>Period</th><th>Emission Time</th></tr><tr><td>${esc(data.visible.location||'Not applicable for today')}</td><td>${esc(data.visible.time)}</td><td>${esc(data.visible.observation)}</td><td>${esc(data.visible.emission)}</td></tr><tr><th colspan="4">Comments/Corrections</th></tr><tr><td colspan="5">${esc(data.corrections)}</td></tr></table>`;
+  const sheet2=`<div class="dsifSheet">${page2.map(dsifSectionPrint).join('')}${visible}<div class="dsifSign"><div><b>Competent Person (Print Name)</b> ${esc(data.competentPerson)}</div><div><b>Signature:</b> ${sigPrint(data.signatureData,data.signature)}</div></div><div class="dsifFoot"><span>DSIF B/P</span><span>Revision - 2</span></div></div>`;
+  setPrint(sheet1+sheet2); return sheet1+sheet2;
+}
+
+function router(){const h=location.hash||'#/'; if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else home();}
 
 window.addEventListener('beforeprint',()=>{
   const h=location.hash||'#/';
   if(h.startsWith('#/pir') && document.getElementById('pirProject')) { const data=collectPir(); document.title=formSaveTitle('pir', data.reportDate, data.project); buildPirPrint(data); }
   if(h.startsWith('#/mewp') && document.getElementById('mewpJobName')) { const data=collectMewp(); document.title=formSaveTitle('mewp', data.inspectionDate, data.jobName); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); }
   if(h.startsWith('#/daily-equipment') && document.getElementById('dailyProject')) { const data=collectDailyEquipment(); document.title=formSaveTitle('daily', data.date, data.project); buildDailyEquipmentPrint(data); }
+  if(h.startsWith('#/dsif') && document.getElementById('dsifProject')) { const data=collectDsif(); document.title=formSaveTitle('dsif', data.reportDate, data.project); buildDsifPrint(data); }
 });
 window.addEventListener('hashchange',router); router();
