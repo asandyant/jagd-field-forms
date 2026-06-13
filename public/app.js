@@ -570,26 +570,50 @@ async function loadActiveWorkers(){
   }catch(e){ activeWorkers = []; console.error('Could not load worker list', e); }
   return activeWorkers;
 }
-function workerOptionsHtml(){return `<datalist id="workerNames">${activeWorkers.map(w=>`<option value="${esc(w.fullName || `${w.firstName} ${w.lastName}`.trim())}"></option>`).join('')}</datalist>`;}
+
+function cleanWorkerLocal(v){ return String(v||'').replace(/\.0$/,''); }
+function workerDisplayName(w){ return String(w.fullName || `${w.firstName||''} ${w.lastName||''}`.trim()).trim(); }
+function workerSearchText(w){ return `${workerDisplayName(w)} ${w.firstName||''} ${w.lastName||''} ${w.class||''} ${w.local||''}`.toLowerCase(); }
 function findWorkerByName(name){
   const n=String(name||'').trim().toLowerCase();
   if(!n) return null;
   return activeWorkers.find(w=>String(w.fullName||'').trim().toLowerCase()===n) || activeWorkers.find(w=>`${w.firstName||''} ${w.lastName||''}`.trim().toLowerCase()===n) || null;
 }
 function dwlRow(i){
-  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td><input id="dwlEmp${i}" list="workerNames" autocomplete="off"></td><td><input id="dwlLoc${i}"></td><td><select id="dwlAct${i}"><option></option>${DWL_ACTIVITIES.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('')}</select></td><td><input id="dwlClass${i}"></td><td><input id="dwlLocal${i}"></td><td><input id="dwlStraight${i}" inputmode="decimal"></td><td><input id="dwlOver${i}" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" type="checkbox"></td><td><input id="dwlPT${i}" inputmode="decimal"></td><td><input id="dwlRT${i}" inputmode="decimal"></td></tr>`;
+  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" placeholder="First name"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><select id="dwlAct${i}"><option></option>${DWL_ACTIVITIES.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('')}</select></td><td><input id="dwlClass${i}"></td><td><input id="dwlLocal${i}"></td><td><input id="dwlStraight${i}" inputmode="decimal"></td><td><input id="dwlOver${i}" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" inputmode="decimal"></td><td><input id="dwlRT${i}" inputmode="decimal"></td></tr>`;
+}
+function applyWorkerToDwlRow(i,w){
+  if(!w) return;
+  const emp=document.getElementById('dwlEmp'+i);
+  if(emp) emp.value = workerDisplayName(w);
+  const cls=document.getElementById('dwlClass'+i); if(cls) cls.value = w.class || '';
+  const loc=document.getElementById('dwlLocal'+i); if(loc) loc.value = cleanWorkerLocal(w.local);
+}
+function showDwlSuggestions(i){
+  const emp=document.getElementById('dwlEmp'+i), box=document.getElementById('dwlSuggest'+i);
+  if(!emp||!box) return;
+  const q=emp.value.trim().toLowerCase();
+  if(q.length<1){ box.innerHTML=''; box.style.display='none'; return; }
+  const matches=activeWorkers.filter(w=>workerSearchText(w).includes(q)).sort((a,b)=>workerDisplayName(a).localeCompare(workerDisplayName(b))).slice(0,8);
+  if(!matches.length){ box.innerHTML=''; box.style.display='none'; return; }
+  box.innerHTML=matches.map((w,idx)=>`<button type="button" data-idx="${idx}"><b>${esc(workerDisplayName(w))}</b><span>${esc(w.class||'')}${w.local?` • Local ${esc(cleanWorkerLocal(w.local))}`:''}</span></button>`).join('');
+  box.style.display='block';
+  [...box.querySelectorAll('button')].forEach((btn,idx)=>btn.addEventListener('mousedown',e=>{e.preventDefault(); applyWorkerToDwlRow(i,matches[idx]); box.innerHTML=''; box.style.display='none';}));
 }
 function setupDwlWorkerAutofill(){
-  for(let i=1;i<=40;i++){
+  for(let i=1;i<=80;i++){
     const emp=document.getElementById('dwlEmp'+i);
-    if(!emp) continue;
-    emp.addEventListener('change',()=>{
-      const w=findWorkerByName(emp.value);
-      if(!w) return;
-      document.getElementById('dwlClass'+i).value = w.class || '';
-      document.getElementById('dwlLocal'+i).value = w.local || '';
-      if(!document.getElementById('dwlLoc'+i).value && w.currentJob) document.getElementById('dwlLoc'+i).value = w.currentJob;
-    });
+    if(!emp || emp.dataset.ready==='1') continue;
+    emp.dataset.ready='1';
+    emp.addEventListener('input',()=>showDwlSuggestions(i));
+    emp.addEventListener('focus',()=>showDwlSuggestions(i));
+    emp.addEventListener('change',()=>{ const w=findWorkerByName(emp.value); if(w) applyWorkerToDwlRow(i,w); });
+    emp.addEventListener('blur',()=>setTimeout(()=>{const box=document.getElementById('dwlSuggest'+i); if(box){box.innerHTML='';box.style.display='none';}},200));
+    const nl=document.getElementById('dwlNoLunch'+i);
+    if(nl && nl.dataset.ready!=='1'){
+      nl.dataset.ready='1';
+      nl.addEventListener('click',()=>{ nl.value = nl.value.trim()==='.5' ? '' : '.5'; });
+    }
   }
 }
 function setupDwlRows(){
@@ -627,10 +651,10 @@ async function autoFillWeather(){
 async function dwlForm(){
   await loadActiveWorkers();
   app.innerHTML=`<div class="container printOnly dwlContainer"><h1>Daily Work Log</h1>
-    <div class="panel"><h2>Project / Report Information</h2><div class="grid three">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')}</div><div class="actions"><button class="btn light" type="button" id="dwlWeatherBtn">Auto Fill Weather</button></div><p class="tiny" id="dwlWeatherMsg">Weather can auto-fill from the phone location, or be typed manually.</p></div>
+    <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')}</div></div>
     <div class="panel"><h2>Activities Performed</h2><div class="activityCheckGrid">${DWL_ACTIVITIES.map((a,idx)=>`<label><input type="checkbox" id="dwlActivity${idx}" value="${esc(a)}"> ${esc(a)}</label>`).join('')}</div></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
-    <div class="panel"><h2>Crew / Employees</h2><p class="tiny"><b>Worker list loaded:</b> ${activeWorkers.length} active workers. Start typing a name and select it to auto-fill Class and Local. If the worker is not found, keep typing manually and fill Class/Local by hand.</p>${workerOptionsHtml()}<div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
+    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
     <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
@@ -639,14 +663,13 @@ async function dwlForm(){
   dateEl.value=new Date().toISOString().slice(0,10); updateDay(); dateEl.addEventListener('change',updateDay);
   setupDwlRows(); initSignatureButtons();
   document.getElementById('dwlAddPageBtn').onclick=addDwlPageRows;
-  document.getElementById('dwlWeatherBtn').onclick=autoFillWeather;
   setTimeout(()=>autoFillWeather(),350);
   document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); buildDwlPrint(data); requestAnimationFrame(()=>setTimeout(()=>window.print(),150));}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
 function collectDwl(){
   const rows=[]; for(let i=1;i<=40;i++){
     const emp=document.getElementById('dwlEmp'+i); if(!emp) continue;
-    const row={num:i, employee:val('dwlEmp'+i), location:val('dwlLoc'+i), activity:val('dwlAct'+i), class:val('dwlClass'+i), local:val('dwlLocal'+i), straight:val('dwlStraight'+i), over:val('dwlOver'+i), noLunch:document.getElementById('dwlNoLunch'+i)?.checked||false, pt:val('dwlPT'+i), rt:val('dwlRT'+i)};
+    const row={num:i, employee:val('dwlEmp'+i), location:val('dwlLoc'+i), activity:val('dwlAct'+i), class:val('dwlClass'+i), local:val('dwlLocal'+i), straight:val('dwlStraight'+i), over:val('dwlOver'+i), noLunch:val('dwlNoLunch'+i), pt:val('dwlPT'+i), rt:val('dwlRT'+i)};
     rows.push(row);
   }
   return {project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:DWL_ACTIVITIES.filter((_,idx)=>document.getElementById('dwlActivity'+idx)?.checked),description:val('dwlDescription'),notes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows};
@@ -654,7 +677,7 @@ function collectDwl(){
 function dwlWorkerRowsPrint(rows, start, count){
   const slice=rows.slice(start,start+count);
   while(slice.length<count) slice.push({num:start+slice.length+1});
-  return slice.map(r=>`<tr><td>${esc(r.num||'')}</td><td>${esc(r.employee||'')}</td><td>${esc(r.location||'')}</td><td>${esc(r.activity||'')}</td><td>${esc(r.class||'')}</td><td>${esc(r.local||'')}</td><td>${esc(r.straight||'')}</td><td>${esc(r.over||'')}</td><td class="dwlNoLunchPrint">${r.noLunch?'X':''}</td><td>${esc(r.pt||'')}</td><td>${esc(r.rt||'')}</td></tr>`).join('');
+  return slice.map(r=>`<tr><td>${esc(r.num||'')}</td><td>${esc(r.employee||'')}</td><td>${esc(r.location||'')}</td><td>${esc(r.activity||'')}</td><td>${esc(r.class||'')}</td><td>${esc(r.local||'')}</td><td>${esc(r.straight||'')}</td><td>${esc(r.over||'')}</td><td class="dwlNoLunchPrint">${esc(r.noLunch||'')}</td><td>${esc(r.pt||'')}</td><td>${esc(r.rt||'')}</td></tr>`).join('');
 }
 function buildDwlSheet(data, pageIndex, totalPages){
   const dateSlash=dateToSlashYYYY(data.reportDate); const dateDot=dateToDotMMDDYY(data.reportDate);

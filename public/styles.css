@@ -287,3 +287,24 @@
   .dwlPrintFoot{height:.48in;display:grid;grid-template-columns:2.6in 1fr 1.1in;align-items:end;gap:12px;padding:4px 0 0}.dwlPrintFoot>div{border-bottom:1px solid #000;min-height:.32in}.dwlPrintFoot>div:last-child{border-bottom:0;text-align:right}.bigDate2{font-size:20px;font-weight:900}.dwlPageNum{position:absolute;bottom:1px;left:50%;transform:translateX(-50%);font-size:6px;color:#777}
   .dwlPrintSheet .sigPrint{max-width:2.2in!important;max-height:.30in!important}
 }
+
+/* v20 DWL boss-style field form fixes */
+.dwlBossPanel{border:1px solid #111;border-radius:0;box-shadow:none;background:#fff}
+.dwlBossPanel h2{font-size:18px;border-bottom:1px solid #111;margin:-8px -8px 12px;padding:8px;background:#e5e5e5;text-align:center}
+.dwlTopGrid input,.dwlTopGrid select{font-size:16px}
+.dwlEntryTable th{background:#d9d9d9;color:#000;border:1px solid #111;font-weight:800;text-align:center}
+.dwlEntryTable th,.dwlEntryTable td{border:1px solid #111}
+.dwlEmpCell{position:relative;min-width:210px}
+.dwlSuggest{display:none;position:absolute;z-index:999;left:0;right:0;top:100%;background:#fff;border:2px solid #111;border-radius:8px;box-shadow:0 8px 18px rgba(0,0,0,.18);max-height:260px;overflow:auto}
+.dwlSuggest button{display:block;width:100%;text-align:left;border:0;background:#fff;padding:10px 12px;font-size:15px;border-bottom:1px solid #eee;color:#111}
+.dwlSuggest button:active,.dwlSuggest button:hover{background:#f2f2f2}
+.dwlSuggest span{display:block;font-size:12px;color:#555;margin-top:2px}
+.dwlNoLunchBox{text-align:center;font-weight:900;cursor:pointer;background:#fff!important}
+.dwlNoLunchBox:focus{outline:2px solid #111}
+@media(max-width:700px){
+  .dwlBossPanel{padding:8px;margin-left:-6px;margin-right:-6px}
+  .dwlBossPanel h2{font-size:17px;margin:-8px -8px 10px}
+  .dwlEntryTable{min-width:1080px}
+  .dwlEmpCell{min-width:230px}
+  .dwlSuggest button{font-size:17px;padding:14px 12px}
+}
