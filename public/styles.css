@@ -434,3 +434,29 @@
   .bigDate2{font-size:13px!important;font-weight:900!important;line-height:1!important;white-space:nowrap!important;}
   .dwlPageNum{bottom:0!important;}
 }
+
+
+/* v32 DWL mobile/iPhone print fix: prevent extra blank second page while keeping DWL one-page layout */
+@media print {
+  html, body { margin:0!important; padding:0!important; background:#fff!important; }
+  .printPage { margin:0!important; padding:0!important; overflow:visible!important; }
+  .dwlSinglePage{
+    height:10.24in!important;
+    max-height:10.24in!important;
+    width:7.92in!important;
+    overflow:hidden!important;
+    page-break-after:avoid!important;
+    break-after:avoid!important;
+    page-break-inside:avoid!important;
+    break-inside:avoid!important;
+    margin:0 auto!important;
+  }
+  .dwlSinglePage .dwlPrintFoot{
+    height:.40in!important;
+    grid-template-columns:2.55in 1fr 1.62in!important;
+    padding-top:1px!important;
+    padding-bottom:0!important;
+  }
+  .dwlSinglePage .bigDate2{font-size:11.5px!important;line-height:1!important;white-space:nowrap!important;}
+  .dwlSinglePage .dwlPageNum{display:none!important;}
+}
