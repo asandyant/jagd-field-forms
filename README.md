@@ -1,9 +1,7 @@
-# JAGD Field Forms v26
+# JAGD Field Forms v28
 
-DWL polish:
-- Straight time tap-to-fill 8, but editable after filling; max 8.
-- Local dropdown sorted in numeric order.
-- DWL print values made consistently bold/readable for office review.
-- DWL print top header/date tightened.
-- Location/Description box border fixed.
-- Print sheet uses more of the page to reduce unused bottom space.
+DWL polish update:
+- bottom DWL date reduced and widened so it does not cut off
+- Location/Description of Work print box made taller for about two more lines
+- Activities Performed print table now matches the on-screen two-column table more closely
+- DWL remains 4.0 and stays one page
