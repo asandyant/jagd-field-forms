@@ -109,10 +109,14 @@ function renderPirMixBlocks(){
   if(btn) btn.style.display = pirMixCount >= 4 ? 'none' : 'inline-block';
 }
 function sigField(id,label){
-  return `<div class="signatureWrap"><label>${label}</label><button type="button" class="btn light signatureBtn" data-sig="${id}" data-label="${esc(label)}">Sign with finger / mouse</button><input id="${id}" type="text" placeholder="Typed name, optional"><div id="${id}Preview" class="signaturePreview">No signature captured</div></div>`;
+  return `<div class="signatureWrap"><label>${label}</label><div id="${id}Preview" class="signaturePreview signatureBtn" role="button" tabindex="0" data-sig="${id}" data-label="${esc(label)}">Tap here to sign</div></div>`;
 }
 function initSignatureButtons(){
-  document.querySelectorAll('.signatureBtn').forEach(btn=>btn.onclick=()=>openSignatureModal(btn.dataset.sig, btn.dataset.label || 'Signature'));
+  document.querySelectorAll('.signatureBtn').forEach(btn=>{
+    const open=()=>openSignatureModal(btn.dataset.sig, btn.dataset.label || 'Signature');
+    btn.onclick=open;
+    btn.onkeydown=(e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); open(); } };
+  });
 }
 function openSignatureModal(targetId, title){
   const old=document.getElementById('sigModal'); if(old) old.remove();
@@ -520,12 +524,12 @@ async function weeklySignForm(id){
   let meeting;
   try{ meeting=await fetchWeeklyMeeting(id); }catch(e){ app.innerHTML=`<div class="container"><div class="panel"><h1>Meeting Not Found</h1><p>${esc(e.message)}</p></div></div>`; return; }
   signatureStore.workerSignature = '';
-  app.innerHTML=`<div class="container workerSign"><div class="panel"><img src="${logo}" class="smallLogo"><h1>Weekly Safety Meeting Sign-In</h1><p><b>Project:</b> ${esc(meeting.project)}</p><p><b>Date:</b> ${esc(dateToSlashYYYY(meeting.date))}</p><p><b>Topic:</b> ${esc(meeting.topic)}</p><div class="grid one">${field('workerName','Print Name')} ${field('workerCompany','Company','text','value="JAGD Construction"')}</div>${sigField('workerSignature','Signature')}<p class="tiny">Print your name, tap Add Signature, sign with your finger, then press Sign In.</p><div class="actions"><button class="btn" id="workerSignBtn" type="button">Sign In</button></div><div id="workerSignMsg"></div></div></div>`;
+  app.innerHTML=`<div class="container workerSign"><div class="panel"><img src="${logo}" class="smallLogo"><h1>Weekly Safety Meeting Sign-In</h1><p><b>Project:</b> ${esc(meeting.project)}</p><p><b>Date:</b> ${esc(dateToSlashYYYY(meeting.date))}</p><p><b>Topic:</b> ${esc(meeting.topic)}</p><div class="grid one">${field('workerName','Print Name')} ${field('workerCompany','Company','text','value="JAGD Construction"')}</div>${sigField('workerSignature','Signature')}<p class="tiny">Print your name, tap the signature box, sign with your finger, then press Sign In.</p><div class="actions"><button class="btn" id="workerSignBtn" type="button">Sign In</button></div><div id="workerSignMsg"></div></div></div>`;
   initSignatureButtons();
   document.getElementById('workerSignBtn').onclick=async()=>{
     const name=val('workerName'); const company=val('workerCompany'); const signatureData=signatureStore.workerSignature||'';
     if(!name){document.getElementById('workerSignMsg').innerHTML='<div class="notice">Print your name to sign in.</div>'; return;}
-    if(!signatureData){document.getElementById('workerSignMsg').innerHTML='<div class="notice">Tap Add Signature and sign with your finger.</div>'; return;}
+    if(!signatureData){document.getElementById('workerSignMsg').innerHTML='<div class="notice">Tap the signature box and sign with your finger.</div>'; return;}
     const res=await fetch(`/api/weekly-meetings/${encodeURIComponent(id)}/sign`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,company,signatureData})});
     const json=await res.json();
     if(!res.ok){document.getElementById('workerSignMsg').innerHTML=`<div class="notice">${esc(json.error||'Could not sign in.')}</div>`;return;}

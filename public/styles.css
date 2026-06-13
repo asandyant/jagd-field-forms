@@ -252,3 +252,12 @@
 @media print{.weeklySheet{border:0;width:7.85in;min-height:10.35in;padding:.15in;page-break-after:always}.weeklyTable th,.weeklyTable td{padding:5px}}
 .workerSign .signatureWrap{margin-top:16px}.workerSign .signatureBtn{width:100%;font-size:18px;padding:16px}.workerSign .signaturePreview{min-height:92px;font-size:14px}.workerSign input{font-size:18px;padding:15px}.workerSign .btn{width:100%;font-size:18px;padding:16px}.signedBadge{display:inline-block;background:#e8fff0;border:1px solid #96d7a8;border-radius:999px;padding:3px 8px;font-size:12px;color:#075b23}.weeklySigPrint{max-width:145px;max-height:38px;display:block;margin:auto}.weeklyTable td:last-child,.weeklyTable th:last-child{text-align:center;min-width:135px}
 @media(max-width:600px){.workerSign .panel{margin:8px auto;padding:18px}.workerSign h1{font-size:28px}.smallLogo{width:105px}.workerSign .tiny{font-size:14px;line-height:1.35}.sigBox{border-radius:12px;padding:12px}#sigCanvas{height:300px}.sigModal{align-items:flex-start;padding-top:18px}}
+
+/* v18 signature blocks: clickable box instead of separate signature button/input */
+.signatureWrap input{display:none!important}
+.signaturePreview.signatureBtn{cursor:pointer;min-height:92px;border:2px dashed #999;background:#fafafa;color:#555;font-weight:700;font-size:15px}
+.signaturePreview.signatureBtn:hover{background:#f1f1f1;border-color:#111}
+.signaturePreview.signatureBtn:focus{outline:3px solid rgba(0,0,0,.2);outline-offset:3px}
+.signaturePreview.signatureBtn img{max-height:84px}
+.workerSign .signaturePreview.signatureBtn{min-height:112px;font-size:18px;padding:18px}
+.workerSign .signatureBtn{width:auto;font-size:18px;padding:18px}
