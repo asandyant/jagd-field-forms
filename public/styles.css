@@ -460,3 +460,29 @@
   .dwlSinglePage .bigDate2{font-size:11.5px!important;line-height:1!important;white-space:nowrap!important;}
   .dwlSinglePage .dwlPageNum{display:none!important;}
 }
+
+/* v33 DWL mobile entry table: no sideways scrolling, print unchanged */
+@media screen and (max-width:700px){
+  .dwlBossPanel{padding:6px!important;margin-left:-10px!important;margin-right:-10px!important;overflow:hidden!important;}
+  .dwlBossPanel h2{font-size:15px!important;padding:6px!important;margin:-6px -6px 6px!important;}
+  .dwlTableWrap{overflow-x:hidden!important;border-radius:0!important;margin-left:0!important;margin-right:0!important;width:100%!important;}
+  .dwlEntryTable{min-width:0!important;width:100%!important;table-layout:fixed!important;font-size:9.5px!important;}
+  .dwlEntryTable th,.dwlEntryTable td{padding:1px!important;box-sizing:border-box!important;}
+  .dwlEntryTable th{font-size:8.5px!important;line-height:1!important;white-space:normal!important;overflow:hidden!important;}
+  .dwlEntryTable input,.dwlEntryTable select{font-size:11px!important;padding:3px 1px!important;min-height:28px!important;height:28px!important;line-height:1!important;min-width:0!important;box-sizing:border-box!important;text-align:center!important;}
+  .dwlEntryTable .dwlEmpInput{text-align:left!important;font-size:12px!important;padding-left:3px!important;}
+  .dwlEntryTable .dwlNum{width:auto!important;font-size:10px!important;padding:0!important;}
+  .dwlEntryTable th:nth-child(1),.dwlEntryTable td:nth-child(1){width:4%!important;}
+  .dwlEntryTable th:nth-child(2),.dwlEntryTable td:nth-child(2){width:28%!important;}
+  .dwlEntryTable th:nth-child(3),.dwlEntryTable td:nth-child(3){width:10%!important;}
+  .dwlEntryTable th:nth-child(4),.dwlEntryTable td:nth-child(4){width:8%!important;}
+  .dwlEntryTable th:nth-child(5),.dwlEntryTable td:nth-child(5){width:8%!important;}
+  .dwlEntryTable th:nth-child(6),.dwlEntryTable td:nth-child(6){width:8%!important;}
+  .dwlEntryTable th:nth-child(7),.dwlEntryTable td:nth-child(7){width:8%!important;}
+  .dwlEntryTable th:nth-child(8),.dwlEntryTable td:nth-child(8){width:7%!important;}
+  .dwlEntryTable th:nth-child(9),.dwlEntryTable td:nth-child(9){width:8%!important;}
+  .dwlEntryTable th:nth-child(10),.dwlEntryTable td:nth-child(10){width:5.5%!important;}
+  .dwlEntryTable th:nth-child(11),.dwlEntryTable td:nth-child(11){width:5.5%!important;}
+  .dwlSuggest{left:0!important;right:auto!important;width:min(260px,88vw)!important;max-height:230px!important;}
+  .dwlSuggest button{font-size:15px!important;padding:10px!important;}
+}
