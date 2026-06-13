@@ -83,14 +83,19 @@ app.post('/api/weekly-meetings/:id/sign', (req, res) => {
   if (!meeting) return res.status(404).json({ error: 'Meeting not found.' });
   const name = cleanText(req.body.name);
   const company = cleanText(req.body.company);
+  let signatureData = String(req.body.signatureData || '');
+  if (!signatureData.startsWith('data:image/png;base64,')) signatureData = '';
+  if (signatureData.length > 750000) signatureData = '';
   if (!name) return res.status(400).json({ error: 'Worker name is required.' });
+  if (!signatureData) return res.status(400).json({ error: 'Worker signature is required.' });
   meeting.attendees = meeting.attendees || [];
   const existing = meeting.attendees.find(a => a.name.toLowerCase() === name.toLowerCase());
   if (existing) {
     existing.company = company || existing.company;
+    existing.signatureData = signatureData || existing.signatureData;
     existing.signedAt = new Date().toISOString();
   } else {
-    meeting.attendees.push({ id: nanoid(8), name, company, signedAt: new Date().toISOString() });
+    meeting.attendees.push({ id: nanoid(8), name, company, signatureData, signedAt: new Date().toISOString() });
   }
   writeWeeklyMeetings(rows);
   res.json({ ok: true, meeting });

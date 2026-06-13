@@ -512,18 +512,21 @@ function renderWeeklyLive(meeting){
 }
 async function fetchWeeklyMeeting(id){ const res=await fetch(`/api/weekly-meetings/${encodeURIComponent(id)}`); const json=await res.json(); if(!res.ok) throw new Error(json.error||'Meeting not found'); return json.meeting; }
 async function pollWeekly(id){
-  try{ const meeting=await fetchWeeklyMeeting(id); const box=document.getElementById('weeklyAttendees'), count=document.getElementById('weeklyCount'); if(!box) return; const rows=meeting.attendees||[]; if(count) count.textContent=rows.length; box.innerHTML = rows.length ? rows.map((a,i)=>`<div class="attendeeRow"><b>${i+1}. ${esc(a.name)}</b>${a.company?`<span>${esc(a.company)}</span>`:''}<small>${new Date(a.signedAt).toLocaleTimeString()}</small></div>`).join('') : 'Waiting for workers to sign in...'; }catch(e){ console.error(e); }
+  try{ const meeting=await fetchWeeklyMeeting(id); const box=document.getElementById('weeklyAttendees'), count=document.getElementById('weeklyCount'); if(!box) return; const rows=meeting.attendees||[]; if(count) count.textContent=rows.length; box.innerHTML = rows.length ? rows.map((a,i)=>`<div class="attendeeRow"><b>${i+1}. ${esc(a.name)}</b>${a.company?`<span>${esc(a.company)}</span>`:''}${a.signatureData?`<span class="signedBadge">Signature captured</span>`:''}<small>${new Date(a.signedAt).toLocaleTimeString()}</small></div>`).join('') : 'Waiting for workers to sign in...'; }catch(e){ console.error(e); }
 }
 
 async function weeklySignForm(id){
   if(weeklyPollTimer) { clearInterval(weeklyPollTimer); weeklyPollTimer = null; }
   let meeting;
   try{ meeting=await fetchWeeklyMeeting(id); }catch(e){ app.innerHTML=`<div class="container"><div class="panel"><h1>Meeting Not Found</h1><p>${esc(e.message)}</p></div></div>`; return; }
-  app.innerHTML=`<div class="container workerSign"><div class="panel"><img src="${logo}" class="smallLogo"><h1>Weekly Safety Meeting Sign-In</h1><p><b>Project:</b> ${esc(meeting.project)}</p><p><b>Date:</b> ${esc(dateToSlashYYYY(meeting.date))}</p><p><b>Topic:</b> ${esc(meeting.topic)}</p><div class="grid one">${field('workerName','Worker Name')} ${field('workerCompany','Company','text','value="JAGD Construction"')}</div><div class="actions"><button class="btn" id="workerSignBtn" type="button">Sign In</button></div><div id="workerSignMsg"></div></div></div>`;
+  signatureStore.workerSignature = '';
+  app.innerHTML=`<div class="container workerSign"><div class="panel"><img src="${logo}" class="smallLogo"><h1>Weekly Safety Meeting Sign-In</h1><p><b>Project:</b> ${esc(meeting.project)}</p><p><b>Date:</b> ${esc(dateToSlashYYYY(meeting.date))}</p><p><b>Topic:</b> ${esc(meeting.topic)}</p><div class="grid one">${field('workerName','Print Name')} ${field('workerCompany','Company','text','value="JAGD Construction"')}</div>${sigField('workerSignature','Signature')}<p class="tiny">Print your name, tap Add Signature, sign with your finger, then press Sign In.</p><div class="actions"><button class="btn" id="workerSignBtn" type="button">Sign In</button></div><div id="workerSignMsg"></div></div></div>`;
+  initSignatureButtons();
   document.getElementById('workerSignBtn').onclick=async()=>{
-    const name=val('workerName'); const company=val('workerCompany');
-    if(!name){document.getElementById('workerSignMsg').innerHTML='<div class="notice">Enter your name to sign in.</div>'; return;}
-    const res=await fetch(`/api/weekly-meetings/${encodeURIComponent(id)}/sign`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,company})});
+    const name=val('workerName'); const company=val('workerCompany'); const signatureData=signatureStore.workerSignature||'';
+    if(!name){document.getElementById('workerSignMsg').innerHTML='<div class="notice">Print your name to sign in.</div>'; return;}
+    if(!signatureData){document.getElementById('workerSignMsg').innerHTML='<div class="notice">Tap Add Signature and sign with your finger.</div>'; return;}
+    const res=await fetch(`/api/weekly-meetings/${encodeURIComponent(id)}/sign`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,company,signatureData})});
     const json=await res.json();
     if(!res.ok){document.getElementById('workerSignMsg').innerHTML=`<div class="notice">${esc(json.error||'Could not sign in.')}</div>`;return;}
     document.getElementById('workerSignMsg').innerHTML='<div class="notice success">You are signed in. You can close this page.</div>';
@@ -532,7 +535,7 @@ async function weeklySignForm(id){
 }
 
 function buildWeeklyPrint(meeting){
-  const rows=(meeting.attendees||[]).map((a,i)=>`<tr><td>${i+1}</td><td>${esc(a.name)}</td><td>${esc(a.company||'')}</td><td>${esc(new Date(a.signedAt).toLocaleString())}</td><td></td></tr>`).join('');
+  const rows=(meeting.attendees||[]).map((a,i)=>`<tr><td>${i+1}</td><td>${esc(a.name)}</td><td>${esc(a.company||'')}</td><td>${esc(new Date(a.signedAt).toLocaleString())}</td><td>${a.signatureData?`<img class="weeklySigPrint" src="${a.signatureData}">`:''}</td></tr>`).join('');
   const blanks=Array.from({length:Math.max(8,18-(meeting.attendees||[]).length)},(_,i)=>`<tr><td>${(meeting.attendees||[]).length+i+1}</td><td></td><td></td><td></td><td></td></tr>`).join('');
   const html=`<div class="weeklySheet"><div class="weeklyPrintHeader"><img src="${logo}"><div><h1>Weekly Safety Meeting</h1><p><b>Project:</b> ${esc(meeting.project)}</p><p><b>Meeting Date:</b> ${esc(dateToSlashYYYY(meeting.date))}</p><p><b>Foreman:</b> ${esc(meeting.foreman||'')}</p></div></div><div class="topicBox"><b>Safety Topic:</b><br>${esc(meeting.topic)}</div><table class="weeklyTable"><tr><th>#</th><th>Worker Name</th><th>Company</th><th>Signed In</th><th>Signature / Initials</th></tr>${rows}${blanks}</table><div class="weeklyFoot">Weekly Safety Meeting</div></div>`;
   setPrint(html); return html;
