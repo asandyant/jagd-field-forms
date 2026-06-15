@@ -749,86 +749,46 @@ async function autoFillWeather(){
 }
 async function dwlForm(){
   await loadActiveWorkers();
-  app.innerHTML=`<div class="container printOnly dwlContainer dwlBossHybrid">
-    <h1>Daily Work Log</h1>
-    <p class="tiny"><b>Boss-style DWL sheet.</b> Fill it out on the phone like normal. The active-worker name lookup, Class/Local auto-fill, manual unknown workers, No Lunch .5 toggle, date/day, and PDF naming still run behind the scenes.</p>
-    <datalist id="dwlWorkerList"></datalist>${dwlDataList('dwlClassList',DWL_CLASS_OPTIONS)}${dwlDataList('dwlLocalList',DWL_LOCAL_OPTIONS)}${dwlDataList('dwlActivityList',DWL_ACTIVITY_NUMBERS)}${dwlDataList('dwlOverList',DWL_OVER_OPTIONS)}${dwlDataList('dwlSmallHourList',DWL_SMALL_HOUR_OPTIONS)}
-    <div class="panel dwlQuickPanel"><h2>Quick Fill</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')}</div></div>
-    <div class="panel dwlBossSheetPanel"><div class="dwlSheetHint">This preview uses the boss DWL sheet. The printed/PDF copy uses the same sheet background.</div><div class="dwlBossSheetFill">
-      <img class="dwlBossBg" src="/assets/dwl_page1.png" alt="JAGD Daily Work Log boss sheet">
-      <div class="dwlOverlayField projectText" id="dwlProjectMirror"></div>
-      <div class="dwlOverlayField dateText" id="dwlDateMirror"></div>
-      <div class="dwlOverlayField weatherText" id="dwlWeatherMirror"></div>
-      <div class="dwlOverlayField dayText" id="dwlDayMirror"></div>
-      ${textarea('dwlDescription','')}
-      ${textarea('dwlNotes','')}
-      ${textarea('dwlSafetyTopic','')}
-      <div class="dwlBossRows"><table class="dwlEntryTable bossFill"><tbody id="dwlRows"></tbody></table></div>
-      <div class="dwlSignFill">${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}</div>
-    </div></div>
-    <div class="panel"><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / More Workers</button><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p><div id="dwlMsg"></div></div>
+  app.innerHTML=`<div class="container printOnly dwlContainer"><h1>Daily Work Log</h1><datalist id="dwlWorkerList"></datalist>${dwlDataList('dwlClassList',DWL_CLASS_OPTIONS)}${dwlDataList('dwlLocalList',DWL_LOCAL_OPTIONS)}${dwlDataList('dwlActivityList',DWL_ACTIVITY_NUMBERS)}${dwlDataList('dwlOverList',DWL_OVER_OPTIONS)}${dwlDataList('dwlSmallHourList',DWL_SMALL_HOUR_OPTIONS)}
+    <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')}</div></div>
+    <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
+    <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
+    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
+    <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
   const dateEl=document.getElementById('dwlReportDate'), dayEl=document.getElementById('dwlDay');
-  const updateDay=()=>{ if(!dateEl.value){dayEl.value='';return;} const d=new Date(dateEl.value+'T00:00:00'); dayEl.value=d.toLocaleDateString(undefined,{weekday:'long'}); syncDwlBossMirrors(); };
+  const updateDay=()=>{ if(!dateEl.value){dayEl.value='';return;} const d=new Date(dateEl.value+'T00:00:00'); dayEl.value=d.toLocaleDateString(undefined,{weekday:'long'}); };
   dateEl.value=new Date().toISOString().slice(0,10); updateDay(); dateEl.addEventListener('change',updateDay);
-  ['dwlProject','dwlProjectOther','dwlWeather','dwlDay'].forEach(id=>{const el=document.getElementById(id); if(el){el.addEventListener('input',syncDwlBossMirrors); el.addEventListener('change',syncDwlBossMirrors);}});
-  populateDwlWorkerDatalist(); setupDwlRows(); initSignatureButtons(); syncDwlBossMirrors();
+  populateDwlWorkerDatalist(); setupDwlRows(); initSignatureButtons();
   document.getElementById('dwlAddPageBtn').onclick=addDwlPageRows;
   setTimeout(()=>autoFillWeather(),350);
   document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); buildDwlPrint(data); openPrintNow('dwlMsg');}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
-function syncDwlBossMirrors(){
-  const set=(id,text)=>{const el=document.getElementById(id); if(el) el.textContent=text||'';};
-  set('dwlProjectMirror', projectValue('dwlProject'));
-  set('dwlDateMirror', dateToSlashYYYY(val('dwlReportDate')));
-  set('dwlWeatherMirror', val('dwlWeather'));
-  set('dwlDayMirror', val('dwlDay'));
-}
 function collectDwl(){
-  const rows=[]; for(let i=1;i<=50;i++){
+  const rows=[]; for(let i=1;i<=40;i++){
     const emp=document.getElementById('dwlEmp'+i); if(!emp) continue;
     const row={num:i, employee:val('dwlEmp'+i), location:val('dwlLoc'+i), activity:val('dwlAct'+i), class:val('dwlClass'+i), local:val('dwlLocal'+i), straight:val('dwlStraight'+i), over:val('dwlOver'+i), noLunch:val('dwlNoLunch'+i), pt:val('dwlPT'+i), rt:val('dwlRT'+i)};
     rows.push(row);
   }
   return {project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:[],description:val('dwlDescription'),notes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows};
 }
-function dwlPrintText(cls, text){ return `<div class="dwlPrintText ${cls}">${esc(text||'')}</div>`; }
-function dwlPrintRowFields(rows, start, count){
-  const out=[];
-  for(let n=0;n<count;n++){
-    const r=rows[start+n] || {num:start+n+1}; const rowNum=start+n+1;
-    const top=(rowNum<=20 ? 41.08+(n*2.78) : 13.55+(n*2.78));
-    const rowClass=rowNum<=20?'p1':'p2';
-    out.push(dwlPrintText(`${rowClass} row emp r${n}`, r.employee));
-    out.push(dwlPrintText(`${rowClass} row loc r${n}`, r.location));
-    out.push(dwlPrintText(`${rowClass} row act r${n}`, r.activity));
-    out.push(dwlPrintText(`${rowClass} row cls r${n}`, r.class));
-    out.push(dwlPrintText(`${rowClass} row local r${n}`, r.local));
-    out.push(dwlPrintText(`${rowClass} row straight r${n}`, r.straight));
-    out.push(dwlPrintText(`${rowClass} row over r${n}`, r.over));
-    out.push(dwlPrintText(`${rowClass} row nolunch r${n}`, r.noLunch));
-    out.push(dwlPrintText(`${rowClass} row pt r${n}`, r.pt));
-    out.push(dwlPrintText(`${rowClass} row rt r${n}`, r.rt));
-  }
-  return out.join('');
+function dwlWorkerRowsPrint(rows, start, count){
+  const slice=rows.slice(start,start+count);
+  while(slice.length<count) slice.push({num:start+slice.length+1});
+  return slice.map(r=>`<tr><td>${esc(r.num||'')}</td><td>${esc(r.employee||'')}</td><td>${esc(r.location||'')}</td><td>${esc(r.activity||'')}</td><td>${esc(r.class||'')}</td><td>${esc(r.local||'')}</td><td>${esc(r.straight||'')}</td><td>${esc(r.over||'')}</td><td class="dwlNoLunchPrint">${esc(r.noLunch||'')}</td><td>${esc(r.pt||'')}</td><td>${esc(r.rt||'')}</td></tr>`).join('');
 }
-function buildDwlBossPage(data, pageIndex, totalPages){
-  const bg=pageIndex===1?'/assets/dwl_page1.png':'/assets/dwl_page2.png';
-  const start=pageIndex===1?0:20; const count=pageIndex===1?20:30;
-  const dateSlash=dateToSlashYYYY(data.reportDate);
-  const firstPage = pageIndex===1;
-  return `<div class="dwlBossPrintPage"><img class="dwlBossPrintBg" src="${bg}">
-    ${firstPage?`${dwlPrintText('project', data.project)}${dwlPrintText('date', dateSlash)}${dwlPrintText('weather', data.weather)}${dwlPrintText('day', data.day)}${dwlPrintText('desc', data.description)}${dwlPrintText('notes', data.notes)}${dwlPrintText('safety', data.safetyTopic)}`:''}
-    ${dwlPrintRowFields(data.rows,start,count)}
-    ${firstPage?`${dwlPrintText('printName', data.printName||data.foreman)}${data.signatureData?`<img class="dwlBossSig" src="${data.signatureData}">`:dwlPrintText('signText','')}${dwlPrintText('footDate', dateSlash)}`:''}
-    <div class="dwlBossPageNum">${totalPages>1?pageIndex+' of '+totalPages:''}</div>
-  </div>`;
+function buildDwlSheet(data, pageIndex, totalPages){
+  const dateSlash=dateToSlashYYYY(data.reportDate); const dateDot=dateToDotMMDDYY(data.reportDate);
+  const rowsPerPage=20; const start=(pageIndex-1)*rowsPerPage;
+  return `<div class="dwlPrintSheet ${totalPages===1?'dwlSinglePage':''}"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 4.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Crew:</b> ${esc(data.crew)}</div></div><table class="dwlActivitiesPrint"><tr><th colspan="2">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.notes)}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b> <span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
 }
 function buildDwlPrint(data){
   const filledRows=data.rows.filter(r=>r.employee || r.location || r.activity || r.class || r.local || r.straight || r.over || r.noLunch || r.pt || r.rt);
-  const needed = filledRows.length>20 ? 2 : 1;
-  const html=Array.from({length:needed},(_,i)=>buildDwlBossPage(data,i+1,needed)).join('');
+  const needed=Math.max(1, Math.ceil(Math.max(filledRows.length,20)/20));
+  const rowsForPrint = data.rows.slice(0, needed*20);
+  const d={...data, rows:rowsForPrint};
+  const html=Array.from({length:needed},(_,i)=>buildDwlSheet(d,i+1,needed)).join('');
   setPrint(html); return html;
 }
 
