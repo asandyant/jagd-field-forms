@@ -509,3 +509,28 @@
   .dwlEntryTable .dwlEmpInput{font-size:16px!important;}
   .dwlTableWrap{max-width:100vw!important;}
 }
+
+/* v38 DWL phone cleanup: no keyboard for quick number cells and even table boxes */
+.dwlEntryTable{table-layout:fixed!important;min-width:0!important;width:100%!important}
+.dwlEntryTable th,.dwlEntryTable td{padding:0!important;height:42px!important;overflow:visible!important}
+.dwlEntryTable input,.dwlEntryTable select{height:42px!important;min-height:42px!important;border:0!important;border-radius:0!important;text-align:center!important;font-size:18px!important;line-height:1!important;padding:0 2px!important;background:#fff!important;color:#111!important}
+.dwlEntryTable .dwlEmpInput{text-align:left!important;font-size:17px!important;padding:0 6px!important}
+.dwlEntryTable th:nth-child(1),.dwlEntryTable td:nth-child(1){width:40px!important}
+.dwlEntryTable th:nth-child(2),.dwlEntryTable td:nth-child(2){width:190px!important}
+.dwlEntryTable th:nth-child(3),.dwlEntryTable td:nth-child(3){width:68px!important}
+.dwlEntryTable th:nth-child(4),.dwlEntryTable td:nth-child(4){width:56px!important}
+.dwlEntryTable th:nth-child(5),.dwlEntryTable td:nth-child(5){width:64px!important}
+.dwlEntryTable th:nth-child(6),.dwlEntryTable td:nth-child(6){width:64px!important}
+.dwlEntryTable th:nth-child(7),.dwlEntryTable td:nth-child(7),.dwlEntryTable th:nth-child(8),.dwlEntryTable td:nth-child(8),.dwlEntryTable th:nth-child(9),.dwlEntryTable td:nth-child(9),.dwlEntryTable th:nth-child(10),.dwlEntryTable td:nth-child(10),.dwlEntryTable th:nth-child(11),.dwlEntryTable td:nth-child(11){width:58px!important}
+.dwlEntryTable select.dwlQuickPick{-webkit-appearance:none;appearance:none;background:#fff!important;font-weight:800;text-align-last:center}
+.dwlNoLunchBox{font-size:18px!important}
+@media(max-width:700px){
+  .dwlTableWrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch!important;margin-left:-8px!important;margin-right:-8px!important;border-radius:0!important}
+  .dwlEntryTable{min-width:710px!important;font-size:12px!important}
+  .dwlEntryTable th{font-size:12px!important;line-height:1.05!important;height:38px!important;padding:1px!important}
+  .dwlEntryTable th,.dwlEntryTable td{height:52px!important}
+  .dwlEntryTable input,.dwlEntryTable select{height:52px!important;min-height:52px!important;font-size:18px!important}
+  .dwlEntryTable .dwlEmpInput{font-size:18px!important}
+  .dwlCrewTools{padding:12px!important}
+  .dwlCrewTools .actions{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}
+}

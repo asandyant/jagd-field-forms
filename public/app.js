@@ -607,6 +607,9 @@ function findWorkerByName(name){
 function dwlDataList(id, options){
   return `<datalist id="${id}">${options.map(o=>`<option value="${esc(o)}"></option>`).join('')}</datalist>`;
 }
+function dwlSelect(id, options, cls=''){
+  return `<select id="${id}" class="dwlQuickPick ${cls}" enterkeyhint="done"><option value=""></option>${options.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select>`;
+}
 function normalizeDwlClass(c){
   const v=String(c||'').trim(); const l=v.toLowerCase();
   if(!v) return '';
@@ -626,7 +629,7 @@ function cleanDwlLocal(v){
 }
 
 function dwlRow(i){
-  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" list="dwlActivityList" inputmode="numeric"></td><td><input id="dwlClass${i}" list="dwlClassList" autocapitalize="characters"></td><td><input id="dwlLocal${i}" list="dwlLocalList" inputmode="numeric"></td><td><input id="dwlStraight${i}" class="dwlStraightBox" inputmode="decimal" title="Tap to set 8 hours; edit if needed"></td><td><input id="dwlOver${i}" list="dwlOverList" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" list="dwlSmallHourList" inputmode="decimal"></td><td><input id="dwlRT${i}" list="dwlSmallHourList" inputmode="decimal"></td></tr>`;
+  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}" enterkeyhint="done"></td><td>${dwlSelect('dwlAct'+i,DWL_ACTIVITY_NUMBERS)}</td><td>${dwlSelect('dwlClass'+i,DWL_CLASS_OPTIONS)}</td><td><input id="dwlLocal${i}" list="dwlLocalList" inputmode="numeric" enterkeyhint="done"></td><td>${dwlSelect('dwlStraight'+i,['1','2','3','4','5','6','7','8'],'dwlStraightBox')}</td><td>${dwlSelect('dwlOver'+i,DWL_OVER_OPTIONS)}</td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td>${dwlSelect('dwlPT'+i,DWL_SMALL_HOUR_OPTIONS)}</td><td>${dwlSelect('dwlRT'+i,DWL_SMALL_HOUR_OPTIONS)}</td></tr>`;
 }
 function applyWorkerToDwlRow(i,w){
   if(!w) return;
@@ -705,16 +708,25 @@ function setupDwlWorkerAutofill(){
     emp.addEventListener('focus',()=>showDwlSuggestions(i));
     emp.addEventListener('change',()=>{ const w=findWorkerByName(emp.value); if(w) applyWorkerToDwlRow(i,w); });
     emp.addEventListener('blur',()=>{ setTimeout(()=>hideDwlSuggestions(),220); setTimeout(()=>saveDwlLastCrewFromRows(),250); });
-    const st=document.getElementById('dwlStraight'+i);
-    if(st && st.dataset.ready!=='1'){
-      st.dataset.ready='1';
-      st.addEventListener('click',()=>{ if(!st.value.trim()){ st.value='8'; setTimeout(()=>{ try{ st.select(); }catch(e){} },0); } });
-      st.addEventListener('input',()=>{ const n=parseFloat(st.value); if(!isNaN(n) && n>8) st.value='8'; });
-    }
+    ['dwlAct','dwlClass','dwlStraight','dwlOver','dwlPT','dwlRT'].forEach(prefix=>{
+      const pick=document.getElementById(prefix+i);
+      if(pick && pick.dataset.quickReady!=='1'){
+        pick.dataset.quickReady='1';
+        pick.addEventListener('change',()=>{ setTimeout(()=>{ try{ pick.blur(); }catch(e){} },60); saveDwlLastCrewFromRows(); });
+      }
+    });
+    ['dwlLocal','dwlLoc'].forEach(prefix=>{
+      const field=document.getElementById(prefix+i);
+      if(field && field.dataset.doneReady!=='1'){
+        field.dataset.doneReady='1';
+        field.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); field.blur(); }});
+        field.addEventListener('change',()=>saveDwlLastCrewFromRows());
+      }
+    });
     const nl=document.getElementById('dwlNoLunch'+i);
     if(nl && nl.dataset.ready!=='1'){
       nl.dataset.ready='1';
-      nl.addEventListener('click',()=>{ nl.value = nl.value.trim()==='.5' ? '' : '.5'; });
+      nl.addEventListener('click',()=>{ nl.value = nl.value.trim()==='.5' ? '' : '.5'; try{ nl.blur(); }catch(e){} saveDwlLastCrewFromRows(); });
     }
   }
 }
