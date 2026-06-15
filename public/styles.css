@@ -509,16 +509,3 @@
   .dwlEntryTable .dwlEmpInput{font-size:16px!important;}
   .dwlTableWrap{max-width:100vw!important;}
 }
-
-/* v40 DWL phone quick picker: stops iPhone number keypad from staying open */
-.dwlPickInput{cursor:pointer;background:#fff;}
-.dwlQuickPickerBox{max-width:420px;width:calc(100vw - 28px);}
-.dwlQuickPickerBox h2{margin-bottom:10px;}
-.dwlQuickPickerGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0 14px;}
-.dwlQuickPickerGrid button{border:1px solid #bbb;background:#fff;border-radius:10px;padding:14px 6px;font-size:20px;font-weight:800;min-height:52px;}
-.dwlQuickPickerGrid button:active{transform:scale(.98);}
-@media(max-width:700px){
-  .dwlQuickPickerBox{width:calc(100vw - 22px);}
-  .dwlQuickPickerGrid{grid-template-columns:repeat(4,1fr);gap:7px;}
-  .dwlQuickPickerGrid button{font-size:19px;min-height:50px;padding:12px 4px;}
-}

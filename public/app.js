@@ -626,55 +626,8 @@ function cleanDwlLocal(v){
 }
 
 function dwlRow(i){
-  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" class="dwlPickInput" readonly data-dwl-pick="activity" inputmode="none"></td><td><input id="dwlClass${i}" list="dwlClassList" autocapitalize="characters"></td><td><input id="dwlLocal${i}" list="dwlLocalList" inputmode="numeric"></td><td><input id="dwlStraight${i}" class="dwlStraightBox dwlPickInput" readonly data-dwl-pick="straight" inputmode="none" title="Tap to pick straight time"></td><td><input id="dwlOver${i}" class="dwlPickInput" readonly data-dwl-pick="over" inputmode="none"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="none" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" class="dwlPickInput" readonly data-dwl-pick="small" inputmode="none"></td><td><input id="dwlRT${i}" class="dwlPickInput" readonly data-dwl-pick="small" inputmode="none"></td></tr>`;
+  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" list="dwlActivityList" inputmode="numeric"></td><td><input id="dwlClass${i}" list="dwlClassList" autocapitalize="characters"></td><td><input id="dwlLocal${i}" list="dwlLocalList" inputmode="numeric"></td><td><input id="dwlStraight${i}" class="dwlStraightBox" inputmode="decimal" title="Tap to set 8 hours; edit if needed"></td><td><input id="dwlOver${i}" list="dwlOverList" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" list="dwlSmallHourList" inputmode="decimal"></td><td><input id="dwlRT${i}" list="dwlSmallHourList" inputmode="decimal"></td></tr>`;
 }
-
-function dwlPickOptions(kind){
-  if(kind==='activity') return DWL_ACTIVITY_NUMBERS;
-  if(kind==='straight') return ['','1','2','3','4','5','6','7','8'];
-  if(kind==='over') return ['','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24'];
-  return ['','1','2','3','4','5','6','7','8','9','10'];
-}
-function dwlPickLabel(kind){
-  if(kind==='activity') return 'Pick Activity';
-  if(kind==='straight') return 'Pick Straight Time';
-  if(kind==='over') return 'Pick Overtime';
-  return 'Pick Time';
-}
-function showDwlQuickPicker(input){
-  if(!input) return;
-  const kind=input.dataset.dwlPick || 'small';
-  try{ input.blur(); }catch(e){}
-  document.querySelectorAll('.dwlQuickPickerOverlay').forEach(x=>x.remove());
-  const overlay=document.createElement('div');
-  overlay.className='modal dwlQuickPickerOverlay';
-  const options=dwlPickOptions(kind);
-  overlay.innerHTML=`<div class="modalBox dwlQuickPickerBox"><h2>${esc(dwlPickLabel(kind))}</h2><div class="dwlQuickPickerGrid">${options.map(v=>`<button type="button" data-val="${esc(v)}">${v?esc(v):'Clear'}</button>`).join('')}</div><div class="actions right"><button class="btn light" type="button" data-cancel="1">Cancel</button></div></div>`;
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click',(e)=>{ if(e.target===overlay) overlay.remove(); });
-  overlay.querySelector('[data-cancel]').onclick=()=>overlay.remove();
-  overlay.querySelectorAll('[data-val]').forEach(btn=>{
-    btn.onclick=()=>{
-      input.value=btn.dataset.val || '';
-      input.dispatchEvent(new Event('change',{bubbles:true}));
-      overlay.remove();
-      setTimeout(()=>{ try{ input.blur(); }catch(e){} },0);
-    };
-  });
-}
-function setupDwlNumberPickers(){
-  document.querySelectorAll('.dwlPickInput').forEach(input=>{
-    if(input.dataset.pickReady==='1') return;
-    input.dataset.pickReady='1';
-    input.addEventListener('focus',(e)=>{ e.preventDefault(); showDwlQuickPicker(input); });
-    input.addEventListener('click',(e)=>{ e.preventDefault(); showDwlQuickPicker(input); });
-    input.addEventListener('keydown',(e)=>{
-      if(e.key==='Backspace' || e.key==='Delete'){ input.value=''; input.dispatchEvent(new Event('change',{bubbles:true})); return; }
-      e.preventDefault();
-    });
-  });
-}
-
 function applyWorkerToDwlRow(i,w){
   if(!w) return;
   const emp=document.getElementById('dwlEmp'+i);
@@ -753,7 +706,11 @@ function setupDwlWorkerAutofill(){
     emp.addEventListener('change',()=>{ const w=findWorkerByName(emp.value); if(w) applyWorkerToDwlRow(i,w); });
     emp.addEventListener('blur',()=>{ setTimeout(()=>hideDwlSuggestions(),220); setTimeout(()=>saveDwlLastCrewFromRows(),250); });
     const st=document.getElementById('dwlStraight'+i);
-    if(st && st.dataset.ready!=='1'){ st.dataset.ready='1'; }
+    if(st && st.dataset.ready!=='1'){
+      st.dataset.ready='1';
+      st.addEventListener('click',()=>{ if(!st.value.trim()){ st.value='8'; setTimeout(()=>{ try{ st.select(); }catch(e){} },0); } });
+      st.addEventListener('input',()=>{ const n=parseFloat(st.value); if(!isNaN(n) && n>8) st.value='8'; });
+    }
     const nl=document.getElementById('dwlNoLunch'+i);
     if(nl && nl.dataset.ready!=='1'){
       nl.dataset.ready='1';
@@ -765,7 +722,6 @@ function setupDwlRows(){
   const tbody=document.getElementById('dwlRows');
   tbody.innerHTML = Array.from({length:20},(_,idx)=>dwlRow(idx+1)).join('');
   setupDwlWorkerAutofill();
-  setupDwlNumberPickers();
 }
 function addDwlPageRows(){
   const tbody=document.getElementById('dwlRows');
@@ -773,7 +729,6 @@ function addDwlPageRows(){
   if(current>=40) return;
   tbody.insertAdjacentHTML('beforeend', Array.from({length:20},(_,idx)=>dwlRow(current+idx+1)).join(''));
   setupDwlWorkerAutofill();
-  setupDwlNumberPickers();
 }
 
 function clearDwlWorkerRows(){
