@@ -486,3 +486,26 @@
   .dwlSuggest{left:0!important;right:auto!important;width:min(260px,88vw)!important;max-height:230px!important;}
   .dwlSuggest button{font-size:15px!important;padding:10px!important;}
 }
+
+/* v37 DWL crew tools + phone focus fix */
+.dwlCrewTools{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #ccc;background:#f7f7f7;border-radius:12px;padding:10px;margin:0 0 10px;}
+.dwlCrewTools b{display:block;font-size:16px;}
+.dwlCrewTools span{display:block;font-size:12px;color:#555;margin-top:2px;}
+.dwlCrewTools .actions{margin:0;justify-content:flex-end;}
+.btn.danger{background:#fff;color:#7a1111;border-color:#7a1111;}
+.modalOverlay{position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;}
+.modalBox{width:min(760px,100%);max-height:92vh;overflow:auto;background:#fff;color:#111;border-radius:14px;box-shadow:0 18px 45px rgba(0,0,0,.35);padding:18px;box-sizing:border-box;}
+.modalBox h2{margin:0 0 8px;font-size:20px;}
+.crewUploadBox textarea{width:100%;height:210px;box-sizing:border-box;border:2px solid #111;border-radius:10px;padding:12px;font-size:16px;line-height:1.35;resize:vertical;}
+.actions.right{justify-content:flex-end;}
+@media screen and (max-width:700px){
+  html,body{max-width:100%;overflow-x:hidden;}
+  .dwlCrewTools{display:block;padding:9px;}
+  .dwlCrewTools .actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px;}
+  .dwlCrewTools .btn{width:100%;}
+  .crewUploadBox textarea{height:260px;font-size:16px!important;}
+  .modalBox{padding:14px;border-radius:12px;}
+  .dwlEntryTable input,.dwlEntryTable select,.dwlEntryTable textarea{font-size:16px!important;transform:none!important;}
+  .dwlEntryTable .dwlEmpInput{font-size:16px!important;}
+  .dwlTableWrap{max-width:100vw!important;}
+}
