@@ -76,6 +76,72 @@ const pirHoldPoints = [
 
 function esc(v){return String(v ?? '').replace(/[&<>'"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[s]));}
 function val(id){const el=document.getElementById(id); return el ? el.value.trim() : '';}
+
+function parsePirTemp(value){
+  if(value===undefined || value===null) return NaN;
+  const cleaned=String(value).replace(/[^0-9.\-]/g,'').trim();
+  if(!cleaned) return NaN;
+  return Number(cleaned);
+}
+function pirRoundNum(n){return Number.isFinite(n) ? String(Math.round(n)) : '';}
+function calcPirAmbientFromDryWet(dryF, wetF){
+  const dryC=(dryF-32)*5/9;
+  const wetC=(wetF-32)*5/9;
+  if(!Number.isFinite(dryC) || !Number.isFinite(wetC) || wetC>dryC) return null;
+  const pressure=1013.25; // standard sea-level pressure in hPa, good field approximation for this PIR.
+  const sat=(c)=>6.112*Math.exp((17.62*c)/(243.12+c));
+  const gamma=0.00066*(1+0.00115*wetC)*pressure;
+  const vapor=sat(wetC)-gamma*(dryC-wetC);
+  if(!Number.isFinite(vapor) || vapor<=0) return null;
+  const rh=Math.max(0,Math.min(100,(vapor/sat(dryC))*100));
+  const ln=Math.log(vapor/6.112);
+  const dewC=(243.12*ln)/(17.62-ln);
+  const dewF=dewC*9/5+32;
+  return {rh, dewF};
+}
+function updatePirAmbientRow(i){
+  const dryEl=document.getElementById('pirDry'+i);
+  const wetEl=document.getElementById('pirWet'+i);
+  const rhEl=document.getElementById('pirRH'+i);
+  const surfEl=document.getElementById('pirSurf'+i);
+  const dewEl=document.getElementById('pirDew'+i);
+  const diffEl=document.getElementById('pirDiff'+i);
+  if(!dryEl || !wetEl || !rhEl || !surfEl || !dewEl || !diffEl) return;
+  const dry=parsePirTemp(dryEl.value);
+  const wet=parsePirTemp(wetEl.value);
+  const surface=parsePirTemp(surfEl.value);
+  const calc=calcPirAmbientFromDryWet(dry, wet);
+  if(calc){
+    rhEl.value=pirRoundNum(calc.rh);
+    dewEl.value=pirRoundNum(calc.dewF);
+  } else if(!dryEl.value.trim() && !wetEl.value.trim()){
+    rhEl.value='';
+    dewEl.value='';
+  }
+  const dew=parsePirTemp(dewEl.value);
+  if(Number.isFinite(surface) && Number.isFinite(dew)){
+    diffEl.value=pirRoundNum(surface-dew);
+  } else if(!surfEl.value.trim()){
+    diffEl.value='';
+  }
+}
+function setupPirAmbientCalcs(){
+  [1,2,3,4].forEach(i=>{
+    ['pirDry','pirWet','pirSurf','pirDew'].forEach(prefix=>{
+      const el=document.getElementById(prefix+i);
+      if(el){
+        el.setAttribute('inputmode','decimal');
+        el.addEventListener('input',()=>updatePirAmbientRow(i));
+        el.addEventListener('change',()=>updatePirAmbientRow(i));
+      }
+    });
+    ['pirRH','pirDew','pirDiff'].forEach(prefix=>{
+      const el=document.getElementById(prefix+i);
+      if(el) el.classList.add('pirAutoCalcField');
+    });
+    updatePirAmbientRow(i);
+  });
+}
 function checked(name){const el=document.querySelector(`[name="${name}"]:checked`); return el ? el.value : '';}
 function setPrint(html){document.querySelectorAll('.printPage').forEach(x=>x.remove()); const div=document.createElement('div'); div.className='printPage'; div.innerHTML=html; document.body.appendChild(div); currentPrint=html;}
 function field(id,label,type='text',extra=''){return `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" ${extra}></div>`;}
@@ -234,7 +300,7 @@ function pirForm(){
     <div id="pir-surface" class="panel"><h2>Surface Cleanliness / Profile Measurement</h2><div class="grid three">${field('pirSurfacesPrepared','Surfaces Prepared Per Specification')} ${field('pirSSPC','SSPC/NACE SP')} ${field('pirSpecifiedProfile','Specified Profile')} ${field('pirProfileCheck','Profile Check')} ${selectField('pirAbrasiveTest','Abrasive Test Acceptable',['','YES','NO','N/A'])} ${selectField('pirBlotterTest','Blotter Test Acceptable',['','YES','NO','N/A'])} ${field('pirChloride1','Chloride ug/cm²')} ${field('pirChloride2','Chloride ug/cm²')} ${selectField('pirIllumination','Illumination Acceptable',['','YES','NO','N/A'])}</div></div>
     <div id="pir-testex" class="panel"><h2>Testex Tape Inserts</h2><div class="testexScreenGrid">${[1,2,3].map(i=>`<div class="testexCard"><div class="testexBox screen"><span>Insert Testex Tape Here</span></div>${field('pirTestexLoc'+i,'Tape '+i+' Location / Area')}${field('pirTestexReading'+i,'Tape '+i+' Profile Reading')}${field('pirTestexNotes'+i,'Tape '+i+' Notes')}</div>`).join('')}</div></div>
     <div id="pir-instruments" class="panel"><h2>Calibrated QC Equipment</h2><div class="grid three">${['Sling Psychrometer','Surface Temperature Gage','Calibration Plates','Micrometer','Positector','Wet Film Thickness Gage','Inspection Equip inspected in last 12 Months?'].map((n,i)=>`<div class="checkrow"><label>${n}</label>${selectField('pirInstYes'+i,'Status',['YES','NO','N/A'])}${field('pirInstSerial'+i,'Serial Number')}${i===4?field('pirPosiAdjust','PA-2 Adjustment made') : ''}</div>`).join('')}</div></div>
-    <div id="pir-ambient" class="panel"><h2>Ambient Conditions</h2><div class="grid four">${[1,2,3,4].map(i=>`<div class="checkrow"><h3>Reading ${i}</h3>${field('pirAmbLoc'+i,'Location')}${field('pirAmbTime'+i,'Time','time')}${field('pirDry'+i,'Dry Bulb Temp')}${field('pirWet'+i,'Wet Bulb Temp')}${field('pirRH'+i,'% Relative Humidity')}${field('pirSurf'+i,'Surface Temp')}${field('pirDew'+i,'Dew Point')}${field('pirDiff'+i,'Surface Temp. - Dew Point')}</div>`).join('')}</div></div>
+    <div id="pir-ambient" class="panel"><h2>Ambient Conditions</h2><p class="tiny"><b>Auto-calc:</b> Enter Dry Bulb + Wet Bulb to calculate % Relative Humidity and Dew Point. Enter Surface Temp to calculate Surface Temp. - Dew Point Spread.</p><div class="grid four">${[1,2,3,4].map(i=>`<div class="checkrow"><h3>Reading ${i}</h3>${field('pirAmbLoc'+i,'Location')}${field('pirAmbTime'+i,'Time','time')}${field('pirDry'+i,'Dry Bulb Temp')}${field('pirWet'+i,'Wet Bulb Temp')}${field('pirRH'+i,'% Relative Humidity')}${field('pirSurf'+i,'Surface Temp')}${field('pirDew'+i,'Dew Point')}${field('pirDiff'+i,'Surface Temp. - Dew Point Spread')}</div>`).join('')}</div></div>
     <div id="pir-mixing" class="panel"><h2>Mixing / Application</h2><div id="pirMixBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirMixBlock">+ Add another Mix / Application Block</button></div></div>
     <div id="pir-caulk" class="panel"><h2>Caulking / Signatures</h2><div class="grid three">${field('pirCaulkLocation','Caulking Location')} ${field('pirCaulkNameBatch','Name / Batch')} ${field('pirTubeSize','Tube Size')} ${field('pirCaulkShelf','Shelf Life')} ${field('pirTotalUsed','Total Amount Used')} ${field('pirQCPrint','QC Print')} ${sigField('pirQCSignature','QC Signature')} ${sigField('pirQCSSignature','QCS Signature')}</div>${textarea('pirGeneralNotes','General Notes / Nonconformance / Corrective Actions')}<div class="actions"><button class="btn" id="pirPrintBtn">Save PDF / Print PIR</button></div>${printPdfHelp('pir')}<div id="pirMsg"></div></div>
   </div></div>`;
@@ -249,6 +315,7 @@ function pirForm(){
   updateReportNumber();
   dateEl.addEventListener('change', ()=>{ updateDay(); updateReportNumber(); });
   pirMixCount=1; renderPirMixBlocks();
+  setupPirAmbientCalcs();
   document.getElementById('addPirMixBlock').onclick=()=>{pirMixCount=Math.min(4,pirMixCount+1); renderPirMixBlocks();};
   initSignatureButtons();
   document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); document.title = formSaveTitle('pir', data.reportDate, data.project); buildPirPrint(data); openPrintNow('pirMsg');}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
@@ -273,7 +340,7 @@ function buildPirPrint(data=collectPir(), files=[]){
    const row=inst[i]||{}; return `<div class="pirCell tinyCell">${cell(row.status||'YES')}</div><div class="pirCell tinyCell">${cell(n)}</div><div class="pirCell tinyCell">${cell(row.serial)}</div>`;
  }).join('') + `<div class="pirCell tinyCell">YES</div><div class="pirCell tinyCell">Posi verified as per PA-2?</div><div class="pirCell tinyCell">Adjustment made: ${cell(data.posiAdjust)}</div>`;
  const ambHead=`<div class="pirCell tinyCell"></div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a.location)}</div>`).join('')}`;
- const ambRows=[['Time','time'],['Dry Bulb Temp','dry'],['Wet Bulb Temp','wet'],['% Relative Humidity','rh'],['Surface Temp.','surface'],['Dew Point','dew'],['Surface Temp. - Dew Point','diff']].map(([label,key])=>`<div class="pirCell tinyCell">${label}</div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a[key])}</div>`).join('')}`).join('');
+ const ambRows=[['Time','time'],['Dry Bulb Temp','dry'],['Wet Bulb Temp','wet'],['% Relative Humidity','rh'],['Surface Temp.','surface'],['Dew Point','dew'],['Surface Temp. - Dew Point Spread','diff']].map(([label,key])=>`<div class="pirCell tinyCell">${label}</div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a[key])}</div>`).join('')}`).join('');
  const mixBlock=(m={})=>`<div class="mixPrintBlock"><div class="mixRow"><span><b>Location:</b> ${cell(m.location)}</span><span><b>Time:</b> ${cell(m.time)}</span></div><div class="mixHead">Batch #'s <span>Mix Witnessed and Acceptable ${cell(m.witness)}</span></div><div class="mixGrid"><span>(A) ${cell(m.batchA)}</span><span>Mfg Date ${cell(m.mfgA)}</span><span>Shelf Life ${cell(m.shelfA)}</span><span>(B) ${cell(m.batchB)}</span><span>Mfg Date ${cell(m.mfgB)}</span><span>Shelf Life ${cell(m.shelfB)}</span><span>Dust ${cell(m.dust)}</span><span>Thinner Type ${cell(m.thinner)}</span><span>% By Volume ${cell(m.volume)}</span><span>Mfr: ${cell(m.mfr)}</span><span>Prod. Name: ${cell(m.prod)}</span><span>Color: ${cell(m.color)}</span><span>Kit Sz/Cond.: ${cell(m.kit)}</span><span>Pot Life: ${cell(m.pot)}</span><span>Shelf Life: ${cell(m.shelf)}</span><span>Induction Time: ${cell(m.induction)}</span><span>Temperature: ${cell(m.temp)}</span><span>Quantity Mixed: ${cell(m.qty)}</span></div><div class="mixHead">Application</div><div class="mixGrid app"><span>Start: ${cell(m.start)}</span><span>Finish/Stop: ${cell(m.finish)}</span><span>Total Gallons: ${cell(m.gallons)}</span><span>Coat: ${cell(m.system)}</span><span>Method: ${cell(m.method)}</span><span>Gun/Tip Size: ${cell(m.gunTip)}</span><span>DFT Avg. Previous Coat: ${cell(m.dftPrev)}</span><span>Time elapsed between coats: ${cell(m.elapsed)}</span></div></div>`;
  const fourMix=[0,1,2,3].map(i=>mixBlock(mix[i]||{})).join('');
  const testex=[0,1,2].map(i=>`<div class="testexBox pirTestexPrint"><span>Insert Testex Tape Here</span></div><div class="testexMeta">${cell(data.testex?.[i]?.location)} ${cell(data.testex?.[i]?.reading)} ${cell(data.testex?.[i]?.notes)}</div>`).join('');
