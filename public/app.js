@@ -514,26 +514,49 @@ const WEEKLY_TOPICS = [
 ];
 let weeklyPollTimer = null;
 
+function weeklySafetyTopicValue(){
+  const topicEl = document.getElementById('weeklyTopic');
+  if(!topicEl) return '';
+  return topicEl.value === '__custom__' ? val('weeklyCustomTopic') : topicEl.value.trim();
+}
+
+function setupWeeklyCustomTopic(){
+  const topicEl = document.getElementById('weeklyTopic');
+  const customEl = document.getElementById('weeklyCustomTopic');
+  if(!topicEl || !customEl) return;
+  const sync = () => {
+    const custom = topicEl.value === '__custom__';
+    customEl.style.display = custom ? 'block' : 'none';
+    if(custom) customEl.focus();
+  };
+  topicEl.addEventListener('change', sync);
+  sync();
+}
+
 function weeklySafetyForm(){
   if(weeklyPollTimer) { clearInterval(weeklyPollTimer); weeklyPollTimer = null; }
   app.innerHTML = `<div class="container weeklyContainer"><h1>Weekly Safety Meeting</h1>
-    <div class="panel"><h2>Start Meeting</h2><div class="grid two">${projectField('weeklyProject','Project')} ${field('weeklyDate','Meeting Date','date')} ${field('weeklyForeman','Foreman / Field Person')} ${selectField('weeklyTopic','Safety Topic (one per meeting)',['',...WEEKLY_TOPICS])}</div>
-    <div class="actions"><button class="btn light" id="weeklyRandomTopicBtn" type="button">Randomize Topic</button><button class="btn" id="weeklyStartBtn" type="button">Start Meeting</button></div><p class="tiny">Tap Randomize Topic to pick from the loaded safety topic list, or choose/edit the topic manually before starting.</p><div id="weeklyMsg"></div></div>
+    <div class="panel"><h2>Start Meeting</h2><div class="grid two">${projectField('weeklyProject','Project')} ${field('weeklyDate','Meeting Date','date')} ${field('weeklyForeman','Foreman / Field Person')} <div><label for="weeklyTopic">Safety Topic (one per meeting)</label><select id="weeklyTopic"><option value=""></option>${WEEKLY_TOPICS.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}<option value="__custom__">Custom Topic</option></select><input id="weeklyCustomTopic" class="projectOther" type="text" placeholder="Type custom toolbox talk topic" style="display:none;margin-top:8px"></div></div>
+    <div class="actions"><button class="btn light" id="weeklyRandomTopicBtn" type="button">Randomize Topic</button><button class="btn" id="weeklyStartBtn" type="button">Start Meeting</button></div><p class="tiny">Tap Randomize Topic to pick from the loaded safety topic list, or choose Custom Topic and type your own.</p><div id="weeklyMsg"></div></div>
     <div id="weeklyLive" class="panel weeklyLive" style="display:none"></div>
   </div>`;
   setupOtherProject('weeklyProject');
+  setupWeeklyCustomTopic();
   document.getElementById('weeklyDate').value = new Date().toISOString().slice(0,10);
   const topicEl = document.getElementById('weeklyTopic');
+  const customEl = document.getElementById('weeklyCustomTopic');
   const randomBtn = document.getElementById('weeklyRandomTopicBtn');
   randomBtn.onclick = () => {
     if(!WEEKLY_TOPICS.length) return;
-    const current = topicEl.value;
+    const current = weeklySafetyTopicValue();
     let picked = current;
     for(let i=0; i<8 && picked===current && WEEKLY_TOPICS.length>1; i++){
       picked = WEEKLY_TOPICS[Math.floor(Math.random()*WEEKLY_TOPICS.length)];
     }
     if(picked===current) picked = WEEKLY_TOPICS[Math.floor(Math.random()*WEEKLY_TOPICS.length)];
     topicEl.value = picked;
+    if(customEl) customEl.value = '';
+    setupWeeklyCustomTopic();
     randomBtn.textContent = 'Pick Another Topic';
     document.getElementById('weeklyMsg').innerHTML = '';
   };
@@ -541,7 +564,7 @@ function weeklySafetyForm(){
 }
 
 async function startWeeklyMeeting(){
-  const payload = { project: projectValue('weeklyProject'), date: val('weeklyDate'), foreman: val('weeklyForeman'), topic: val('weeklyTopic') };
+  const payload = { project: projectValue('weeklyProject'), date: val('weeklyDate'), foreman: val('weeklyForeman'), topic: weeklySafetyTopicValue() };
   if(!payload.project || !payload.date || !payload.topic){ document.getElementById('weeklyMsg').innerHTML='<div class="notice">Project, meeting date, and safety topic are required.</div>'; return; }
   const res = await fetch('/api/weekly-meetings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const json = await res.json();
