@@ -517,12 +517,26 @@ let weeklyPollTimer = null;
 function weeklySafetyForm(){
   if(weeklyPollTimer) { clearInterval(weeklyPollTimer); weeklyPollTimer = null; }
   app.innerHTML = `<div class="container weeklyContainer"><h1>Weekly Safety Meeting</h1>
-    <div class="panel"><h2>Start Meeting</h2><div class="grid two">${projectField('weeklyProject','Project')} ${field('weeklyDate','Meeting Date','date')} ${field('weeklyForeman','Foreman / Field Person')} ${selectField('weeklyTopic','Safety Topic (one per meeting)',['','Random Topic',...WEEKLY_TOPICS])}</div>
-    <div class="actions"><button class="btn" id="weeklyStartBtn" type="button">Start Meeting</button></div><p class="tiny">This works like the existing weekly safety meeting app: start the meeting, show the QR code, and worker names appear as they sign in.</p><div id="weeklyMsg"></div></div>
+    <div class="panel"><h2>Start Meeting</h2><div class="grid two">${projectField('weeklyProject','Project')} ${field('weeklyDate','Meeting Date','date')} ${field('weeklyForeman','Foreman / Field Person')} ${selectField('weeklyTopic','Safety Topic (one per meeting)',['',...WEEKLY_TOPICS])}</div>
+    <div class="actions"><button class="btn light" id="weeklyRandomTopicBtn" type="button">Randomize Topic</button><button class="btn" id="weeklyStartBtn" type="button">Start Meeting</button></div><p class="tiny">Tap Randomize Topic to pick from the loaded safety topic list, or choose/edit the topic manually before starting.</p><div id="weeklyMsg"></div></div>
     <div id="weeklyLive" class="panel weeklyLive" style="display:none"></div>
   </div>`;
   setupOtherProject('weeklyProject');
   document.getElementById('weeklyDate').value = new Date().toISOString().slice(0,10);
+  const topicEl = document.getElementById('weeklyTopic');
+  const randomBtn = document.getElementById('weeklyRandomTopicBtn');
+  randomBtn.onclick = () => {
+    if(!WEEKLY_TOPICS.length) return;
+    const current = topicEl.value;
+    let picked = current;
+    for(let i=0; i<8 && picked===current && WEEKLY_TOPICS.length>1; i++){
+      picked = WEEKLY_TOPICS[Math.floor(Math.random()*WEEKLY_TOPICS.length)];
+    }
+    if(picked===current) picked = WEEKLY_TOPICS[Math.floor(Math.random()*WEEKLY_TOPICS.length)];
+    topicEl.value = picked;
+    randomBtn.textContent = 'Pick Another Topic';
+    document.getElementById('weeklyMsg').innerHTML = '';
+  };
   document.getElementById('weeklyStartBtn').onclick = startWeeklyMeeting;
 }
 
