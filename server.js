@@ -75,8 +75,43 @@ function writeWeeklyMeetings(rows) {
   fs.writeFileSync(WEEKLY_MEETINGS_FILE, JSON.stringify(rows, null, 2));
 }
 
+function seedWorkersFromPublic() {
+  const seed = path.join(__dirname, 'public', 'data', 'active-workers.json');
+  if (!fs.existsSync(seed)) return [];
+  try {
+    const rows = JSON.parse(fs.readFileSync(seed, 'utf8'));
+    if (Array.isArray(rows) && rows.length) {
+      const normalized = rows.map((w, idx) => ({
+        id: cleanText(w.id || w.employeeId || slug(w.fullName || `${w.firstName || ''} ${w.lastName || ''}`.trim()) || `worker-${idx + 1}`),
+        firstName: cleanText(w.firstName),
+        lastName: cleanText(w.lastName),
+        fullName: cleanText(w.fullName) || `${cleanText(w.firstName)} ${cleanText(w.lastName)}`.trim(),
+        class: cleanText(w.class),
+        local: cleanText(w.local),
+        currentJob: cleanText(w.currentJob),
+        status: cleanText(w.status) || 'Active',
+        employeeId: cleanText(w.employeeId),
+        trade: cleanText(w.trade),
+        crew: cleanText(w.crew),
+        disabled: !!w.disabled,
+        updatedAt: new Date().toISOString()
+      })).filter(w => w.fullName);
+      return normalized;
+    }
+  } catch (e) {}
+  return [];
+}
 function readWorkers() {
-  try { return JSON.parse(fs.readFileSync(WORKERS_FILE, 'utf8')); } catch (e) { return []; }
+  try {
+    const rows = JSON.parse(fs.readFileSync(WORKERS_FILE, 'utf8'));
+    if (Array.isArray(rows) && rows.length) return rows;
+  } catch (e) {}
+  const seeded = seedWorkersFromPublic();
+  if (seeded.length) {
+    writeWorkers(seeded);
+    return seeded;
+  }
+  return [];
 }
 function writeWorkers(rows) {
   fs.writeFileSync(WORKERS_FILE, JSON.stringify(rows, null, 2));
@@ -259,6 +294,13 @@ app.get('/api/admin/workers/export.csv', requireAdmin, (req, res) => {
 
 app.get('/api/admin/workers', requireAdmin, (req, res) => {
   res.json({ ok: true, rows: readWorkers() });
+});
+
+app.post('/api/admin/workers/restore-built-in', requireAdmin, (req, res) => {
+  const seeded = seedWorkersFromPublic();
+  if (!seeded.length) return res.status(400).json({ error: 'No built-in worker list found.' });
+  writeWorkers(seeded);
+  res.json({ ok: true, count: seeded.length, activeCount: seeded.filter(isWorkerActive).length, rows: seeded });
 });
 
 app.post('/api/admin/workers/import-csv', requireAdmin, (req, res) => {
