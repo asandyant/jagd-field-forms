@@ -167,6 +167,8 @@ function setPrint(html){document.querySelectorAll('.printPage').forEach(x=>x.rem
 function field(id,label,type='text',extra=''){return `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" ${extra}></div>`;}
 function textarea(id,label){return `<div><label for="${id}">${label}</label><textarea id="${id}"></textarea></div>`;}
 function selectField(id,label,opts){return `<div><label for="${id}">${label}</label><select id="${id}">${opts.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></div>`;}
+function checkboxField(id,label){return `<label class="checkPill"><input id="${id}" type="checkbox"> <span>${label}</span></label>`;}
+function isChecked(id){return !!document.getElementById(id)?.checked;}
 function projectField(id,label='Project / Job'){return `<div><label for="${id}">${label}</label><select id="${id}" class="projectSelect">${PROJECT_OPTIONS.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select><input id="${id}Other" class="projectOther" type="text" placeholder="Enter project name" style="display:none;margin-top:8px"></div>`;}
 function setupOtherProject(id){const sel=document.getElementById(id), other=document.getElementById(id+'Other'); if(!sel||!other)return; const sync=()=>{other.style.display = sel.value==='Other' ? 'block' : 'none'; if(sel.value==='Other') other.focus();}; sel.addEventListener('change',sync); sync();}
 function projectValue(id){const sel=document.getElementById(id); if(!sel)return ''; return sel.value==='Other' ? val(id+'Other') : sel.value;}
@@ -373,6 +375,38 @@ function home(){
         </div>
         <strong>Open</strong>
       </a>
+      <a class="formCard" href="/forms/bill-of-lading-fillable.pdf" target="_blank" rel="noopener">
+        <div>
+          <span class="formTag">Material</span>
+          <h2>Bill of Lading</h2>
+          <p>Blank JAGD bill of lading PDF for material delivery/shipping paperwork.</p>
+        </div>
+        <strong>Open PDF</strong>
+      </a>
+      <a class="formCard" href="/forms/incident-report-non-truck-fillable.pdf" target="_blank" rel="noopener">
+        <div>
+          <span class="formTag">Safety</span>
+          <h2>Incident Report</h2>
+          <p>Short incident report PDF for non-truck incidents, OSHA/police reporting, cause, and corrective action.</p>
+        </div>
+        <strong>Open PDF</strong>
+      </a>
+      <a class="formCard" href="/forms/heavy-accident-report.pdf" target="_blank" rel="noopener">
+        <div>
+          <span class="formTag">Safety</span>
+          <h2>Heavy Accident Report</h2>
+          <p>Full accident/incident investigation packet with witness, property, root cause, and code pages.</p>
+        </div>
+        <strong>Open PDF</strong>
+      </a>
+      <a class="formCard" href="/forms/disciplinary-report-fillable.pdf" target="_blank" rel="noopener">
+        <div>
+          <span class="formTag">Employee</span>
+          <h2>Disciplinary Report</h2>
+          <p>Blank disciplinary action PDF for employee violations, corrective action, and signatures.</p>
+        </div>
+        <strong>Open PDF</strong>
+      </a>
     </section>
   </div>`;
 }
@@ -380,6 +414,7 @@ function home(){
 function pirForm(){
   app.innerHTML=`<div class="container printOnly"><h1>Paint Inspection Report Questionnaire</h1><div class="pirOnePage">
     <div id="pir-project" class="panel"><h2>Project Information</h2><div class="grid three">${projectField('pirProject','Project')} ${field('pirReportDate','Report Date','date')} ${field('pirDay','Day','text','readonly')} ${field('pirWeatherAM','Weather AM')} ${field('pirWeatherPM','Weather PM')} ${field('pirInspectionReport','Inspection Report #')}</div></div>
+    <div id="pir-attached" class="panel"><h2>Attached / Generated Today</h2><p class="tiny">Check any extra JAGD form that was created for this report day. This prints in the PIR header; the blank PDFs are available on the home page.</p><div class="checkGrid">${checkboxField('pirAttachSafety','Safety Report')}${checkboxField('pirAttachPaint','Paint Inspection')}${checkboxField('pirAttachAccident','Accident / Heavy Accident Report')}${checkboxField('pirAttachIncident','Incident Report')}${checkboxField('pirAttachDisciplinary','Disciplinary Report')}${checkboxField('pirAttachBol','Bill of Lading')}</div></div>
     <div id="pir-hold" class="panel"><h2>Hold Point Inspections Performed</h2><div class="grid two">${pirHoldPoints.map((q,i)=>`<div class="checkrow"><div class="questionTitle">${q}</div>${radioBlock('pirHold'+i)}</div>`).join('')}</div></div>
     <div id="pir-surface" class="panel"><h2>Surface Cleanliness / Profile Measurement</h2><div class="grid three">${field('pirSurfacesPrepared','Surfaces Prepared Per Specification')} ${field('pirSSPC','SSPC/NACE SP')} ${field('pirSpecifiedProfile','Specified Profile')} ${field('pirProfileCheck','Profile Check')} ${selectField('pirAbrasiveTest','Abrasive Test Acceptable',['','YES','NO','N/A'])} ${selectField('pirBlotterTest','Blotter Test Acceptable',['','YES','NO','N/A'])} ${field('pirChloride1','Chloride ug/cm²')} ${field('pirChloride2','Chloride ug/cm²')} ${selectField('pirIllumination','Illumination Acceptable',['','YES','NO','N/A'])}</div></div>
     <div id="pir-testex" class="panel"><h2>Testex Tape Inserts</h2><div class="testexScreenGrid">${[1,2,3].map(i=>`<div class="testexCard"><div class="testexBox screen"><span>Insert Testex Tape Here</span></div>${field('pirTestexLoc'+i,'Tape '+i+' Location / Area')}${field('pirTestexReading'+i,'Tape '+i+' Profile Reading')}${field('pirTestexNotes'+i,'Tape '+i+' Notes')}</div>`).join('')}</div></div>
@@ -407,7 +442,15 @@ function pirForm(){
 }
 
 function collectPir(){
- const data={project:projectValue('pirProject'),reportDate:val('pirReportDate'),day:val('pirDay'),weatherAM:val('pirWeatherAM'),weatherPM:val('pirWeatherPM'),inspectionReport:val('pirInspectionReport'),attachedPages:'',page:'1',pageOf:'1',holdPoints:pirHoldPoints.map((q,i)=>({q,status:checked('pirHold'+i)})),surfacesPrepared:val('pirSurfacesPrepared'),sspc:val('pirSSPC'),specifiedProfile:val('pirSpecifiedProfile'),profileCheck:val('pirProfileCheck'),abrasiveTest:val('pirAbrasiveTest'),blotterTest:val('pirBlotterTest'),chloride1:val('pirChloride1'),chloride2:val('pirChloride2'),illumination:val('pirIllumination'),testex:[1,2,3].map(i=>({location:val('pirTestexLoc'+i),reading:val('pirTestexReading'+i),notes:val('pirTestexNotes'+i)})),posiAdjust:val('pirPosiAdjust'),generalNotes:val('pirGeneralNotes'),qcPrint:val('pirQCPrint'),qcSignature:val('pirQCSignature'),qcsSignature:val('pirQCSSignature'),caulking:{location:val('pirCaulkLocation'),nameBatch:val('pirCaulkNameBatch'),tubeSize:val('pirTubeSize'),shelf:val('pirCaulkShelf'),totalUsed:val('pirTotalUsed')}};
+ const attachedPages=[
+   isChecked('pirAttachSafety')?'Safety Report':'',
+   isChecked('pirAttachPaint')?'Paint Inspection':'',
+   isChecked('pirAttachAccident')?'Accident / Heavy Accident Report':'',
+   isChecked('pirAttachIncident')?'Incident Report':'',
+   isChecked('pirAttachDisciplinary')?'Disciplinary Report':'',
+   isChecked('pirAttachBol')?'Bill of Lading':''
+ ].filter(Boolean).join(', ');
+ const data={project:projectValue('pirProject'),reportDate:val('pirReportDate'),day:val('pirDay'),weatherAM:val('pirWeatherAM'),weatherPM:val('pirWeatherPM'),inspectionReport:val('pirInspectionReport'),attachedPages,page:'1',pageOf:'1',holdPoints:pirHoldPoints.map((q,i)=>({q,status:checked('pirHold'+i)})),surfacesPrepared:val('pirSurfacesPrepared'),sspc:val('pirSSPC'),specifiedProfile:val('pirSpecifiedProfile'),profileCheck:val('pirProfileCheck'),abrasiveTest:val('pirAbrasiveTest'),blotterTest:val('pirBlotterTest'),chloride1:val('pirChloride1'),chloride2:val('pirChloride2'),illumination:val('pirIllumination'),testex:[1,2,3].map(i=>({location:val('pirTestexLoc'+i),reading:val('pirTestexReading'+i),notes:val('pirTestexNotes'+i)})),posiAdjust:val('pirPosiAdjust'),generalNotes:val('pirGeneralNotes'),qcPrint:val('pirQCPrint'),qcSignature:val('pirQCSignature'),qcsSignature:val('pirQCSSignature'),caulking:{location:val('pirCaulkLocation'),nameBatch:val('pirCaulkNameBatch'),tubeSize:val('pirTubeSize'),shelf:val('pirCaulkShelf'),totalUsed:val('pirTotalUsed')}};
  data.instruments=['Sling Psychrometer','Surface Temperature Gage','Calibration Plates','Micrometer','Positector','Wet Film Thickness Gage','Inspection Equip inspected in last 12 Months?'].map((n,i)=>({name:n,status:val('pirInstYes'+i),serial:val('pirInstSerial'+i)}));
  data.ambient=[1,2,3,4].map(i=>({location:val('pirAmbLoc'+i),time:val('pirAmbTime'+i),dry:val('pirDry'+i),wet:val('pirWet'+i),rh:val('pirRH'+i),surface:val('pirSurf'+i),dew:val('pirDew'+i),diff:val('pirDiff'+i)}));
  data.mixing=Array.from({length:pirMixCount},(_,idx)=>idx+1).map(i=>({location:val('pirMixLoc'+i),time:val('pirMixTime'+i),witness:val('pirMixWitness'+i),batchA:val('pirBatchA'+i),mfgA:val('pirMfgA'+i),shelfA:val('pirShelfA'+i),batchB:val('pirBatchB'+i),mfgB:val('pirMfgB'+i),shelfB:val('pirShelfB'+i),dust:val('pirDust'+i),thinner:val('pirThinner'+i),volume:val('pirVolume'+i),mfr:val('pirMfr'+i),prod:val('pirProd'+i),color:val('pirColor'+i),kit:val('pirKit'+i),pot:val('pirPot'+i),shelf:val('pirShelf'+i),induction:val('pirInduction'+i),temp:val('pirTemp'+i),qty:val('pirQty'+i),start:val('pirStart'+i),finish:val('pirFinish'+i),gallons:val('pirGallons'+i),system:val('pirSystem'+i),method:val('pirMethod'+i),gunTip:val('pirGunTip'+i),elapsed:val('pirElapsed'+i),dftPrev:val('pirDFTPrev'+i)}));
@@ -432,7 +475,7 @@ function buildPirPrint(data=collectPir(), files=[]){
  const holdText=pirHoldPoints.map((q,i)=>`${cell(q)} ${cell(hp[i]?.status)}`).join('<br>');
  const html=`<div class="pirSheetV7">
    <div class="pirHeaderV7">
-     <div class="pirHLeft"><b>Project:</b> ${cell(data.project)}<br><b>Report Date:</b> ${cell(data.reportDate)}<br><b>Attached Pages:</b></div>
+     <div class="pirHLeft"><b>Project:</b> ${cell(data.project)}<br><b>Report Date:</b> ${cell(data.reportDate)}<br><b>Attached Pages:</b> ${cell(data.attachedPages)}</div>
      <div class="pirHLogo"><img src="${logo}"></div>
      <div class="pirHTitle"><b>Paint Inspection Report</b></div>
      <div class="pirHRight"><b>Weather:</b> AM ${cell(data.weatherAM)} &nbsp; PM ${cell(data.weatherPM)}</div>

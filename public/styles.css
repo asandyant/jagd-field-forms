@@ -572,3 +572,9 @@
   .pirCaulkGridV7{height:.24in!important}
   .pirSigGridV7{height:.29in!important}
 }
+
+/* v47 extra forms + PIR generated/attached checkboxes */
+.checkGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:10px;}
+.checkPill{display:flex;align-items:center;gap:10px;border:1px solid #d1d5db;background:#fff;border-radius:12px;padding:12px 14px;font-weight:700;}
+.checkPill input{width:20px;height:20px;}
+@media print{#pir-attached{display:none!important;}}
