@@ -210,6 +210,46 @@ function printPdfHelp(type){
   const label = type === 'pir' ? 'PIR' : (type === 'dsif' ? 'DSIF' : 'MEWP');
   return `<p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF / Print. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox. On Android, use Share or the browser menu, choose Print, select Save as PDF, then share/email/upload the saved PDF.</p>`;
 }
+
+const FORM_TYPE_META = {
+  dwl:{label:'DWL', bucket:'daily'},
+  pir:{label:'PIR', bucket:'daily'},
+  mewp:{label:'MEWP', bucket:'daily'},
+  daily:{label:'Daily Equipment', bucket:'daily'},
+  dsif:{label:'DSIF', bucket:'daily'},
+  bol:{label:'Bill of Lading', bucket:'daily'},
+  ir:{label:'Incident Report', bucket:'daily'},
+  har:{label:'Heavy Accident Report', bucket:'daily'},
+  dr:{label:'Disciplinary Report', bucket:'daily'},
+  'weekly-safety':{label:'Weekly Safety', bucket:'weekly'}
+};
+function adminPin(){ return localStorage.getItem('jagdAdminPin') || ''; }
+function logGeneratedForm(type, project, dateValue, title){
+  const body={type, project:project||'No Project', date:dateValue||new Date().toISOString().slice(0,10), title:title||''};
+  try{
+    const payload=JSON.stringify(body);
+    if(navigator.sendBeacon){
+      const blob=new Blob([payload],{type:'application/json'});
+      navigator.sendBeacon('/api/form-logs', blob);
+      return;
+    }
+    fetch('/api/form-logs',{method:'POST',headers:{'Content-Type':'application/json'},body:payload,keepalive:true}).catch(()=>{});
+  }catch(e){ console.warn('Could not log generated form', e); }
+}
+function weekStart(dateStr){
+  const d=dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? new Date(dateStr+'T00:00:00') : new Date();
+  const day=d.getDay();
+  const diff=(day+6)%7; // Monday start
+  d.setDate(d.getDate()-diff);
+  return d;
+}
+function ymd(d){ return d.toISOString().slice(0,10); }
+function weekLabel(dateStr){
+  const start=weekStart(dateStr); const end=new Date(start); end.setDate(start.getDate()+6);
+  return `${dateToDisplay(ymd(start))} to ${dateToDisplay(ymd(end))}`;
+}
+function formLabel(type){ return FORM_TYPE_META[type]?.label || String(type||'Form').toUpperCase(); }
+function formBucket(type){ return FORM_TYPE_META[type]?.bucket || 'daily'; }
 function localPhotoFiles(inputId){ const inp=document.getElementById(inputId); if(!inp) return []; return [...inp.files].filter(f=>f.type.startsWith('image/')).map(f=>({originalName:f.name, mimetype:f.type, url:URL.createObjectURL(f)})); }
 function radioBlock(name){return `<div class="choiceBtns"><label><input type="radio" name="${name}" value="YES">YES</label><label><input type="radio" name="${name}" value="NO">NO</label><label><input type="radio" name="${name}" value="N/A">N/A</label></div>`;}
 function photoInput(id,label='Photos / attached pages'){return `<div><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/*,.pdf" multiple><p class="tiny">Photos can be attached to the printed/PDF report. Image photos will show in print preview.</p><div id="${id}Preview" class="photoGrid"></div></div>`;}
@@ -435,6 +475,14 @@ function home(){
         </div>
         <strong>Open Form</strong>
       </a>
+      <a class="formCard adminCard" href="#/admin">
+        <div>
+          <span class="formTag">Office / Admin</span>
+          <h2>Admin Dashboard</h2>
+          <p>Job tracker, daily/weekly folders, worker list manager, and COA material manager foundation.</p>
+        </div>
+        <strong>Open Admin</strong>
+      </a>
     </section>
   </div>`;
 }
@@ -466,7 +514,7 @@ function pirForm(){
   document.getElementById('addPirMixBlock').onclick=()=>{pirMixCount=Math.min(4,pirMixCount+1); renderPirMixBlocks();};
   document.getElementById('addPirAmbientBlock').onclick=()=>{pirAmbientCount=Math.min(4,pirAmbientCount+1); renderPirAmbientBlocks(); if(pirAmbientCount>=4) document.getElementById('addPirAmbientBlock').disabled=true;};
   initSignatureButtons();
-  document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); document.title = formSaveTitle('pir', data.reportDate, data.project); buildPirPrint(data); openPrintNow('pirMsg');}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
+  document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); document.title = formSaveTitle('pir', data.reportDate, data.project); logGeneratedForm('pir', data.project, data.reportDate, document.title); buildPirPrint(data); openPrintNow('pirMsg');}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
 }
 
 function collectPir(){
@@ -537,7 +585,7 @@ function mewpForm(){
  setupPhotoPreview('mewpPhotos');
  document.getElementById('mewpDate').value=new Date().toISOString().slice(0,10);
  initSignatureButtons();
- document.getElementById('mewpPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectMewp(); document.title = formSaveTitle('mewp', data.inspectionDate, data.jobName); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); openPrintNow('mewpMsg');}catch(err){const msg=document.getElementById('mewpMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
+ document.getElementById('mewpPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectMewp(); document.title = formSaveTitle('mewp', data.inspectionDate, data.jobName); logGeneratedForm('mewp', data.jobName, data.inspectionDate, document.title); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); openPrintNow('mewpMsg');}catch(err){const msg=document.getElementById('mewpMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
 }
 function collectMewp(){return {jobName:projectValue('mewpJobName'),location:val('mewpLocation'),inspectionDate:val('mewpDate'),time:val('mewpTime'),inspector:val('mewpInspector'),company:val('mewpCompany'),equipmentId:val('mewpEquipmentId'),makeModel:val('mewpMakeModel'),serial:val('mewpSerial'),hours:val('mewpHours'),operator:val('mewpOperator'),overall:val('mewpOverall'),generalNotes:val('mewpGeneralNotes'),signature:val('mewpSignature'),signatureData:signatureStore.mewpSignature||'',questions:mewpQuestions.map((q,i)=>({q,status:checked('mewpQ'+i),notes:val('mewpNote'+i)}))};}
 function buildMewpPrint(data=collectMewp(), files=[]){const rows=(data.questions||[]).map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.q)}</td><td>${esc(x.status)}</td><td>${esc(x.notes)}</td></tr>`).join(''); const html=`<div class="mewpSheet"><div class="mewpHeader"><img src="${logo}"><div class="mewpTitle">MEWP Daily Equipment Inspection<br><span style="font-size:12px;font-weight:400">JAGD Construction</span></div></div><table class="printTable"><tr><td><b>Project / Job:</b> ${esc(data.jobName)}</td><td><b>Location:</b> ${esc(data.location)}</td><td><b>Date:</b> ${esc(data.inspectionDate)}</td></tr><tr><td><b>Inspector:</b> ${esc(data.inspector)}</td><td><b>Time:</b> ${esc(data.time)}</td><td><b>Overall Status:</b> ${esc(data.overall)}</td></tr><tr><td><b>Equipment ID:</b> ${esc(data.equipmentId)}</td><td><b>Make / Model:</b> ${esc(data.makeModel)}</td><td><b>Serial #:</b> ${esc(data.serial)}</td></tr><tr><td><b>Hour Meter:</b> ${esc(data.hours)}</td><td><b>Operator:</b> ${esc(data.operator)}</td><td><b>Company:</b> ${esc(data.company)}</td></tr></table><h3>Inspection Checklist</h3><table class="printTable"><tr><th>#</th><th>Inspection Item</th><th>Status</th><th>Notes / Corrective Action</th></tr>${rows}</table><p><b>General Notes:</b> ${esc(data.generalNotes)}</p><p><b>Inspector Signature:</b> ${data.signatureData?`<img class="sigPrint" src="${data.signatureData}">`:esc(data.signature)}</p>${files.length?`<h3>Pictures</h3><div class="photoPrint">${files.filter(f=>String(f.mimetype||'').startsWith('image/')).map(f=>`<img src="${f.url}">`).join('')}</div>`:''}</div>`; setPrint(html); return html;}
@@ -566,7 +614,7 @@ function dailyEquipmentForm(){
   DAILY_EQUIPMENT_CHECKLISTS.forEach((_,pi)=>setupPhotoPreview('dailyPhotos'+pi));
   initSignatureButtons();
   document.getElementById('dailyResetBtn').onclick=()=>{ if(confirm('Reset this Daily Equipment Inspection form?')) dailyEquipmentForm(); };
-  document.getElementById('dailyPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDailyEquipment(); document.title=formSaveTitle('daily', data.date, data.project); buildDailyEquipmentPrint(data); openPrintNow('dailyMsg');}catch(err){document.getElementById('dailyMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  document.getElementById('dailyPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDailyEquipment(); document.title=formSaveTitle('daily', data.date, data.project); logGeneratedForm('daily', data.project, data.date, document.title); buildDailyEquipmentPrint(data); openPrintNow('dailyMsg');}catch(err){document.getElementById('dailyMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
 function collectDailyEquipment(){return {project:projectValue('dailyProject'),date:val('dailyDate'),inspector:val('dailyInspector'),signature:val('dailySignature'),signatureData:signatureStore.dailySignature||'',pages:DAILY_EQUIPMENT_CHECKLISTS.map((page,pi)=>({title:page.title,na:document.getElementById('dailyNa'+pi)?.checked||false,items:page.items.map((q,ii)=>({q:q.replace('&quot;','"'),status:checked('daily_'+pi+'_'+ii),comment:val('dailyComment_'+pi+'_'+ii)})),additional:val('dailyAdditional'+pi),photos:localPhotoFiles('dailyPhotos'+pi)}))};}
 function buildDailyEquipmentPrint(data=collectDailyEquipment()){
@@ -663,7 +711,7 @@ function dsifForm(){
   const updateDay=()=>{ if(!dateEl.value){dayEl.value='';return;} const d=new Date(dateEl.value+'T00:00:00'); dayEl.value=d.toLocaleDateString(undefined,{weekday:'long'}) + ' (Day)'; };
   dateEl.value=new Date().toISOString().slice(0,10); updateDay(); dateEl.addEventListener('change',updateDay);
   initSignatureButtons();
-  document.getElementById('dsifPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDsif(); document.title=formSaveTitle('dsif', data.reportDate, data.project); buildDsifPrint(data); openPrintNow('dsifMsg');}catch(err){document.getElementById('dsifMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  document.getElementById('dsifPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectDsif(); document.title=formSaveTitle('dsif', data.reportDate, data.project); logGeneratedForm('dsif', data.project, data.reportDate, document.title); buildDsifPrint(data); openPrintNow('dsifMsg');}catch(err){document.getElementById('dsifMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
 function collectDsif(){
   return {project:projectValue('dsifProject'),reportDate:val('dsifReportDate'),day:val('dsifDay'),weather:val('dsifWeather'),attachedPages:val('dsifAttachedPages'),competentPerson:val('dsifCompetentPerson'),signature:val('dsifSignature'),signatureData:signatureStore.dsifSignature||'',visible:{location:val('dsifVELocation'),time:val('dsifVETime'),observation:val('dsifVEObservation'),emission:val('dsifVEEmission')},corrections:val('dsifCorrections'),sections:DSIF_SECTIONS.map((sec,si)=>({title:sec.title,sub:sec.sub,commentHeader:sec.commentHeader,questions:sec.questions.map((q,qi)=>({q,status:checked('dsif_'+si+'_'+qi),comment:val('dsifComment_'+si+'_'+qi)}))}))};
@@ -806,7 +854,7 @@ function renderWeeklyLive(meeting){
   live.style.display='block';
   live.innerHTML = `<h2>Live Sign-In</h2><div class="weeklyLiveGrid"><div><div class="qrCard"><img src="${weeklyQrUrl(meeting.id)}" alt="QR code for worker sign-in"><p class="tiny">Workers scan this QR code with their phones.</p></div><input class="copyLink" value="${esc(link)}" readonly><div class="actions"><button class="btn light" id="weeklyCopyBtn" type="button">Copy Sign-In Link</button><button class="btn" id="weeklyPrintBtn" type="button">Save PDF / Print Meeting</button></div></div><div><h3>Workers Signed In: <span id="weeklyCount">0</span></h3><div id="weeklyAttendees" class="attendeeList">Waiting for workers to sign in...</div></div></div>`;
   document.getElementById('weeklyCopyBtn').onclick=()=>navigator.clipboard?.writeText(link);
-  document.getElementById('weeklyPrintBtn').onclick=async()=>{ const latest=await fetchWeeklyMeeting(meeting.id); document.title=weeklyTitle(latest); buildWeeklyPrint(latest); openPrintNow(); };
+  document.getElementById('weeklyPrintBtn').onclick=async()=>{ const latest=await fetchWeeklyMeeting(meeting.id); document.title=weeklyTitle(latest); logGeneratedForm('weekly-safety', latest.project, latest.date, document.title); buildWeeklyPrint(latest); openPrintNow(); };
   pollWeekly(meeting.id);
   weeklyPollTimer = setInterval(()=>pollWeekly(meeting.id),3000);
 }
@@ -1135,7 +1183,7 @@ async function dwlForm(){
   document.getElementById('dwlLoadLastCrewBtn').onclick=loadDwlLastCrew;
   document.getElementById('dwlResetBtn').onclick=resetDwlForm;
   setTimeout(()=>autoFillWeather(),350);
-  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{saveDwlLastCrewFromRows(); const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); buildDwlPrint(data); openPrintNow('dwlMsg');}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{saveDwlLastCrewFromRows(); const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); logGeneratedForm('dwl', data.project, data.reportDate, document.title); buildDwlPrint(data); openPrintNow('dwlMsg');}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
 function collectDwl(){
   const rows=[]; for(let i=1;i<=40;i++){
@@ -1174,15 +1222,15 @@ function setupToday(id){const el=document.getElementById(id); if(el && !el.value
 function collectExtraRows(prefix, count=EXTRA_FORM_ROWS){
   const rows=[]; for(let i=1;i<=count;i++){rows.push({a:val(prefix+'A'+i), b:val(prefix+'B'+i), c:val(prefix+'C'+i)});} return rows;
 }
-function extraPrintButton(id, buildFn, msgId){
+function extraPrintButton(id, buildFn, msgId, logFn=null){
   const btn=document.getElementById(id); if(!btn) return;
-  btn.onclick=e=>{e.preventDefault(); try{buildFn(); openPrintNow(msgId);}catch(err){const m=document.getElementById(msgId); if(m) m.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  btn.onclick=e=>{e.preventDefault(); try{if(logFn) logFn(); buildFn(); openPrintNow(msgId);}catch(err){const m=document.getElementById(msgId); if(m) m.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
 function extraRadio(name, opts=['Yes','No']){return `<div class="choiceBtns extraChoice">${opts.map(o=>`<label><input type="radio" name="${name}" value="${esc(o)}">${esc(o)}</label>`).join('')}</div>`;}
 function radioVal(name){const el=document.querySelector(`[name="${name}"]:checked`); return el?el.value:'';}
 function bolForm(){
   app.innerHTML=extraFormIntro('JAGD - Bill of Lading','Material delivery / shipping paperwork. Date and project use the same field tools as the rest of the app.')+`<div class="panel"><h2>Delivery Info</h2><div class="grid three">${projectField('bolProject','Job / Project')} ${field('bolDate','Date','date')} ${field('bolBL','BL #')} ${field('bolTo','To')} ${field('bolFrom','From')} ${field('bolPO','PO #')}</div></div><div class="panel"><h2>Products</h2><div class="extraTableWrap"><table class="table extraEntryTable"><thead><tr><th>Quote #</th><th>Quantity</th><th>Product</th></tr></thead><tbody>${Array.from({length:EXTRA_FORM_ROWS},(_,idx)=>{const i=idx+1;return `<tr><td><input id="bolA${i}"></td><td><input id="bolB${i}"></td><td><input id="bolC${i}"></td></tr>`}).join('')}</tbody></table></div>${textarea('bolNotes','Additional Notes')}</div><div class="panel"><h2>Signatures</h2><div class="grid three">${field('bolName','Name (Print)')} ${sigField('bolSignature','Signature')} ${field('bolShipper','Shipper / Loader')} ${sigField('bolShipperSig','Shipper / Loader Signature')} ${field('bolReceiver','Receiver')} ${sigField('bolReceiverSig','Receiver Signature')}</div><div class="actions"><button class="btn" id="bolPrintBtn">Save PDF / Print Bill of Lading</button></div>${printPdfHelp('bol')}<div id="bolMsg"></div></div></div>`;
-  setupOtherProject('bolProject'); setupToday('bolDate'); initSignatureButtons(); extraPrintButton('bolPrintBtn', buildBolPrint, 'bolMsg');
+  setupOtherProject('bolProject'); setupToday('bolDate'); initSignatureButtons(); extraPrintButton('bolPrintBtn', buildBolPrint, 'bolMsg', ()=>logGeneratedForm('bol', projectValue('bolProject'), val('bolDate'), `Bill of Lading - ${dateToDisplay(val('bolDate'))} - ${cleanFilePart(projectValue('bolProject'))}`));
 }
 function buildBolPrint(){
   const rows=collectExtraRows('bol').map(r=>`<tr><td>${esc(r.a)}</td><td>${esc(r.b)}</td><td>${esc(r.c)}</td></tr>`).join('');
@@ -1191,7 +1239,7 @@ function buildBolPrint(){
 }
 function incidentReportForm(){
   app.innerHTML=extraFormIntro('Incident Report','Short non-truck incident report. Use this when the full heavy accident packet is not needed.')+`<div class="panel"><h2>Basic Info</h2><div class="grid three">${field('irReportDate','Report Date','date')} ${projectField('irProject','Project')} ${field('irProjectLocation','Project Location')} ${field('irIncidentDate','Incident Date','date')} ${field('irIncidentTime','Time of Incident','time')} ${field('irEmployee','Employee')} ${selectField('irAdditionalSheets','Additional Sheets Attached',['','Yes','No'])}</div></div><div class="panel"><h2>Incident Details</h2>${textarea('irDescription','Description of Incident')}${textarea('irInjuries','Injuries Sustained')}${textarea('irTreatment','Medical Review & Treatment')}${textarea('irCause','Cause of Incident')}${textarea('irCorrective','Corrective Action Taken to Prevent Recurrences')}${textarea('irComments','Supplemental Review / Comments')}<div class="grid two"><div><label>Post to OSHA 300 Log</label>${extraRadio('irOsha300')}</div><div><label>Police Report</label>${extraRadio('irPolice')}</div>${field('irAgency','Police Agency')} ${field('irReportNo','Report No.')}<div><label>Reported to OSHA</label>${extraRadio('irReportedOsha')}</div>${field('irToWhom','To Whom')} ${field('irOshaDate','OSHA Report Date','date')} ${field('irOshaTime','OSHA Report Time','time')} ${field('irByWhom','By Whom')}</div></div><div class="panel"><h2>Completed By</h2><div class="grid two">${field('irCompletedBy','Print Name')} ${sigField('irSignature','Signature')}</div><div class="actions"><button class="btn" id="irPrintBtn">Save PDF / Print Incident Report</button></div>${printPdfHelp('ir')}<div id="irMsg"></div></div></div>`;
-  setupOtherProject('irProject'); setupToday('irReportDate'); setupToday('irIncidentDate'); initSignatureButtons(); extraPrintButton('irPrintBtn', buildIncidentPrint, 'irMsg');
+  setupOtherProject('irProject'); setupToday('irReportDate'); setupToday('irIncidentDate'); initSignatureButtons(); extraPrintButton('irPrintBtn', buildIncidentPrint, 'irMsg', ()=>logGeneratedForm('ir', projectValue('irProject'), val('irReportDate'), `Incident Report - ${dateToDisplay(val('irReportDate'))} - ${cleanFilePart(projectValue('irProject'))}`));
 }
 function buildIncidentPrint(){
   const html=`<div class="extraPrintSheet irPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>INCIDENT REPORT</h1></div><table class="extraPrintTable"><tr><th>Report Date</th><td>${esc(dateToSlashYYYY(val('irReportDate')))}</td><th>Page</th><td>1 of 1</td></tr><tr><th>Employee</th><td>${esc(val('irEmployee'))}</td><th>Additional Sheets Attached</th><td>${esc(val('irAdditionalSheets'))}</td></tr><tr><th>Project</th><td>${esc(projectValue('irProject'))}</td><th>Project Location</th><td>${esc(val('irProjectLocation'))}</td></tr><tr><th>Incident Date</th><td>${esc(dateToSlashYYYY(val('irIncidentDate')))}</td><th>Time of Incident</th><td>${esc(val('irIncidentTime'))}</td></tr></table>${extraPrintBox('Description of Incident',val('irDescription'))}${extraPrintBox('Injuries Sustained',val('irInjuries'))}${extraPrintBox('Medical Review & Treatment',val('irTreatment'))}${extraPrintBox('Cause of Incident',val('irCause'))}${extraPrintBox('Corrective Action Taken to Prevent Recurrences',val('irCorrective'))}${extraPrintBox('Supplemental Review / Comments',val('irComments'))}<table class="extraPrintTable"><tr><th>Post to OSHA 300 Log</th><td>${esc(radioVal('irOsha300'))}</td><th>Police Report</th><td>${esc(radioVal('irPolice'))}</td></tr><tr><th>Agency</th><td>${esc(val('irAgency'))}</td><th>Report No.</th><td>${esc(val('irReportNo'))}</td></tr><tr><th>Reported to OSHA</th><td>${esc(radioVal('irReportedOsha'))}</td><th>To Whom</th><td>${esc(val('irToWhom'))}</td></tr><tr><th>Date / Time / By Whom</th><td colspan="3">${esc(dateToSlashYYYY(val('irOshaDate')))} ${esc(val('irOshaTime'))} &nbsp; ${esc(val('irByWhom'))}</td></tr></table><div class="extraSigGrid two"><div><b>Report Completed By:</b> ${esc(val('irCompletedBy'))}</div><div><b>Signature:</b> ${sigPrint(signatureStore.irSignature,'')}</div></div></div>`;
@@ -1199,7 +1247,7 @@ function buildIncidentPrint(){
 }
 function disciplinaryReportForm(){
   app.innerHTML=extraFormIntro('Disciplinary Action','Employee disciplinary form with violation, action taken, corrective action, and signatures.')+`<div class="panel"><h2>Basic Info</h2><div class="grid three">${field('drReportDate','Report Date','date')} ${projectField('drProject','Project')} ${field('drProjectLocation','Project Location')} ${field('drIncidentDate','Incident Date','date')} ${field('drIncidentTime','Time of Incident','time')} ${field('drEmployee','Employee')} ${field('drPage','Page','text','placeholder="1 of 1"')}</div></div><div class="panel"><h2>Incident / Violation</h2>${textarea('drDescription','Description of Incident & Safety Violation')}<div class="grid three"><label class="checkPill"><input id="drVerbal" type="checkbox"> Verbal</label><label class="checkPill"><input id="drWritten" type="checkbox"> Written</label><label class="checkPill"><input id="drReprimanded" type="checkbox"> Reprimanded</label><label class="checkPill"><input id="drSuspension" type="checkbox"> Temporary Suspension</label><label class="checkPill"><input id="drTerminated" type="checkbox"> Terminated</label>${field('drOffense','Number of Offense Past 6 Months')} ${field('drFrom','Suspension From','date')} ${field('drTo','Suspension To','date')}</div>${textarea('drCorrective','Corrective Action Taken')}${textarea('drComments','Supplemental Review / Comments')}${textarea('drEmployeeRemarks','Employee Remarks')}</div><div class="panel"><h2>Signatures</h2><div class="grid three">${field('drEmployeePrint','Employee Print Name')} ${sigField('drEmployeeSig','Employee Signature')} ${field('drEmployeeSigDate','Employee Date','date')} ${field('drSupervisor','Supervisor Print Name')} ${field('drSupervisorTitle','Supervisor Title')} ${sigField('drSupervisorSig','Supervisor Signature')} ${field('drSupervisorDate','Supervisor Date','date')} ${field('drSteward','Steward Print Name')} ${field('drUnionLocal','Union / Local')} ${sigField('drStewardSig','Steward Signature')} ${field('drStewardDate','Steward Date','date')}</div><div class="actions"><button class="btn" id="drPrintBtn">Save PDF / Print Disciplinary Report</button></div>${printPdfHelp('dr')}<div id="drMsg"></div></div></div>`;
-  setupOtherProject('drProject'); setupToday('drReportDate'); setupToday('drIncidentDate'); setupToday('drEmployeeSigDate'); setupToday('drSupervisorDate'); setupToday('drStewardDate'); initSignatureButtons(); extraPrintButton('drPrintBtn', buildDisciplinaryPrint, 'drMsg');
+  setupOtherProject('drProject'); setupToday('drReportDate'); setupToday('drIncidentDate'); setupToday('drEmployeeSigDate'); setupToday('drSupervisorDate'); setupToday('drStewardDate'); initSignatureButtons(); extraPrintButton('drPrintBtn', buildDisciplinaryPrint, 'drMsg', ()=>logGeneratedForm('dr', projectValue('drProject'), val('drReportDate'), `Disciplinary Report - ${dateToDisplay(val('drReportDate'))} - ${cleanFilePart(projectValue('drProject'))}`));
 }
 function checkedText(ids){return ids.filter(id=>isChecked(id)).map(id=>document.querySelector('label[for="'+id+'"]')?.innerText || id.replace(/^dr/,'')).join(', ');}
 function buildDisciplinaryPrint(){
@@ -1209,7 +1257,7 @@ function buildDisciplinaryPrint(){
 }
 function heavyAccidentReportForm(){
   app.innerHTML=extraFormIntro('Heavy Accident Report','Field-friendly starter for the accident/incident investigation packet. Use the original packet if the full seven pages are required.')+`<div class="panel notice"><b>Note:</b> This quick field version captures the main accident/incident details. The original 7-page packet is still stored with the app and can be printed from the office if needed.</div><div class="panel"><h2>Incident Info</h2><div class="grid three">${field('harDate','Date of Incident','date')} ${field('harTime','Time','time')} ${field('harReportDate','Date of Report','date')} ${projectField('harProject','Project Name')} ${field('harDay','Day of Week')} ${field('harWeather','Weather')} ${field('harPM','Project Manager')} ${field('harForeman','Superintendent / Foreman')} ${field('harExactLoc','Exact Location of Incident')} ${field('harAddress','Street Address')} ${field('harCity','City / State / Zip')} ${selectField('harDrugScreen','Drug Screen Administered',['','Yes','No'])}</div></div><div class="panel"><h2>Incident Type / Employee</h2><div class="grid three">${field('harType','Type of Incident')} ${field('harEmployee','Injured Employee Name')} ${field('harEmpId','Employee ID #')} ${field('harPhone','Phone')} ${field('harDob','Date of Birth','date')} ${field('harOccupation','Occupation / Job Title')} ${field('harYears','Years Experience')} ${field('harHire','Date of Hire','date')} ${field('harStart','Time Employee Started Work','time')}</div>${textarea('harPpe','List PPE worn at time of incident')}${textarea('harInjury','Detailed Description of Injury')}</div><div class="panel"><h2>Treatment / Property / Cause</h2><div class="grid two"><div><label>Onsite First Aid Given</label>${extraRadio('harFirstAid')}</div><div><label>Offsite Medical Treatment</label>${extraRadio('harMedical')}</div><div><label>Witnesses?</label>${extraRadio('harWitnesses')}</div><div><label>Property Damage?</label>${extraRadio('harProperty')}</div></div>${textarea('harTreatment','Treatment / Facility / Date Treatment Given')}${textarea('harDamage','Property / Equipment / Vehicle Damage')}${textarea('harDescription','Detailed chronological description of what happened')}${textarea('harRootCause','Root Cause / Contributing Factors')}${textarea('harCorrective','Corrective Actions Taken or Planned')}</div><div class="panel"><h2>Completed By</h2><div class="grid two">${field('harCompletedBy','Completed By')} ${sigField('harSignature','Signature')}</div><div class="actions"><button class="btn" id="harPrintBtn">Save PDF / Print Heavy Accident Report</button></div>${printPdfHelp('har')}<div id="harMsg"></div></div></div>`;
-  setupOtherProject('harProject'); setupToday('harDate'); setupToday('harReportDate'); initSignatureButtons(); const d=document.getElementById('harDate'), day=document.getElementById('harDay'); const upd=()=>{if(d&&d.value&&day){day.value=new Date(d.value+'T00:00:00').toLocaleDateString(undefined,{weekday:'long'});}}; d&&d.addEventListener('change',upd); upd(); extraPrintButton('harPrintBtn', buildHeavyAccidentPrint, 'harMsg');
+  setupOtherProject('harProject'); setupToday('harDate'); setupToday('harReportDate'); initSignatureButtons(); const d=document.getElementById('harDate'), day=document.getElementById('harDay'); const upd=()=>{if(d&&d.value&&day){day.value=new Date(d.value+'T00:00:00').toLocaleDateString(undefined,{weekday:'long'});}}; d&&d.addEventListener('change',upd); upd(); extraPrintButton('harPrintBtn', buildHeavyAccidentPrint, 'harMsg', ()=>logGeneratedForm('har', projectValue('harProject'), val('harReportDate'), `Heavy Accident Report - ${dateToDisplay(val('harReportDate'))} - ${cleanFilePart(projectValue('harProject'))}`));
 }
 function buildHeavyAccidentPrint(){
   const html=`<div class="extraPrintSheet harPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>ACCIDENT / INCIDENT INVESTIGATION REPORT</h1></div><table class="extraPrintTable"><tr><th>Date of Incident</th><td>${esc(dateToSlashYYYY(val('harDate')))}</td><th>Time</th><td>${esc(val('harTime'))}</td><th>Date of Report</th><td>${esc(dateToSlashYYYY(val('harReportDate')))}</td></tr><tr><th>Project Name</th><td>${esc(projectValue('harProject'))}</td><th>Day / Weather</th><td>${esc(val('harDay'))} / ${esc(val('harWeather'))}</td><th>Project Manager</th><td>${esc(val('harPM'))}</td></tr><tr><th>Superintendent / Foreman</th><td>${esc(val('harForeman'))}</td><th>Drug Screen</th><td>${esc(val('harDrugScreen'))}</td><th>Type of Incident</th><td>${esc(val('harType'))}</td></tr><tr><th>Exact Location</th><td colspan="5">${esc(val('harExactLoc'))} ${esc(val('harAddress'))} ${esc(val('harCity'))}</td></tr><tr><th>Injured Employee</th><td>${esc(val('harEmployee'))}</td><th>Employee ID</th><td>${esc(val('harEmpId'))}</td><th>Phone</th><td>${esc(val('harPhone'))}</td></tr><tr><th>DOB</th><td>${esc(dateToSlashYYYY(val('harDob')))}</td><th>Occupation</th><td>${esc(val('harOccupation'))}</td><th>Years / Hire / Start</th><td>${esc(val('harYears'))} / ${esc(dateToSlashYYYY(val('harHire')))} / ${esc(val('harStart'))}</td></tr></table>${extraPrintBox('PPE Worn',val('harPpe'),.55)}${extraPrintBox('Detailed Description of Injury',val('harInjury'),.75)}<table class="extraPrintTable"><tr><th>Onsite First Aid</th><td>${esc(radioVal('harFirstAid'))}</td><th>Offsite Medical Treatment</th><td>${esc(radioVal('harMedical'))}</td><th>Witnesses</th><td>${esc(radioVal('harWitnesses'))}</td></tr><tr><th>Property Damage</th><td colspan="5">${esc(radioVal('harProperty'))}</td></tr></table>${extraPrintBox('Treatment / Facility / Date Treatment Given',val('harTreatment'),.75)}${extraPrintBox('Property / Equipment / Vehicle Damage',val('harDamage'),.75)}${extraPrintBox('Detailed Chronological Description of What Happened',val('harDescription'),1.25)}${extraPrintBox('Root Cause / Contributing Factors',val('harRootCause'),.75)}${extraPrintBox('Corrective Actions Taken or Planned',val('harCorrective'),.75)}<div class="extraSigGrid two"><div><b>Completed By:</b> ${esc(val('harCompletedBy'))}</div><div><b>Signature:</b> ${sigPrint(signatureStore.harSignature,'')}</div></div></div>`;
@@ -1217,7 +1265,60 @@ function buildHeavyAccidentPrint(){
 }
 function extraPrintBox(title, text, h=0.7){return `<div class="extraPrintBox" style="min-height:${h}in"><b>${esc(title)}:</b><br>${esc(text)}</div>`;}
 
-function router(){const h=location.hash||'#/'; if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/dwl')) dwlForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else if(h.startsWith('#/bill-of-lading')) bolForm(); else if(h.startsWith('#/incident-report')) incidentReportForm(); else if(h.startsWith('#/heavy-accident-report')) heavyAccidentReportForm(); else if(h.startsWith('#/disciplinary-report')) disciplinaryReportForm(); else home();}
+
+function adminView(){
+  const pin=adminPin();
+  app.innerHTML=`<div class="container adminContainer"><div class="panel adminHero"><div><h1>JAGD Field Forms Admin</h1><p>Boss dashboard for job folders, daily/weekly form counts, workers, and COA materials. First version tracks forms generated from this app.</p></div><div class="actions"><a class="btn light" href="#/">Back to Forms</a></div></div>${!pin?adminLoginHtml():adminDashboardHtml()}</div>`;
+  if(!pin) setupAdminLogin(); else loadAdminDashboard();
+}
+function adminLoginHtml(){return `<div class="panel"><h2>Admin Login</h2><p class="tiny">Temporary admin PIN. We can move this into portal login later.</p><div class="grid two"><div><label for="adminPinInput">Admin PIN</label><input id="adminPinInput" type="password" inputmode="numeric" placeholder="Enter admin PIN"></div></div><div class="actions"><button class="btn" id="adminLoginBtn">Open Admin</button></div><div id="adminLoginMsg"></div></div>`;}
+function setupAdminLogin(){const btn=document.getElementById('adminLoginBtn'); if(!btn)return; btn.onclick=()=>{const v=val('adminPinInput'); if(!v){document.getElementById('adminLoginMsg').innerHTML='<div class="notice">Enter the admin PIN.</div>';return;} localStorage.setItem('jagdAdminPin',v); adminView();};}
+function adminDashboardHtml(){return `<div class="adminTabs"><button class="btn small" data-admin-tab="tracker">Tracker</button><button class="btn small light" data-admin-tab="workers">DWL Names</button><button class="btn small light" data-admin-tab="coa">COA Materials</button><button class="btn small light" id="adminLogoutBtn">Logout</button></div><div id="adminContent"><div class="notice">Loading admin dashboard...</div></div>`;}
+async function adminFetch(path, opts={}){const headers={...(opts.headers||{}),'x-admin-pin':adminPin()}; const res=await fetch(path,{...opts,headers}); if(res.status===401){localStorage.removeItem('jagdAdminPin'); adminView(); throw new Error('Admin PIN required.');} const json=await res.json(); if(!res.ok) throw new Error(json.error||'Admin request failed'); return json;}
+function setupAdminTabs(logs){
+  document.querySelectorAll('[data-admin-tab]').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('[data-admin-tab]').forEach(b=>b.classList.add('light')); btn.classList.remove('light'); const tab=btn.dataset.adminTab; if(tab==='tracker') renderAdminTracker(logs); if(tab==='workers') renderAdminWorkers(); if(tab==='coa') renderAdminCoa();};});
+  const out=document.getElementById('adminLogoutBtn'); if(out) out.onclick=()=>{localStorage.removeItem('jagdAdminPin'); adminView();};
+}
+async function loadAdminDashboard(){
+  try{const json=await adminFetch('/api/admin/form-logs'); setupAdminTabs(json.rows||[]); renderAdminTracker(json.rows||[]);}catch(e){const c=document.getElementById('adminContent'); if(c)c.innerHTML=`<div class="notice">${esc(e.message)}</div>`;}
+}
+function renderAdminTracker(logs){
+  const c=document.getElementById('adminContent'); if(!c)return;
+  const jobs={}; logs.forEach(r=>{const project=r.project||'No Project'; jobs[project]=jobs[project]||[]; jobs[project].push(r);});
+  const jobNames=Object.keys(jobs).sort((a,b)=>a.localeCompare(b));
+  const week=weekLabel(new Date().toISOString().slice(0,10));
+  c.innerHTML=`<div class="panel"><h2>Job Tracker</h2><p class="tiny"><b>Daily folder:</b> DWL, PIR, MEWP, DSIF, Daily Equipment, BOL, Incident, Accident, Disciplinary. <b>Weekly folder:</b> Weekly Safety Meetings. Current week: ${esc(week)}.</p>${jobNames.length?'<div class="adminJobGrid">'+jobNames.map(j=>adminJobCard(j,jobs[j])).join('')+'</div>':'<div class="notice">No forms have been generated yet. Counts start when field users tap Save PDF / Print.</div>'}</div><div id="adminJobDetail"></div>`;
+  document.querySelectorAll('[data-admin-job]').forEach(btn=>{btn.onclick=()=>renderAdminJobDetail(btn.dataset.adminJob, jobs[btn.dataset.adminJob]||[]);});
+}
+function adminJobCard(project, rows){
+  const daily=rows.filter(r=>formBucket(r.type)==='daily').length;
+  const weekly=rows.filter(r=>formBucket(r.type)==='weekly').length;
+  const last=rows.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];
+  return `<button class="adminJobCard" data-admin-job="${esc(project)}"><b>${esc(project)}</b><span>Daily forms: ${daily}</span><span>Weekly forms: ${weekly}</span><small>Last: ${last?new Date(last.createdAt).toLocaleString():'None'}</small></button>`;
+}
+function renderAdminJobDetail(project, rows){
+  const d=document.getElementById('adminJobDetail'); if(!d)return;
+  const daily=rows.filter(r=>formBucket(r.type)==='daily');
+  const weekly=rows.filter(r=>formBucket(r.type)==='weekly');
+  const byDay={}; daily.forEach(r=>{byDay[r.date]=byDay[r.date]||[]; byDay[r.date].push(r);});
+  const byWeek={}; weekly.forEach(r=>{const w=weekLabel(r.date); byWeek[w]=byWeek[w]||[]; byWeek[w].push(r);});
+  d.innerHTML=`<div class="panel"><h2>${esc(project)}</h2><div class="adminFolders"><div class="adminFolder"><h3>Daily Folder</h3><p class="tiny">Use this to see if a job missed daily forms.</p>${Object.keys(byDay).sort().reverse().map(date=>adminDayBlock(date,byDay[date])).join('')||'<p>No daily forms generated yet.</p>'}</div><div class="adminFolder"><h3>Weekly Folder</h3><p class="tiny">Weekly safety / toolbox talk records.</p>${Object.keys(byWeek).sort().reverse().map(w=>adminWeekBlock(w,byWeek[w])).join('')||'<p>No weekly forms generated yet.</p>'}</div></div></div>`;
+}
+function adminDayBlock(date, rows){
+  const counts={}; rows.forEach(r=>{counts[formLabel(r.type)]=(counts[formLabel(r.type)]||0)+1;});
+  return `<details class="adminDetail"><summary>${esc(dateToDisplay(date))} — ${rows.length} form(s)</summary><div class="adminCountList">${Object.entries(counts).map(([k,v])=>`<span>${esc(k)}: <b>${v}</b></span>`).join('')}</div><ul>${rows.map(r=>`<li>${esc(formLabel(r.type))} — ${esc(r.title||'Generated form')} <small>${new Date(r.createdAt).toLocaleTimeString()}</small></li>`).join('')}</ul></details>`;
+}
+function adminWeekBlock(label, rows){return `<details class="adminDetail"><summary>${esc(label)} — ${rows.length} weekly form(s)</summary><ul>${rows.map(r=>`<li>${esc(formLabel(r.type))} — ${esc(r.title||'Weekly Safety')} <small>${dateToDisplay(r.date)}</small></li>`).join('')}</ul></details>`;}
+function renderAdminWorkers(){
+  const c=document.getElementById('adminContent'); if(!c)return;
+  c.innerHTML=`<div class="panel"><h2>DWL Names / Workers</h2><p>This is the admin foundation for updating the DWL autocomplete list.</p><div class="notice"><b>Next build:</b> upload the portal Active Workers CSV here, review count, search workers, add/edit Class and Local, and disable workers. For today, DWL still uses the current active worker list already loaded in the app.</div><div class="actions"><button class="btn light" disabled>Upload Active Workers CSV - coming next</button><button class="btn light" disabled>Add Worker - coming next</button></div></div>`;
+}
+function renderAdminCoa(){
+  const c=document.getElementById('adminContent'); if(!c)return;
+  c.innerHTML=`<div class="panel"><h2>COA / Material Library</h2><p>GWB and Dyre Ave helpers are already loaded into PIR. This is the admin foundation for maintaining them by job.</p><div class="adminFolders"><div class="adminFolder"><h3>Current Libraries</h3><p>GWB materials: <b>${GWB_PIR_MATERIALS.length}</b></p><p>Dyre Ave materials: <b>${DYRE_PIR_MATERIALS.length}</b></p></div><div class="adminFolder"><h3>Next build</h3><p>Upload COA PDFs by job, auto-read Description, Batch No., Mfg Date, Exp Date, Mfr, Product, Color, then office reviews before field use.</p><div class="notice">Yes, this is where OCR/PDF parsing belongs, but it needs review before it feeds the PIR.</div></div></div></div>`;
+}
+
+function router(){const h=location.hash||'#/'; if(h.startsWith('#/admin')) adminView(); else if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/dwl')) dwlForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else if(h.startsWith('#/bill-of-lading')) bolForm(); else if(h.startsWith('#/incident-report')) incidentReportForm(); else if(h.startsWith('#/heavy-accident-report')) heavyAccidentReportForm(); else if(h.startsWith('#/disciplinary-report')) disciplinaryReportForm(); else home();}
 
 window.addEventListener('beforeprint',()=>{
   const h=location.hash||'#/';

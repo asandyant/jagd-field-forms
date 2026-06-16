@@ -10,10 +10,13 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const SUBMISSIONS_FILE = path.join(DATA_DIR, 'submissions.json');
 const WEEKLY_MEETINGS_FILE = path.join(DATA_DIR, 'weekly-meetings.json');
+const FORM_LOGS_FILE = path.join(DATA_DIR, 'form-logs.json');
+const ADMIN_PIN = process.env.ADMIN_PIN || process.env.ADMIN_PASSWORD || '2468';
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(SUBMISSIONS_FILE)) fs.writeFileSync(SUBMISSIONS_FILE, '[]');
 if (!fs.existsSync(WEEKLY_MEETINGS_FILE)) fs.writeFileSync(WEEKLY_MEETINGS_FILE, '[]');
+if (!fs.existsSync(FORM_LOGS_FILE)) fs.writeFileSync(FORM_LOGS_FILE, '[]');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -53,6 +56,17 @@ function readWeeklyMeetings() {
 }
 function writeWeeklyMeetings(rows) {
   fs.writeFileSync(WEEKLY_MEETINGS_FILE, JSON.stringify(rows, null, 2));
+}
+function readFormLogs() {
+  return JSON.parse(fs.readFileSync(FORM_LOGS_FILE, 'utf8'));
+}
+function writeFormLogs(rows) {
+  fs.writeFileSync(FORM_LOGS_FILE, JSON.stringify(rows, null, 2));
+}
+function requireAdmin(req, res, next) {
+  const supplied = req.get('x-admin-pin') || req.query.pin || '';
+  if (supplied !== ADMIN_PIN) return res.status(401).json({ error: 'Admin PIN required.' });
+  next();
 }
 function cleanText(v) {
   return String(v || '').trim().slice(0, 500);
@@ -99,6 +113,40 @@ app.post('/api/weekly-meetings/:id/sign', (req, res) => {
   }
   writeWeeklyMeetings(rows);
   res.json({ ok: true, meeting });
+});
+
+
+app.post('/api/form-logs', (req, res) => {
+  const type = cleanText(req.body.type).slice(0, 60);
+  const project = cleanText(req.body.project).slice(0, 180) || 'No Project';
+  const date = cleanText(req.body.date).slice(0, 20) || new Date().toISOString().slice(0, 10);
+  const title = cleanText(req.body.title).slice(0, 220);
+  if (!type) return res.status(400).json({ error: 'Form type is required.' });
+  const row = {
+    id: nanoid(12),
+    type,
+    project,
+    date,
+    title: title || `${type} - ${date}`,
+    createdAt: new Date().toISOString(),
+    source: 'field-app'
+  };
+  const rows = readFormLogs();
+  rows.push(row);
+  writeFormLogs(rows);
+  res.json({ ok: true, row });
+});
+
+app.get('/api/admin/form-logs', requireAdmin, (req, res) => {
+  const rows = readFormLogs().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.json({ ok: true, rows });
+});
+
+app.delete('/api/admin/form-logs/:id', requireAdmin, (req, res) => {
+  const rows = readFormLogs();
+  const next = rows.filter(x => x.id !== req.params.id);
+  writeFormLogs(next);
+  res.json({ ok: true, removed: rows.length - next.length });
 });
 
 app.get('/api/submissions', (req, res) => {
