@@ -11,12 +11,29 @@ const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const SUBMISSIONS_FILE = path.join(DATA_DIR, 'submissions.json');
 const WEEKLY_MEETINGS_FILE = path.join(DATA_DIR, 'weekly-meetings.json');
 const FORM_LOGS_FILE = path.join(DATA_DIR, 'form-logs.json');
-const ADMIN_PIN = process.env.ADMIN_PIN || process.env.ADMIN_PASSWORD || '2468';
+const WORKERS_FILE = path.join(DATA_DIR, 'workers.json');
+const MATERIALS_FILE = path.join(DATA_DIR, 'materials.json');
+const ADMIN_PIN = process.env.ADMIN_PIN || process.env.ADMIN_PASSWORD || 'JadgForms123!!!';
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(SUBMISSIONS_FILE)) fs.writeFileSync(SUBMISSIONS_FILE, '[]');
 if (!fs.existsSync(WEEKLY_MEETINGS_FILE)) fs.writeFileSync(WEEKLY_MEETINGS_FILE, '[]');
 if (!fs.existsSync(FORM_LOGS_FILE)) fs.writeFileSync(FORM_LOGS_FILE, '[]');
+if (!fs.existsSync(WORKERS_FILE)) {
+  const seed = path.join(__dirname, 'public', 'data', 'active-workers.json');
+  fs.writeFileSync(WORKERS_FILE, fs.existsSync(seed) ? fs.readFileSync(seed, 'utf8') : '[]');
+}
+if (!fs.existsSync(MATERIALS_FILE)) {
+  const seeds = ['gwb-materials.json', 'dyre-materials.json'];
+  let mats = [];
+  for (const file of seeds) {
+    const seed = path.join(__dirname, 'public', 'data', file);
+    if (fs.existsSync(seed)) {
+      try { const rows = JSON.parse(fs.readFileSync(seed, 'utf8')); if (Array.isArray(rows)) mats = mats.concat(rows); } catch (e) {}
+    }
+  }
+  fs.writeFileSync(MATERIALS_FILE, JSON.stringify(mats, null, 2));
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -57,6 +74,57 @@ function readWeeklyMeetings() {
 function writeWeeklyMeetings(rows) {
   fs.writeFileSync(WEEKLY_MEETINGS_FILE, JSON.stringify(rows, null, 2));
 }
+
+function readWorkers() {
+  try { return JSON.parse(fs.readFileSync(WORKERS_FILE, 'utf8')); } catch (e) { return []; }
+}
+function writeWorkers(rows) {
+  fs.writeFileSync(WORKERS_FILE, JSON.stringify(rows, null, 2));
+}
+function readMaterials() {
+  try { return JSON.parse(fs.readFileSync(MATERIALS_FILE, 'utf8')); } catch (e) { return []; }
+}
+function writeMaterials(rows) {
+  fs.writeFileSync(MATERIALS_FILE, JSON.stringify(rows, null, 2));
+}
+function isWorkerActive(w) {
+  if (w.disabled) return false;
+  const status = String(w.status || '').toLowerCase();
+  if (status.includes('term') || status.includes('inactive') || status.includes('disabled')) return false;
+  return true;
+}
+function parseCsv(text) {
+  const rows = [];
+  let row = [], cur = '', inQuotes = false;
+  const t = String(text || '').replace(/^\uFEFF/, '');
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i], next = t[i + 1];
+    if (ch === '"' && inQuotes && next === '"') { cur += '"'; i++; continue; }
+    if (ch === '"') { inQuotes = !inQuotes; continue; }
+    if (ch === ',' && !inQuotes) { row.push(cur); cur = ''; continue; }
+    if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === '\r' && next === '\n') i++;
+      row.push(cur); cur = '';
+      if (row.some(v => String(v).trim())) rows.push(row);
+      row = [];
+      continue;
+    }
+    cur += ch;
+  }
+  row.push(cur);
+  if (row.some(v => String(v).trim())) rows.push(row);
+  return rows;
+}
+function normalizeHeader(h) { return String(h || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+function pick(row, map, names) { for (const n of names) { const i = map[normalizeHeader(n)]; if (i !== undefined) return cleanText(row[i]); } return ''; }
+function slug(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70) || nanoid(8); }
+function makeMaterialLabel(m) {
+  const parts = [m.component || 'Material', m.prodName || m.description || 'COA Material'];
+  if (m.batch) parts.push(`Batch ${m.batch}`);
+  if (m.expDate) parts.push(`Exp ${m.expDate}`);
+  return parts.join(' — ');
+}
+
 function readFormLogs() {
   return JSON.parse(fs.readFileSync(FORM_LOGS_FILE, 'utf8'));
 }
@@ -147,6 +215,131 @@ app.delete('/api/admin/form-logs/:id', requireAdmin, (req, res) => {
   const next = rows.filter(x => x.id !== req.params.id);
   writeFormLogs(next);
   res.json({ ok: true, removed: rows.length - next.length });
+});
+
+
+app.get('/api/workers', (req, res) => {
+  const rows = readWorkers().filter(isWorkerActive);
+  res.json({ ok: true, rows });
+});
+
+app.get('/api/admin/workers', requireAdmin, (req, res) => {
+  res.json({ ok: true, rows: readWorkers() });
+});
+
+app.post('/api/admin/workers/import-csv', requireAdmin, (req, res) => {
+  const csvText = String(req.body.csvText || '');
+  const parsed = parseCsv(csvText);
+  if (parsed.length < 2) return res.status(400).json({ error: 'Paste a CSV with a header row and worker rows.' });
+  const headers = parsed[0].map(normalizeHeader);
+  const map = {}; headers.forEach((h, i) => { map[h] = i; });
+  const rows = parsed.slice(1).map(r => {
+    const firstName = pick(r, map, ['firstName', 'first name', 'First Name']);
+    const lastName = pick(r, map, ['lastName', 'last name', 'Last Name']);
+    const fullName = pick(r, map, ['fullName', 'full name', 'Employee', 'Name']) || `${firstName} ${lastName}`.trim();
+    return {
+      id: pick(r, map, ['employeeId', 'employee id', 'id']) || slug(fullName),
+      firstName,
+      lastName,
+      fullName,
+      class: pick(r, map, ['class', 'workerClass']),
+      local: pick(r, map, ['local', 'unionLocal']),
+      currentJob: pick(r, map, ['currentJob', 'current job', 'job']),
+      status: pick(r, map, ['status']) || 'Active',
+      employeeId: pick(r, map, ['employeeId', 'employee id']),
+      trade: pick(r, map, ['trade']),
+      crew: pick(r, map, ['crew']),
+      disabled: false,
+      updatedAt: new Date().toISOString()
+    };
+  }).filter(w => w.fullName);
+  if (!rows.length) return res.status(400).json({ error: 'No valid workers found in the CSV.' });
+  writeWorkers(rows);
+  res.json({ ok: true, count: rows.length, activeCount: rows.filter(isWorkerActive).length, rows });
+});
+
+app.post('/api/admin/workers', requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const rows = readWorkers();
+  const id = cleanText(body.id) || nanoid(10);
+  const idx = rows.findIndex(w => String(w.id) === id);
+  const firstName = cleanText(body.firstName);
+  const lastName = cleanText(body.lastName);
+  const fullName = cleanText(body.fullName) || `${firstName} ${lastName}`.trim();
+  if (!fullName) return res.status(400).json({ error: 'Worker full name is required.' });
+  const worker = {
+    ...(idx >= 0 ? rows[idx] : {}),
+    id,
+    firstName,
+    lastName,
+    fullName,
+    class: cleanText(body.class),
+    local: cleanText(body.local),
+    currentJob: cleanText(body.currentJob),
+    status: cleanText(body.status) || 'Active',
+    employeeId: cleanText(body.employeeId),
+    trade: cleanText(body.trade),
+    crew: cleanText(body.crew),
+    disabled: !!body.disabled,
+    updatedAt: new Date().toISOString()
+  };
+  if (idx >= 0) rows[idx] = worker; else rows.push(worker);
+  writeWorkers(rows);
+  res.json({ ok: true, worker });
+});
+
+app.delete('/api/admin/workers/:id', requireAdmin, (req, res) => {
+  const rows = readWorkers();
+  const next = rows.map(w => String(w.id) === req.params.id ? { ...w, disabled: true, status: 'Disabled', updatedAt: new Date().toISOString() } : w);
+  writeWorkers(next);
+  res.json({ ok: true });
+});
+
+app.get('/api/materials', (req, res) => {
+  const rows = readMaterials().filter(m => !m.disabled);
+  res.json({ ok: true, rows });
+});
+
+app.get('/api/admin/materials', requireAdmin, (req, res) => {
+  res.json({ ok: true, rows: readMaterials() });
+});
+
+app.post('/api/admin/materials', requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const rows = readMaterials();
+  const id = cleanText(body.id) || slug(`${body.project}-${body.prodName}-${body.batch}`) + '-' + nanoid(4);
+  const idx = rows.findIndex(m => String(m.id) === id);
+  const material = {
+    ...(idx >= 0 ? rows[idx] : {}),
+    id,
+    project: cleanText(body.project),
+    mfr: cleanText(body.mfr),
+    prodName: cleanText(body.prodName),
+    description: cleanText(body.description),
+    color: cleanText(body.color),
+    component: cleanText(body.component) || 'Base / Paint',
+    itemNo: cleanText(body.itemNo),
+    batch: cleanText(body.batch),
+    mfgDate: cleanText(body.mfgDate),
+    expDate: cleanText(body.expDate),
+    shelfLife: cleanText(body.shelfLife),
+    fileName: cleanText(body.fileName),
+    disabled: !!body.disabled,
+    updatedAt: new Date().toISOString()
+  };
+  material.label = cleanText(body.label) || makeMaterialLabel(material);
+  if (!material.project) return res.status(400).json({ error: 'Project is required.' });
+  if (!material.prodName && !material.description) return res.status(400).json({ error: 'Product name or description is required.' });
+  if (idx >= 0) rows[idx] = material; else rows.push(material);
+  writeMaterials(rows);
+  res.json({ ok: true, material });
+});
+
+app.delete('/api/admin/materials/:id', requireAdmin, (req, res) => {
+  const rows = readMaterials();
+  const next = rows.map(m => String(m.id) === req.params.id ? { ...m, disabled: true, updatedAt: new Date().toISOString() } : m);
+  writeMaterials(next);
+  res.json({ ok: true });
 });
 
 app.get('/api/submissions', (req, res) => {
