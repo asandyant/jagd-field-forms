@@ -45,6 +45,14 @@ let activeWorkers = [];
 let serverMaterials = [];
 let serverMaterialsLoaded = false;
 
+function slug(text){
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || ('item-' + Date.now());
+}
+
 function builtInWorkerRows(){
   return (Array.isArray(EMBEDDED_ACTIVE_WORKERS) ? EMBEDDED_ACTIVE_WORKERS : []).map((w, idx)=>({
     id: w.id || w.employeeId || slug(`${w.fullName||''}-${idx}`),
@@ -1491,12 +1499,18 @@ async function renderAdminCoa(editMat=null, mode='list'){
     c.innerHTML=`<div class="panel"><h2>COA / Material Library</h2><p class="tiny">Simple view: choose a job, import COA PDFs, add one material manually, or show what is already loaded for that job.</p><div class="adminSimpleBar"><label>Project / Job</label><select id="adminMatFilterProject"><option value="">Choose a job...</option>${adminProjectOptions(savedProject)}</select><button class="btn" id="adminShowMaterialsBtn" type="button">Show Current COAs</button><button class="btn" id="adminImportCoaBtn" type="button">Import COAs</button><button class="btn light" id="adminAddManualCoaBtn" type="button">Add Single COA Manually</button><span>${active.length} active / ${rows.length} total</span></div>${workPanel}<div class="adminToolbar"><input id="adminMatSearch" placeholder="Search product, batch, color"><span id="adminMatVisibleCount"></span></div><div id="adminMatTable"></div></div>`;
     if(mode==='manual') setupAdminMaterialForm();
     if(mode==='import') setupAdminCoaImport();
+    const clearMatTable=(msg='Choose a job, then click Show Current COAs.')=>{
+      const count=document.getElementById('adminMatVisibleCount'); if(count) count.textContent='';
+      const table=document.getElementById('adminMatTable'); if(table) table.innerHTML=`<div class="notice soft">${esc(msg)}</div>`;
+    };
     const renderTable=()=>{
       const q=val('adminMatSearch').toLowerCase(), project=val('adminMatFilterProject');
-      const projectKey=adminProjectKeyFromName(project);
       window.adminCoaSelectedProject=project;
-      const filtered=rows.filter(m=>(!project||materialProjectMatches(m,projectKey)) && `${m.project||''} ${m.mfr||''} ${m.prodName||''} ${m.batch||''} ${m.color||''} ${m.component||''} ${m.fileName||''}`.toLowerCase().includes(q)).slice(0,350);
-      const count=document.getElementById('adminMatVisibleCount'); if(count) count.textContent=project?`Showing ${filtered.length} for ${project}`:`Showing ${filtered.length} materials`;
+      if(!window.adminCoaShowMaterials){ clearMatTable(); return; }
+      if(!project){ clearMatTable('Pick a job first, then click Show Current COAs.'); return; }
+      const projectKey=adminProjectKeyFromName(project);
+      const filtered=rows.filter(m=>materialProjectMatches(m,projectKey) && `${m.project||''} ${m.mfr||''} ${m.prodName||''} ${m.batch||''} ${m.color||''} ${m.component||''} ${m.fileName||''}`.toLowerCase().includes(q)).slice(0,350);
+      const count=document.getElementById('adminMatVisibleCount'); if(count) count.textContent=`Showing ${filtered.length} for ${project}`;
       document.getElementById('adminMatTable').innerHTML=`<div class="adminTableWrap"><table class="adminTable"><tr><th>Project</th><th>Component</th><th>Product</th><th>Batch</th><th>Exp</th><th>Status</th><th></th></tr>${filtered.map(m=>`<tr class="${m.disabled?'mutedRow':''}"><td>${esc(m.project||'')}</td><td>${esc(m.component||'')}</td><td><b>${esc(m.prodName||m.description||'')}</b><br><small>${esc(m.color||'')} ${esc(m.mfr||'')} ${m.fileName?('File: '+esc(m.fileName)):''}</small></td><td>${esc(m.batch||'')}</td><td>${esc(m.expDate||'')}</td><td>${m.builtIn?'Built-in / Active':(m.disabled?'Needs Review / Disabled':'Active')}</td><td><button class="btn small light" data-edit-mat="${esc(m.id)}" type="button">${m.builtIn?'Copy/Edit':'Edit'}</button> ${m.builtIn?'':`<button class="btn small danger" data-disable-mat="${esc(m.id)}" type="button">Disable</button>`}</td></tr>`).join('')}</table></div>`;
       document.querySelectorAll('[data-edit-mat]').forEach(b=>b.onclick=()=>{
         const found=rows.find(m=>String(m.id)===b.dataset.editMat);
@@ -1506,11 +1520,12 @@ async function renderAdminCoa(editMat=null, mode='list'){
       document.querySelectorAll('[data-disable-mat]').forEach(b=>b.onclick=async()=>{if(!confirm('Disable this material from PIR helper?'))return; await adminFetch('/api/admin/materials/'+encodeURIComponent(b.dataset.disableMat),{method:'DELETE'}); serverMaterialsLoaded=false; renderAdminCoa();});
     };
     document.getElementById('adminMatSearch').oninput=renderTable;
-    document.getElementById('adminMatFilterProject').onchange=renderTable;
-    document.getElementById('adminShowMaterialsBtn').onclick=()=>renderTable();
-    document.getElementById('adminImportCoaBtn').onclick=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); renderAdminCoa(null,'import');};
-    document.getElementById('adminAddManualCoaBtn').onclick=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); renderAdminCoa(null,'manual');};
-    renderTable();
+    document.getElementById('adminMatFilterProject').onchange=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); window.adminCoaShowMaterials=false; clearMatTable();};
+    document.getElementById('adminShowMaterialsBtn').onclick=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); window.adminCoaShowMaterials=true; renderTable();};
+    document.getElementById('adminImportCoaBtn').onclick=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); window.adminCoaShowMaterials=false; renderAdminCoa(null,'import');};
+    document.getElementById('adminAddManualCoaBtn').onclick=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); window.adminCoaShowMaterials=false; renderAdminCoa(null,'manual');};
+    window.adminCoaShowMaterials=false;
+    clearMatTable();
   }catch(e){c.innerHTML=`<div class="panel"><div class="notice">${esc(e.message)}</div></div>`;}
 }
 function setupAdminCoaImport(){
