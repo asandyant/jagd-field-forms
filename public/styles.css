@@ -512,3 +512,7 @@
 
 /* v44 PIR ambient auto-calc helper fields */
 .pirAutoCalcField{background:#f7fbff!important;border-color:#89a8c7!important;font-weight:700}
+
+.pirMaterialNotice{margin:8px 0 12px 0}
+.pirMaterialControls{margin-bottom:10px}
+.pirMaterialControl select{font-size:16px; min-height:44px}
