@@ -619,3 +619,8 @@
   .adminSimpleBar select,.adminSimpleBar button{width:100%;margin:5px 0;}
   .adminSimpleBar span{display:block;margin-top:8px;}
 }
+
+/* v58 final polish: PIR optional QC notes page + witness statement print support */
+.pirNotesSheet{width:8.05in;height:10.55in;margin:0 auto;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:1.15;overflow:hidden;page-break-before:always;break-before:page;page-break-after:avoid;page-break-inside:avoid;padding:.18in;box-sizing:border-box;border:1px solid #000}
+.pirNotesHeader{display:grid;grid-template-columns:.85in 1fr;gap:.12in;align-items:center;border-bottom:2px solid #000;margin-bottom:.1in;padding-bottom:.08in}.pirNotesHeader img{width:.75in;max-height:.55in;object-fit:contain}.pirNotesHeader h1{font-size:18px;margin:0;text-align:center}.pirNotesHeader p{font-size:10px;margin:4px 0 0 0;text-align:center}.pirNotesTable th:nth-child(1){width:13%}.pirNotesTable th:nth-child(2){width:22%}.pirNotesTable th:nth-child(3){width:27%}.pirNotesTable th:nth-child(4){width:38%}.pirNotesTable td{height:.42in}.extraSectionTitle{font-size:12px;text-align:left;margin:.08in 0 .04in 0;border-bottom:1px solid #000}
+@media print{.pirNotesSheet{border:0!important;width:7.9in!important;height:10.35in!important;padding:.14in!important}.extraSectionTitle{font-size:11px!important}}
