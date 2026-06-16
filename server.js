@@ -411,6 +411,49 @@ app.post('/api/admin/materials', requireAdmin, (req, res) => {
   res.json({ ok: true, material });
 });
 
+
+
+app.post('/api/admin/materials/import', requireAdmin, upload.array('coaFiles', 60), (req, res) => {
+  const project = cleanText(req.body.project);
+  if (!project) return res.status(400).json({ error: 'Project is required before importing COAs.' });
+  const files = req.files || [];
+  if (!files.length) return res.status(400).json({ error: 'Choose at least one COA PDF.' });
+  const rows = readMaterials();
+  const added = [];
+  files.forEach(file => {
+    const original = cleanText(file.originalname || file.filename);
+    const base = original.replace(/\.pdf$/i, '').replace(/[_]+/g, ' ').trim();
+    const batchMatch = base.match(/([A-Z0-9]{5,})\s*$/i);
+    const batch = batchMatch ? batchMatch[1] : '';
+    const prodName = batch ? base.replace(new RegExp('\\s*' + batch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$','i'), '').trim() : base;
+    const material = {
+      id: slug(`${project}-${base}`) + '-' + nanoid(4),
+      project,
+      mfr: '',
+      prodName: prodName || base,
+      description: base,
+      color: '',
+      component: 'Base / Paint',
+      itemNo: '',
+      batch,
+      mfgDate: '',
+      expDate: '',
+      shelfLife: '',
+      fileName: original,
+      uploadPath: `/uploads/${file.filename}`,
+      disabled: true,
+      needsReview: true,
+      label: `${prodName || base}${batch ? ' — Batch ' + batch : ''} — NEEDS REVIEW`,
+      updatedAt: new Date().toISOString(),
+      importedAt: new Date().toISOString()
+    };
+    rows.push(material);
+    added.push(material);
+  });
+  writeMaterials(rows);
+  res.json({ ok: true, added });
+});
+
 app.delete('/api/admin/materials/:id', requireAdmin, (req, res) => {
   const rows = readMaterials();
   const next = rows.map(m => String(m.id) === req.params.id ? { ...m, disabled: true, updatedAt: new Date().toISOString() } : m);
