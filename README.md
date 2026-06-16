@@ -1,12 +1,15 @@
-# JAGD Field Forms - v44 PIR Ambient Auto-Calc
+# JAGD Field Forms v46
 
-This update is based on v43.
+PIR-only update.
 
-Changes in v44:
-- PIR only: added ambient condition auto-calculations.
-- Enter Dry Bulb Temp + Wet Bulb Temp to auto-fill % Relative Humidity and Dew Point.
-- Enter Surface Temp to auto-fill Surface Temp. - Dew Point Spread.
-- The spread prints as a number only, no °F suffix.
-- Updated the PIR wording to keep boss/PIR language while adding the field term: "Surface Temp. - Dew Point Spread".
-- DWL was not touched.
-- Weekly Safety Meeting was not touched.
+Changes:
+- Tightened PIR print CSS to prevent the extra blank/tiny second page in iPhone print preview.
+- Ambient Conditions screen now starts with one reading and has an Add another Ambient Reading button, up to 4.
+- Added note that field practice is typically four ambient readings.
+- Print layout still prints four ambient columns; blank readings remain blank.
+- Save/PDF helper text now mentions both iPhone and Android.
+
+Untouched:
+- DWL
+- Weekly Safety Meeting
+- GWB COA material library data/behavior except normal carry-forward from v45

@@ -2,6 +2,7 @@ const app = document.getElementById('app');
 const logo = '/assets/jagd-logo.png';
 let currentPrint = '';
 let pirMixCount = 1;
+let pirAmbientCount = 1;
 const signatureStore = {};
 
 const PROJECT_OPTIONS = [
@@ -145,6 +146,22 @@ function setupPirAmbientCalcs(){
     updatePirAmbientRow(i);
   });
 }
+
+function renderPirAmbientBlocks(){
+  const holder=document.getElementById('pirAmbientBlocks');
+  if(!holder) return;
+  const existing={};
+  [1,2,3,4].forEach(i=>{
+    ['pirAmbLoc','pirAmbTime','pirDry','pirWet','pirRH','pirSurf','pirDew','pirDiff'].forEach(prefix=>{
+      const el=document.getElementById(prefix+i);
+      if(el) existing[prefix+i]=el.value;
+    });
+  });
+  holder.innerHTML=`<div class="grid two">${Array.from({length:pirAmbientCount},(_,idx)=>idx+1).map(i=>`<div class="checkrow pirAmbientReading"><h3>Ambient Reading ${i}</h3>${field('pirAmbLoc'+i,'Location')}${field('pirAmbTime'+i,'Time','time')}${field('pirDry'+i,'Dry Bulb Temp')}${field('pirWet'+i,'Wet Bulb Temp')}${field('pirRH'+i,'% Relative Humidity')}${field('pirSurf'+i,'Surface Temp')}${field('pirDew'+i,'Dew Point')}${field('pirDiff'+i,'Surface Temp. - Dew Point Spread')}</div>`).join('')}</div>`;
+  Object.entries(existing).forEach(([id,value])=>{const el=document.getElementById(id); if(el) el.value=value;});
+  setupPirAmbientCalcs();
+}
+
 function checked(name){const el=document.querySelector(`[name="${name}"]:checked`); return el ? el.value : '';}
 function setPrint(html){document.querySelectorAll('.printPage').forEach(x=>x.remove()); const div=document.createElement('div'); div.className='printPage'; div.innerHTML=html; document.body.appendChild(div); currentPrint=html;}
 function field(id,label,type='text',extra=''){return `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" ${extra}></div>`;}
@@ -188,7 +205,7 @@ function openPrintNow(msgId){
 
 function printPdfHelp(type){
   const label = type === 'pir' ? 'PIR' : (type === 'dsif' ? 'DSIF' : 'MEWP');
-  return `<p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p>`;
+  return `<p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF / Print. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox. On Android, use Share or the browser menu, choose Print, select Save as PDF, then share/email/upload the saved PDF.</p>`;
 }
 function localPhotoFiles(inputId){ const inp=document.getElementById(inputId); if(!inp) return []; return [...inp.files].filter(f=>f.type.startsWith('image/')).map(f=>({originalName:f.name, mimetype:f.type, url:URL.createObjectURL(f)})); }
 function radioBlock(name){return `<div class="choiceBtns"><label><input type="radio" name="${name}" value="YES">YES</label><label><input type="radio" name="${name}" value="NO">NO</label><label><input type="radio" name="${name}" value="N/A">N/A</label></div>`;}
@@ -367,7 +384,7 @@ function pirForm(){
     <div id="pir-surface" class="panel"><h2>Surface Cleanliness / Profile Measurement</h2><div class="grid three">${field('pirSurfacesPrepared','Surfaces Prepared Per Specification')} ${field('pirSSPC','SSPC/NACE SP')} ${field('pirSpecifiedProfile','Specified Profile')} ${field('pirProfileCheck','Profile Check')} ${selectField('pirAbrasiveTest','Abrasive Test Acceptable',['','YES','NO','N/A'])} ${selectField('pirBlotterTest','Blotter Test Acceptable',['','YES','NO','N/A'])} ${field('pirChloride1','Chloride ug/cm²')} ${field('pirChloride2','Chloride ug/cm²')} ${selectField('pirIllumination','Illumination Acceptable',['','YES','NO','N/A'])}</div></div>
     <div id="pir-testex" class="panel"><h2>Testex Tape Inserts</h2><div class="testexScreenGrid">${[1,2,3].map(i=>`<div class="testexCard"><div class="testexBox screen"><span>Insert Testex Tape Here</span></div>${field('pirTestexLoc'+i,'Tape '+i+' Location / Area')}${field('pirTestexReading'+i,'Tape '+i+' Profile Reading')}${field('pirTestexNotes'+i,'Tape '+i+' Notes')}</div>`).join('')}</div></div>
     <div id="pir-instruments" class="panel"><h2>Calibrated QC Equipment</h2><div class="grid three">${['Sling Psychrometer','Surface Temperature Gage','Calibration Plates','Micrometer','Positector','Wet Film Thickness Gage','Inspection Equip inspected in last 12 Months?'].map((n,i)=>`<div class="checkrow"><label>${n}</label>${selectField('pirInstYes'+i,'Status',['YES','NO','N/A'])}${field('pirInstSerial'+i,'Serial Number')}${i===4?field('pirPosiAdjust','PA-2 Adjustment made') : ''}</div>`).join('')}</div></div>
-    <div id="pir-ambient" class="panel"><h2>Ambient Conditions</h2><p class="tiny"><b>Auto-calc:</b> Enter Dry Bulb + Wet Bulb to calculate % Relative Humidity and Dew Point. Enter Surface Temp to calculate Surface Temp. - Dew Point Spread.</p><div class="grid four">${[1,2,3,4].map(i=>`<div class="checkrow"><h3>Reading ${i}</h3>${field('pirAmbLoc'+i,'Location')}${field('pirAmbTime'+i,'Time','time')}${field('pirDry'+i,'Dry Bulb Temp')}${field('pirWet'+i,'Wet Bulb Temp')}${field('pirRH'+i,'% Relative Humidity')}${field('pirSurf'+i,'Surface Temp')}${field('pirDew'+i,'Dew Point')}${field('pirDiff'+i,'Surface Temp. - Dew Point Spread')}</div>`).join('')}</div></div>
+    <div id="pir-ambient" class="panel"><h2>Ambient Conditions</h2><p class="tiny"><b>Auto-calc:</b> Enter Dry Bulb + Wet Bulb to calculate % Relative Humidity and Dew Point. Enter Surface Temp to calculate Surface Temp. - Dew Point Spread.</p><p class="tiny noticeInline"><b>Note:</b> Typical field practice is four ambient readings. Add readings as needed; blank readings still print as empty columns.</p><div id="pirAmbientBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirAmbientBlock">+ Add another Ambient Reading</button></div></div>
     <div id="pir-mixing" class="panel"><h2>Mixing / Application</h2><div id="pirMixBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirMixBlock">+ Add another Mix / Application Block</button></div></div>
     <div id="pir-caulk" class="panel"><h2>Caulking / Signatures</h2><div class="grid three">${field('pirCaulkLocation','Caulking Location')} ${field('pirCaulkNameBatch','Name / Batch')} ${field('pirTubeSize','Tube Size')} ${field('pirCaulkShelf','Shelf Life')} ${field('pirTotalUsed','Total Amount Used')} ${field('pirQCPrint','QC Print')} ${sigField('pirQCSignature','QC Signature')} ${sigField('pirQCSSignature','QCS Signature')}</div>${textarea('pirGeneralNotes','General Notes / Nonconformance / Corrective Actions')}<div class="actions"><button class="btn" id="pirPrintBtn">Save PDF / Print PIR</button></div>${printPdfHelp('pir')}<div id="pirMsg"></div></div>
   </div></div>`;
@@ -382,8 +399,9 @@ function pirForm(){
   updateReportNumber();
   dateEl.addEventListener('change', ()=>{ updateDay(); updateReportNumber(); });
   pirMixCount=1; renderPirMixBlocks();
-  setupPirAmbientCalcs();
+  pirAmbientCount=1; renderPirAmbientBlocks();
   document.getElementById('addPirMixBlock').onclick=()=>{pirMixCount=Math.min(4,pirMixCount+1); renderPirMixBlocks();};
+  document.getElementById('addPirAmbientBlock').onclick=()=>{pirAmbientCount=Math.min(4,pirAmbientCount+1); renderPirAmbientBlocks(); if(pirAmbientCount>=4) document.getElementById('addPirAmbientBlock').disabled=true;};
   initSignatureButtons();
   document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); document.title = formSaveTitle('pir', data.reportDate, data.project); buildPirPrint(data); openPrintNow('pirMsg');}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
 }
