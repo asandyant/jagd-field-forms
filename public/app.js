@@ -1313,13 +1313,24 @@ function setupAdminTabs(logs){
 async function loadAdminDashboard(){
   try{const json=await adminFetch('/api/admin/form-logs'); setupAdminTabs(json.rows||[]); renderAdminTracker(json.rows||[]);}catch(e){const c=document.getElementById('adminContent'); if(c)c.innerHTML=`<div class="notice">${esc(e.message)}</div>`;}
 }
+function visibleAdminLogs(logs){
+  const showTest = localStorage.getItem('jagdAdminShowTestLogs') === '1';
+  return showTest ? logs : logs.filter(r=>!r.test);
+}
 function renderAdminTracker(logs){
   const c=document.getElementById('adminContent'); if(!c)return;
-  const jobs={}; logs.forEach(r=>{const project=r.project||'No Project'; jobs[project]=jobs[project]||[]; jobs[project].push(r);});
+  const showTest = localStorage.getItem('jagdAdminShowTestLogs') === '1';
+  const visible = visibleAdminLogs(logs||[]);
+  const jobs={}; visible.forEach(r=>{const project=r.project||'No Project'; jobs[project]=jobs[project]||[]; jobs[project].push(r);});
   const jobNames=Object.keys(jobs).sort((a,b)=>a.localeCompare(b));
+  const testCount=(logs||[]).filter(r=>r.test).length;
   const week=weekLabel(new Date().toISOString().slice(0,10));
-  c.innerHTML=`<div class="panel"><h2>Job Tracker</h2><p class="tiny"><b>Daily folder:</b> DWL, PIR, MEWP, DSIF, Daily Equipment, BOL, Incident, Accident, Disciplinary. <b>Weekly folder:</b> Weekly Safety Meetings. Current week: ${esc(week)}.</p>${jobNames.length?'<div class="adminJobGrid">'+jobNames.map(j=>adminJobCard(j,jobs[j])).join('')+'</div>':'<div class="notice">No forms have been generated yet. Counts start when field users tap Save PDF / Print.</div>'}</div><div id="adminJobDetail"></div>`;
-  document.querySelectorAll('[data-admin-job]').forEach(btn=>{btn.onclick=()=>renderAdminJobDetail(btn.dataset.adminJob, jobs[btn.dataset.adminJob]||[]);});
+  c.innerHTML=`<div class="panel"><h2>Job Tracker</h2><p class="tiny"><b>Daily folder:</b> DWL, PIR, MEWP, DSIF, Daily Equipment, BOL, Incident, Accident, Disciplinary. <b>Weekly folder:</b> Weekly Safety Meetings. Current week: ${esc(week)}.</p><div class="adminToolbar"><label class="checkLine"><input type="checkbox" id="adminShowTestLogs" ${showTest?'checked':''}> Show test logs (${testCount})</label><button class="btn small light" id="adminRefreshLogs" type="button">Refresh</button><button class="btn small danger" id="adminClearTestLogs" type="button">Clear Test Logs</button><button class="btn small danger" id="adminClearAllLogs" type="button">Clear All Logs</button></div>${jobNames.length?'<div class="adminJobGrid">'+jobNames.map(j=>adminJobCard(j,jobs[j])).join('')+'</div>':'<div class="notice">No forms have been generated yet. Counts start when field users tap Save PDF / Print.</div>'}</div><div id="adminJobDetail"></div>`;
+  const show=document.getElementById('adminShowTestLogs'); if(show) show.onchange=()=>{localStorage.setItem('jagdAdminShowTestLogs', show.checked?'1':'0'); renderAdminTracker(logs);};
+  const refresh=document.getElementById('adminRefreshLogs'); if(refresh) refresh.onclick=()=>loadAdminDashboard();
+  const clearTest=document.getElementById('adminClearTestLogs'); if(clearTest) clearTest.onclick=async()=>{if(!confirm('Delete all test logs? This will not delete real logs.'))return; await adminFetch('/api/admin/form-logs?testOnly=1',{method:'DELETE'}); loadAdminDashboard();};
+  const clearAll=document.getElementById('adminClearAllLogs'); if(clearAll) clearAll.onclick=async()=>{if(!confirm('Delete ALL tracker logs? Only use this before launch or if you are cleaning test data.'))return; await adminFetch('/api/admin/form-logs',{method:'DELETE'}); loadAdminDashboard();};
+  document.querySelectorAll('[data-admin-job]').forEach(btn=>{btn.onclick=()=>renderAdminJobDetail(btn.dataset.adminJob, jobs[btn.dataset.adminJob]||[], logs||[]);});
 }
 function adminJobCard(project, rows){
   const daily=rows.filter(r=>formBucket(r.type)==='daily').length;
@@ -1327,17 +1338,27 @@ function adminJobCard(project, rows){
   const last=rows.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];
   return `<button class="adminJobCard" data-admin-job="${esc(project)}"><b>${esc(project)}</b><span>Daily forms: ${daily}</span><span>Weekly forms: ${weekly}</span><small>Last: ${last?new Date(last.createdAt).toLocaleString():'None'}</small></button>`;
 }
-function renderAdminJobDetail(project, rows){
+function renderAdminJobDetail(project, rows, allLogs=[]){
   const d=document.getElementById('adminJobDetail'); if(!d)return;
   const daily=rows.filter(r=>formBucket(r.type)==='daily');
   const weekly=rows.filter(r=>formBucket(r.type)==='weekly');
   const byDay={}; daily.forEach(r=>{byDay[r.date]=byDay[r.date]||[]; byDay[r.date].push(r);});
   const byWeek={}; weekly.forEach(r=>{const w=weekLabel(r.date); byWeek[w]=byWeek[w]||[]; byWeek[w].push(r);});
-  d.innerHTML=`<div class="panel"><h2>${esc(project)}</h2>${adminDailyWeekChecklist(daily)}<div class="adminFolders"><div class="adminFolder"><h3>Daily Folder</h3><p class="tiny">Use this to see if a job missed daily forms.</p>${Object.keys(byDay).sort().reverse().map(date=>adminDayBlock(date,byDay[date])).join('')||'<p>No daily forms generated yet.</p>'}</div><div class="adminFolder"><h3>Weekly Folder</h3><p class="tiny">Weekly safety / toolbox talk records.</p>${Object.keys(byWeek).sort().reverse().map(w=>adminWeekBlock(w,byWeek[w])).join('')||'<p>No weekly forms generated yet.</p>'}</div></div></div>`;
+  d.innerHTML=`<div class="panel"><h2>${esc(project)}</h2><div class="adminToolbar"><button class="btn small danger" id="adminDeleteJobLogs" type="button">Delete Logs for This Job</button><button class="btn small light" id="adminBackToJobs" type="button">Back to Job List</button></div>${adminDailyWeekChecklist(daily)}<div class="adminFolders"><div class="adminFolder"><h3>Daily Folder</h3><p class="tiny">Use this to see if a job missed daily forms.</p>${Object.keys(byDay).sort().reverse().map(date=>adminDayBlock(date,byDay[date])).join('')||'<p>No daily forms generated yet.</p>'}</div><div class="adminFolder"><h3>Weekly Folder</h3><p class="tiny">Weekly safety / toolbox talk records.</p>${Object.keys(byWeek).sort().reverse().map(w=>adminWeekBlock(w,byWeek[w])).join('')||'<p>No weekly forms generated yet.</p>'}</div></div></div>`;
+  const del=document.getElementById('adminDeleteJobLogs'); if(del) del.onclick=async()=>{if(!confirm(`Delete tracker logs for ${project}?`))return; await adminFetch('/api/admin/form-logs?project='+encodeURIComponent(project),{method:'DELETE'}); loadAdminDashboard();};
+  const back=document.getElementById('adminBackToJobs'); if(back) back.onclick=()=>renderAdminTracker(allLogs);
+  setupAdminLogButtons();
+}
+function adminLogActions(r){
+  return `<div class="adminLogActions"><button class="btn tiny light" data-test-log="${esc(r.id)}" type="button">${r.test?'Unmark Test':'Mark Test'}</button><button class="btn tiny danger" data-delete-log="${esc(r.id)}" type="button">Delete</button></div>`;
+}
+function setupAdminLogButtons(){
+  document.querySelectorAll('[data-delete-log]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this tracker log?'))return; await adminFetch('/api/admin/form-logs/'+encodeURIComponent(b.dataset.deleteLog),{method:'DELETE'}); loadAdminDashboard();});
+  document.querySelectorAll('[data-test-log]').forEach(b=>b.onclick=async()=>{await adminFetch('/api/admin/form-logs/'+encodeURIComponent(b.dataset.testLog),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({toggleTest:true})}); loadAdminDashboard();});
 }
 function adminDayBlock(date, rows){
   const counts={}; rows.forEach(r=>{counts[formLabel(r.type)]=(counts[formLabel(r.type)]||0)+1;});
-  return `<details class="adminDetail"><summary>${esc(dateToDisplay(date))} — ${rows.length} form(s)</summary><div class="adminCountList">${Object.entries(counts).map(([k,v])=>`<span>${esc(k)}: <b>${v}</b></span>`).join('')}</div><ul>${rows.map(r=>`<li>${esc(formLabel(r.type))} — ${esc(r.title||'Generated form')} <small>${new Date(r.createdAt).toLocaleTimeString()}</small></li>`).join('')}</ul></details>`;
+  return `<details class="adminDetail"><summary>${esc(dateToDisplay(date))} — ${rows.length} form(s)</summary><div class="adminCountList">${Object.entries(counts).map(([k,v])=>`<span>${esc(k)}: <b>${v}</b></span>`).join('')}</div><ul>${rows.map(r=>`<li>${r.test?'<b class="testBadge">TEST</b> ':''}${esc(formLabel(r.type))} — ${esc(r.title||'Generated form')} <small>${new Date(r.createdAt).toLocaleTimeString()}</small>${adminLogActions(r)}</li>`).join('')}</ul></details>`;
 }
 function adminDailyWeekChecklist(dailyRows){
   const start=weekStart(new Date().toISOString().slice(0,10));
@@ -1345,47 +1366,62 @@ function adminDailyWeekChecklist(dailyRows){
   const days=Array.from({length:7},(_,i)=>{const d=new Date(start); d.setDate(start.getDate()+i); return ymd(d);});
   const counts={}; dailyRows.forEach(r=>{counts[r.date]=(counts[r.date]||0)+1;});
   const boxes=days.map(date=>{const isFuture=date>today; const count=counts[date]||0; const cls=isFuture?'future':(count?'ok':'missing'); const label=isFuture?'Upcoming':(count?`${count} form(s)`:'Missing daily forms'); return `<div class="adminDayCheck ${cls}"><b>${esc(dateToDisplay(date))}</b><span>${esc(label)}</span></div>`;}).join('');
-  return `<div class="adminWeekCheck"><h3>This Week Daily Check</h3><p class="tiny">Quick view so the boss can see missed daily paperwork for the current week. It counts forms generated in the app.</p><div class="adminDayCheckGrid">${boxes}</div></div>`;
+  return `<div class="adminWeekCheck"><h3>This Week Daily Check</h3><p class="tiny">Quick view so the boss can see missed daily paperwork for the current week. Test logs are hidden unless you turn them on.</p><div class="adminDayCheckGrid">${boxes}</div></div>`;
 }
 
-function adminWeekBlock(label, rows){return `<details class="adminDetail"><summary>${esc(label)} — ${rows.length} weekly form(s)</summary><ul>${rows.map(r=>`<li>${esc(formLabel(r.type))} — ${esc(r.title||'Weekly Safety')} <small>${dateToDisplay(r.date)}</small></li>`).join('')}</ul></details>`;}
+function adminWeekBlock(label, rows){return `<details class="adminDetail"><summary>${esc(label)} — ${rows.length} weekly form(s)</summary><ul>${rows.map(r=>`<li>${r.test?'<b class="testBadge">TEST</b> ':''}${esc(formLabel(r.type))} — ${esc(r.title||'Weekly Safety')} <small>${dateToDisplay(r.date)}</small>${adminLogActions(r)}</li>`).join('')}</ul></details>`;}
 function adminProjectOptions(selected=''){
   const vals=[...PROJECT_OPTIONS.filter(Boolean)];
   if(selected && !vals.includes(selected)) vals.unshift(selected);
   return vals.map(p=>`<option value="${esc(p)}" ${p===selected?'selected':''}>${esc(p)}</option>`).join('');
 }
-function workerFormHtml(w={}){
-  return `<div class="adminEditForm"><h3>${w.id?'Edit Worker':'Add Worker'}</h3><input id="adminWorkerId" type="hidden" value="${esc(w.id||'')}"><div class="grid four"><div><label>First Name</label><input id="adminWorkerFirst" value="${esc(w.firstName||'')}"></div><div><label>Last Name</label><input id="adminWorkerLast" value="${esc(w.lastName||'')}"></div><div><label>Full Name</label><input id="adminWorkerFull" value="${esc(w.fullName||'')}"></div><div><label>Class</label><input id="adminWorkerClass" value="${esc(w.class||'')}"></div><div><label>Local</label><input id="adminWorkerLocal" value="${esc(w.local||'')}"></div><div><label>Current Job</label><select id="adminWorkerJob"><option value=""></option>${adminProjectOptions(w.currentJob||'')}</select></div><div><label>Status</label><select id="adminWorkerStatus"><option ${(!w.status||w.status==='Active')?'selected':''}>Active</option><option ${w.status==='Inactive'?'selected':''}>Inactive</option><option ${w.status==='Disabled'?'selected':''}>Disabled</option><option ${w.status==='Terminated'?'selected':''}>Terminated</option></select></div><div><label>Employee ID</label><input id="adminWorkerEmployeeId" value="${esc(w.employeeId||'')}"></div><div><label>Trade</label><input id="adminWorkerTrade" value="${esc(w.trade||'')}"></div><div><label>Crew</label><input id="adminWorkerCrew" value="${esc(w.crew||'')}"></div></div><div class="actions"><button class="btn" id="adminWorkerSaveBtn" type="button">Save Worker</button><button class="btn light" id="adminWorkerClearBtn" type="button">Clear</button></div><div id="adminWorkerMsg"></div></div>`;
+function workerFormHtml(w={}, mode='add'){
+  return `<div class="adminEditForm" id="adminWorkerForm"><h3>${w.id?'Edit Worker':'Add Worker'}</h3><input id="adminWorkerId" type="hidden" value="${esc(w.id||'')}"><div class="grid four"><div><label>First Name</label><input id="adminWorkerFirst" value="${esc(w.firstName||'')}"></div><div><label>Last Name</label><input id="adminWorkerLast" value="${esc(w.lastName||'')}"></div><div><label>Full Name</label><input id="adminWorkerFull" value="${esc(w.fullName||'')}"></div><div><label>Class</label><input id="adminWorkerClass" value="${esc(w.class||'')}"></div><div><label>Local</label><input id="adminWorkerLocal" value="${esc(w.local||'')}"></div><div><label>Current Job</label><select id="adminWorkerJob"><option value=""></option>${adminProjectOptions(w.currentJob||'')}</select></div><div><label>Status</label><select id="adminWorkerStatus"><option ${(!w.status||w.status==='Active')?'selected':''}>Active</option><option ${w.status==='Inactive'?'selected':''}>Inactive</option><option ${w.status==='Disabled'?'selected':''}>Disabled</option><option ${w.status==='Terminated'?'selected':''}>Terminated</option></select></div><div><label>Employee ID</label><input id="adminWorkerEmployeeId" value="${esc(w.employeeId||'')}"></div><div><label>Trade</label><input id="adminWorkerTrade" value="${esc(w.trade||'')}"></div><div><label>Crew</label><input id="adminWorkerCrew" value="${esc(w.crew||'')}"></div></div><div class="actions"><button class="btn" id="adminWorkerSaveBtn" type="button">Save Worker</button><button class="btn light" id="adminWorkerCancelBtn" type="button">Cancel</button></div><div id="adminWorkerMsg"></div></div>`;
 }
-async function renderAdminWorkers(editWorker=null){
+function workerFullName(w){ return (w.fullName || `${w.firstName||''} ${w.lastName||''}`.trim() || '').trim(); }
+async function renderAdminWorkers(editWorker=null, showForm=false){
   const c=document.getElementById('adminContent'); if(!c)return;
   c.innerHTML='<div class="panel"><div class="notice">Loading workers...</div></div>';
   try{
     const json=await adminFetch('/api/admin/workers');
-    const rows=json.rows||[];
-    c.innerHTML=`<div class="panel"><h2>DWL Names / Workers</h2><p class="tiny">This list feeds the DWL autocomplete. Import the portal Active Workers CSV, add a worker, edit Class/Local, or disable a worker.</p><details class="adminDetail"><summary>Upload / replace Active Workers CSV</summary><p class="tiny">Paste the CSV exported from portal. This replaces the current Forms worker list.</p><textarea id="adminWorkerCsv" class="adminBigText" placeholder="Paste active workers CSV here"></textarea><div class="actions"><button class="btn" id="adminWorkerImportBtn" type="button">Import Active Workers CSV</button></div><div id="adminWorkerImportMsg"></div></details>${workerFormHtml(editWorker||{})}<div class="adminToolbar"><input id="adminWorkerSearch" placeholder="Search workers"><span>${rows.filter(w=>!w.disabled && !String(w.status||'').toLowerCase().includes('term')).length} active / ${rows.length} total</span></div><div id="adminWorkerTable"></div></div>`;
-    setupAdminWorkerForm();
+    const rows=(json.rows||[]).slice().sort((a,b)=>workerFullName(a).localeCompare(workerFullName(b)));
+    const activeCount=rows.filter(w=>!w.disabled && !String(w.status||'').toLowerCase().includes('term')).length;
+    c.innerHTML=`<div class="panel"><h2>DWL Names / Workers</h2><p class="tiny">This is the current list used by DWL autocomplete. Use Edit next to a name, Add Worker for one-off additions, Import Excel/CSV when office sends a new list, and Export when you need a backup.</p><div class="adminToolbar"><button class="btn" id="adminAddWorkerBtn" type="button">+ Add Worker</button><button class="btn light" id="adminOpenWorkerImportBtn" type="button">Import New Excel / CSV</button><a class="btn light" id="adminWorkerExportBtn" href="/api/admin/workers/export.csv?pin=${encodeURIComponent(adminPin())}">Export Worker List</a><span><b>${activeCount}</b> active / <b>${rows.length}</b> total</span></div><div id="adminWorkerFormHolder">${showForm||editWorker?workerFormHtml(editWorker||{}):''}</div><details class="adminDetail" id="adminWorkerImportDetails"><summary>Import new Excel / CSV worker list</summary><p class="tiny">Best option: export/save Excel as CSV, then upload it here or paste it below. Import replaces the Forms worker list.</p><input id="adminWorkerCsvFile" type="file" accept=".csv,.txt,text/csv"><textarea id="adminWorkerCsv" class="adminBigText" placeholder="Or paste active workers CSV here"></textarea><div class="actions"><button class="btn" id="adminWorkerImportBtn" type="button">Import Worker List</button></div><div id="adminWorkerImportMsg"></div></details><div class="adminToolbar"><input id="adminWorkerSearch" placeholder="Search current worker list"><select id="adminWorkerStatusFilter"><option value="">All statuses</option><option value="active">Active only</option><option value="disabled">Disabled / inactive</option></select></div><div id="adminWorkerTable"></div></div>`;
+    const holder=document.getElementById('adminWorkerFormHolder');
+    const add=document.getElementById('adminAddWorkerBtn'); if(add) add.onclick=()=>{holder.innerHTML=workerFormHtml({}); setupAdminWorkerForm(); holder.scrollIntoView({behavior:'smooth',block:'start'});};
+    const openImport=document.getElementById('adminOpenWorkerImportBtn'); if(openImport) openImport.onclick=()=>{const d=document.getElementById('adminWorkerImportDetails'); if(d){d.open=true; d.scrollIntoView({behavior:'smooth',block:'start'});}};
+    if(showForm||editWorker) setupAdminWorkerForm();
+    const fileInput=document.getElementById('adminWorkerCsvFile'); if(fileInput) fileInput.onchange=()=>{const f=fileInput.files&&fileInput.files[0]; if(!f)return; const reader=new FileReader(); reader.onload=()=>{document.getElementById('adminWorkerCsv').value=String(reader.result||'');}; reader.readAsText(f);};
     document.getElementById('adminWorkerImportBtn').onclick=async()=>{
       const csvText=val('adminWorkerCsv');
-      if(!csvText){document.getElementById('adminWorkerImportMsg').innerHTML='<div class="notice">Paste the CSV first.</div>'; return;}
-      try{const out=await adminFetch('/api/admin/workers/import-csv',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csvText})}); activeWorkers=[]; document.getElementById('adminWorkerImportMsg').innerHTML=`<div class="notice success">Imported ${out.count} workers (${out.activeCount} active).</div>`; setTimeout(()=>renderAdminWorkers(),600);}catch(e){document.getElementById('adminWorkerImportMsg').innerHTML=`<div class="notice">${esc(e.message)}</div>`;}
+      if(!csvText){document.getElementById('adminWorkerImportMsg').innerHTML='<div class="notice">Upload a CSV file or paste CSV text first.</div>'; return;}
+      try{const out=await adminFetch('/api/admin/workers/import-csv',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csvText})}); activeWorkers=[]; document.getElementById('adminWorkerImportMsg').innerHTML=`<div class="notice success">Imported ${out.count} workers (${out.activeCount} active).</div>`; setTimeout(()=>renderAdminWorkers(),700);}catch(e){document.getElementById('adminWorkerImportMsg').innerHTML=`<div class="notice">${esc(e.message)}</div>`;}
     };
     const renderTable=()=>{
-      const q=val('adminWorkerSearch').toLowerCase();
-      const filtered=rows.filter(w=>`${w.fullName||''} ${w.firstName||''} ${w.lastName||''} ${w.class||''} ${w.local||''} ${w.currentJob||''}`.toLowerCase().includes(q)).slice(0,200);
-      document.getElementById('adminWorkerTable').innerHTML=`<div class="adminTableWrap"><table class="adminTable"><tr><th>Name</th><th>Class</th><th>Local</th><th>Job</th><th>Status</th><th></th></tr>${filtered.map(w=>`<tr class="${w.disabled?'mutedRow':''}"><td>${esc(w.fullName||`${w.firstName||''} ${w.lastName||''}`)}</td><td>${esc(w.class||'')}</td><td>${esc(w.local||'')}</td><td>${esc(w.currentJob||'')}</td><td>${esc(w.disabled?'Disabled':(w.status||'Active'))}</td><td><button class="btn small light" data-edit-worker="${esc(w.id)}" type="button">Edit</button> <button class="btn small danger" data-disable-worker="${esc(w.id)}" type="button">Disable</button></td></tr>`).join('')}</table></div>`;
-      document.querySelectorAll('[data-edit-worker]').forEach(b=>b.onclick=()=>renderAdminWorkers(rows.find(w=>String(w.id)===b.dataset.editWorker)));
+      const q=val('adminWorkerSearch').toLowerCase(), statusFilter=val('adminWorkerStatusFilter');
+      const filtered=rows.filter(w=>{
+        const active=!w.disabled && !String(w.status||'').toLowerCase().includes('term') && !String(w.status||'').toLowerCase().includes('inactive') && !String(w.status||'').toLowerCase().includes('disabled');
+        if(statusFilter==='active' && !active) return false;
+        if(statusFilter==='disabled' && active) return false;
+        return `${workerFullName(w)} ${w.firstName||''} ${w.lastName||''} ${w.class||''} ${w.local||''} ${w.currentJob||''} ${w.employeeId||''}`.toLowerCase().includes(q);
+      }).slice(0,500);
+      document.getElementById('adminWorkerTable').innerHTML=`<div class="adminTableWrap"><table class="adminTable"><tr><th>Name</th><th>Class</th><th>Local</th><th>Job</th><th>Status</th><th>Action</th></tr>${filtered.map(w=>`<tr class="${w.disabled?'mutedRow':''}"><td><b>${esc(workerFullName(w))}</b><br><small>${esc(w.employeeId||'')}</small></td><td>${esc(w.class||'')}</td><td>${esc(w.local||'')}</td><td>${esc(w.currentJob||'')}</td><td>${esc(w.disabled?'Disabled':(w.status||'Active'))}</td><td><button class="btn small light" data-edit-worker="${esc(w.id)}" type="button">Edit</button> <button class="btn small danger" data-disable-worker="${esc(w.id)}" type="button">Disable</button></td></tr>`).join('')}</table></div><p class="tiny">Showing ${filtered.length} of ${rows.length} workers.</p>`;
+      document.querySelectorAll('[data-edit-worker]').forEach(b=>b.onclick=()=>{const worker=rows.find(w=>String(w.id)===b.dataset.editWorker); holder.innerHTML=workerFormHtml(worker||{}); setupAdminWorkerForm(); holder.scrollIntoView({behavior:'smooth',block:'start'});});
       document.querySelectorAll('[data-disable-worker]').forEach(b=>b.onclick=async()=>{if(!confirm('Disable this worker from DWL autocomplete?'))return; await adminFetch('/api/admin/workers/'+encodeURIComponent(b.dataset.disableWorker),{method:'DELETE'}); activeWorkers=[]; renderAdminWorkers();});
     };
     document.getElementById('adminWorkerSearch').oninput=renderTable;
+    document.getElementById('adminWorkerStatusFilter').onchange=renderTable;
     renderTable();
   }catch(e){c.innerHTML=`<div class="panel"><div class="notice">${esc(e.message)}</div></div>`;}
 }
 function setupAdminWorkerForm(){
   const save=document.getElementById('adminWorkerSaveBtn'); if(!save)return;
-  document.getElementById('adminWorkerClearBtn').onclick=()=>renderAdminWorkers();
+  const cancel=document.getElementById('adminWorkerCancelBtn'); if(cancel) cancel.onclick=()=>{const holder=document.getElementById('adminWorkerFormHolder'); if(holder) holder.innerHTML='';};
+  const first=document.getElementById('adminWorkerFirst'), last=document.getElementById('adminWorkerLast'), full=document.getElementById('adminWorkerFull');
+  const syncFull=()=>{ if(full && !full.value.trim()) full.value=`${first?.value||''} ${last?.value||''}`.trim(); };
+  if(first) first.onblur=syncFull; if(last) last.onblur=syncFull;
   save.onclick=async()=>{
-    const body={id:val('adminWorkerId'),firstName:val('adminWorkerFirst'),lastName:val('adminWorkerLast'),fullName:val('adminWorkerFull'),class:val('adminWorkerClass'),local:val('adminWorkerLocal'),currentJob:val('adminWorkerJob'),status:val('adminWorkerStatus'),employeeId:val('adminWorkerEmployeeId'),trade:val('adminWorkerTrade'),crew:val('adminWorkerCrew'),disabled:val('adminWorkerStatus')==='Disabled'};
+    const body={id:val('adminWorkerId'),firstName:val('adminWorkerFirst'),lastName:val('adminWorkerLast'),fullName:val('adminWorkerFull')||`${val('adminWorkerFirst')} ${val('adminWorkerLast')}`.trim(),class:val('adminWorkerClass'),local:val('adminWorkerLocal'),currentJob:val('adminWorkerJob'),status:val('adminWorkerStatus'),employeeId:val('adminWorkerEmployeeId'),trade:val('adminWorkerTrade'),crew:val('adminWorkerCrew'),disabled:val('adminWorkerStatus')==='Disabled'};
     try{await adminFetch('/api/admin/workers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); activeWorkers=[]; document.getElementById('adminWorkerMsg').innerHTML='<div class="notice success">Worker saved.</div>'; setTimeout(()=>renderAdminWorkers(),500);}catch(e){document.getElementById('adminWorkerMsg').innerHTML=`<div class="notice">${esc(e.message)}</div>`;}
   };
 }

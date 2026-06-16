@@ -139,6 +139,10 @@ function requireAdmin(req, res, next) {
 function cleanText(v) {
   return String(v || '').trim().slice(0, 500);
 }
+function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[\",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
 
 app.post('/api/weekly-meetings', (req, res) => {
   const project = cleanText(req.body.project);
@@ -210,6 +214,27 @@ app.get('/api/admin/form-logs', requireAdmin, (req, res) => {
   res.json({ ok: true, rows });
 });
 
+app.patch('/api/admin/form-logs/:id', requireAdmin, (req, res) => {
+  const rows = readFormLogs();
+  const idx = rows.findIndex(x => String(x.id) === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'Log not found.' });
+  if (req.body && req.body.toggleTest) rows[idx].test = !rows[idx].test;
+  if (req.body && typeof req.body.test === 'boolean') rows[idx].test = req.body.test;
+  rows[idx].updatedAt = new Date().toISOString();
+  writeFormLogs(rows);
+  res.json({ ok: true, row: rows[idx] });
+});
+
+app.delete('/api/admin/form-logs', requireAdmin, (req, res) => {
+  const rows = readFormLogs();
+  let next = rows;
+  if (req.query.testOnly === '1') next = rows.filter(x => !x.test);
+  else if (req.query.project) next = rows.filter(x => String(x.project || 'No Project') !== String(req.query.project));
+  else next = [];
+  writeFormLogs(next);
+  res.json({ ok: true, removed: rows.length - next.length });
+});
+
 app.delete('/api/admin/form-logs/:id', requireAdmin, (req, res) => {
   const rows = readFormLogs();
   const next = rows.filter(x => x.id !== req.params.id);
@@ -221,6 +246,15 @@ app.delete('/api/admin/form-logs/:id', requireAdmin, (req, res) => {
 app.get('/api/workers', (req, res) => {
   const rows = readWorkers().filter(isWorkerActive);
   res.json({ ok: true, rows });
+});
+
+app.get('/api/admin/workers/export.csv', requireAdmin, (req, res) => {
+  const headers = ['firstName','lastName','fullName','class','local','currentJob','status','employeeId','trade','crew','disabled'];
+  const rows = readWorkers();
+  const csv = [headers.join(',')].concat(rows.map(w => headers.map(h => csvCell(w[h])).join(','))).join('\n');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="jagd-field-forms-workers.csv"');
+  res.send(csv);
 });
 
 app.get('/api/admin/workers', requireAdmin, (req, res) => {

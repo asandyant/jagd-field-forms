@@ -1,12 +1,13 @@
-# JAGD Field Forms - v51 Admin Phase 2
+# JAGD Field Forms - v52 Admin Final Touches
 
-Changes in this checkpoint:
-- Admin password default changed to JadgForms123!!!
-- Admin Tracker now has a current week daily check showing missing daily paperwork by job.
-- Admin DWL Names / Workers can import the portal active worker CSV, add/edit workers, and disable workers.
-- DWL autocomplete now reads the server worker list first, then falls back to the static list.
-- Admin COA Materials can add/edit/disable material records manually by job.
-- PIR COA helper reads server materials plus the built-in GWB/Dyre libraries.
-- DWL, Weekly, PIR print layouts were not redesigned.
+Includes v51 plus:
+- Cleaner Admin DWL Names / Workers screen with current list first.
+- Edit button next to every worker.
+- Add Worker button.
+- Import new Excel/CSV button with file picker or paste box.
+- Export Worker List CSV.
+- Tracker cleanup controls: delete individual logs, delete job logs, clear test logs, clear all logs.
+- Mark/unmark tracker logs as TEST and hide test logs from boss counts by default.
+- Does not redesign DWL, PIR, Weekly, or the extra forms.
 
-Important: This is still field-app generated tracking, not confirmed Dropbox upload tracking.
+Admin password: JadgForms123!!!
