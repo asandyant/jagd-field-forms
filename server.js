@@ -87,7 +87,7 @@ function seedWorkersFromPublic() {
         lastName: cleanText(w.lastName),
         fullName: cleanText(w.fullName) || `${cleanText(w.firstName)} ${cleanText(w.lastName)}`.trim(),
         class: cleanText(w.class),
-        local: cleanText(w.local),
+        local: cleanLocalValue(w.local),
         currentJob: cleanText(w.currentJob),
         status: cleanText(w.status) || 'Active',
         employeeId: cleanText(w.employeeId),
@@ -101,10 +101,13 @@ function seedWorkersFromPublic() {
   } catch (e) {}
   return [];
 }
+function normalizeWorkerRows(rows) {
+  return (Array.isArray(rows) ? rows : []).map(w => ({ ...w, local: cleanLocalValue(w.local) }));
+}
 function readWorkers() {
   try {
     const rows = JSON.parse(fs.readFileSync(WORKERS_FILE, 'utf8'));
-    if (Array.isArray(rows) && rows.length) return rows;
+    if (Array.isArray(rows) && rows.length) return normalizeWorkerRows(rows);
   } catch (e) {}
   const seeded = seedWorkersFromPublic();
   if (seeded.length) {
@@ -342,7 +345,7 @@ app.post('/api/admin/workers/import-csv', requireAdmin, (req, res) => {
       lastName,
       fullName,
       class: pick(r, map, ['class', 'workerClass']),
-      local: pick(r, map, ['local', 'unionLocal']),
+      local: cleanLocalValue(pick(r, map, ['local', 'unionLocal'])),
       currentJob: pick(r, map, ['currentJob', 'current job', 'job']),
       status: pick(r, map, ['status']) || 'Active',
       employeeId: pick(r, map, ['employeeId', 'employee id']),
@@ -373,7 +376,7 @@ app.post('/api/admin/workers', requireAdmin, (req, res) => {
     lastName,
     fullName,
     class: cleanText(body.class),
-    local: cleanText(body.local),
+    local: cleanLocalValue(body.local),
     currentJob: cleanText(body.currentJob),
     status: cleanText(body.status) || 'Active',
     employeeId: cleanText(body.employeeId),

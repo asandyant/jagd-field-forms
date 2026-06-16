@@ -1,13 +1,9 @@
-JAGD Field Forms v56
+JAGD Field Forms v57 - Admin Local Number Cleanup
 
-Fixes admin DWL Names / Workers and COA Materials.
+Fixes:
+- Removes .0 from union locals in the built-in worker list.
+- Normalizes locals from admin worker import, edit, restore, export, and API responses.
+- Admin DWL Names / Workers list now displays locals like 806, 2353, 476 instead of 806.0.
+- DWL autocomplete also uses cleaned local values.
 
-Changes:
-- Fixes admin worker page error: "slug is not defined".
-- DWL Names / Workers can now show the built-in worker list again when no admin worker list has been saved yet.
-- COA Materials stays clean: it does not show all COAs automatically.
-- COAs only display after selecting a Project / Job and clicking Show Current COAs.
-- GWB and Dyre built-in COA libraries remain available for PIR helper.
-- No DWL layout changes.
-- No PIR print/layout changes.
-- No Weekly changes.
+No DWL layout, PIR print, Weekly Safety, COA helper, or extra form layout changes.
