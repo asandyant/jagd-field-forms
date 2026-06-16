@@ -116,8 +116,31 @@ function readWorkers() {
 function writeWorkers(rows) {
   fs.writeFileSync(WORKERS_FILE, JSON.stringify(rows, null, 2));
 }
+function seedMaterialsFromPublic() {
+  const seeds = ['gwb-materials.json', 'dyre-materials.json'];
+  let mats = [];
+  for (const file of seeds) {
+    const seed = path.join(__dirname, 'public', 'data', file);
+    if (fs.existsSync(seed)) {
+      try {
+        const rows = JSON.parse(fs.readFileSync(seed, 'utf8'));
+        if (Array.isArray(rows)) mats = mats.concat(rows);
+      } catch (e) {}
+    }
+  }
+  return mats;
+}
 function readMaterials() {
-  try { return JSON.parse(fs.readFileSync(MATERIALS_FILE, 'utf8')); } catch (e) { return []; }
+  try {
+    const rows = JSON.parse(fs.readFileSync(MATERIALS_FILE, 'utf8'));
+    if (Array.isArray(rows) && rows.length) return rows;
+  } catch (e) {}
+  const seeded = seedMaterialsFromPublic();
+  if (seeded.length) {
+    writeMaterials(seeded);
+    return seeded;
+  }
+  return [];
 }
 function writeMaterials(rows) {
   fs.writeFileSync(MATERIALS_FILE, JSON.stringify(rows, null, 2));

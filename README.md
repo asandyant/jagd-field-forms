@@ -1,13 +1,16 @@
-# JAGD Field Forms - v52 Admin Final Touches
+# JAGD Field Forms v55 - Admin Worker/COA List Restore
 
-Includes v51 plus:
-- Cleaner Admin DWL Names / Workers screen with current list first.
-- Edit button next to every worker.
-- Add Worker button.
-- Import new Excel/CSV button with file picker or paste box.
-- Export Worker List CSV.
-- Tracker cleanup controls: delete individual logs, delete job logs, clear test logs, clear all logs.
-- Mark/unmark tracker logs as TEST and hide test logs from boss counts by default.
-- Does not redesign DWL, PIR, Weekly, or the extra forms.
+Fixes admin DWL Names / Workers and COA Materials visibility.
 
-Admin password: JadgForms123!!!
+## Changes
+- Admin DWL Names now falls back to the built-in active worker list if the server worker store is empty.
+- Admin DWL Names shows the full worker list by default.
+- Search box acts like the DWL employee search: start typing a name to filter instantly.
+- Edit button remains next to each worker.
+- Add Worker form includes class/local/current job/status/employee id/trade/crew.
+- Server material store now seeds from built-in GWB and Dyre COA libraries if empty.
+- COA Materials admin list now includes built-in GWB and Dyre COAs, plus imported/admin-added COAs.
+- COA job filter now understands project dropdown names like GWB Cables and C35311 - Dyre Ave. Line.
+- Built-in COAs show as Built-in / Active and can be copied/edited into an admin record.
+
+No DWL layout, PIR print, Weekly, or extra-form layout changes were made.
