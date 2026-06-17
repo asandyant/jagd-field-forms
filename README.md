@@ -1,6 +1,9 @@
-JAGD Field Forms v61
-- DWL-only phone preview readability fix.
-- Keeps one-page DWL unless extra worker page is added.
-- Enlarges DWL print layout to fill the letter page more like the field sample.
-- Removes extra bottom signature underlines.
-- No PIR / Weekly / Admin / Portal changes.
+# JAGD Field Forms v64
+
+DWL-only emergency fix.
+
+- Keeps the clean jsPDF DWL PDF generation.
+- Changes the save behavior to match the original boss DWL: `pdf.save(...)` directly.
+- Removes the popup/blob viewer behavior that was not acting right on phones.
+- Avoids Safari/iPhone browser print footer/page count junk.
+- Does not touch PIR, Weekly, Admin, COA, or portal work.

@@ -1325,7 +1325,6 @@ async function saveDwlDirectPdf(data, msgId){
   if(!window.jspdf || !window.jspdf.jsPDF) return false;
   const msg=document.getElementById(msgId);
   if(msg) msg.innerHTML='<div class="notice">Building clean DWL PDF...</div>';
-  const popup = window.open('', '_blank');
   const { jsPDF } = window.jspdf;
   const filledRows=(data.rows||[]).filter(r=>r.employee||r.location||r.activity||r.class||r.local||r.straight||r.over||r.noLunch||r.pt||r.rt);
   const needed=Math.max(1, Math.ceil(Math.max(filledRows.length,20)/20));
@@ -1398,13 +1397,12 @@ async function saveDwlDirectPdf(data, msgId){
     dwlPdfText(doc,dateSlash,pageW-m,y+10,{size:8.5,style:'bold',align:'right',maxWidth:70});
     if(needed>1) dwlPdfText(doc,`Page ${p+1} of ${needed}`,pageW/2,pageH-12,{size:7,align:'center',maxWidth:100});
   }
-  const blob=doc.output('blob');
-  const url=URL.createObjectURL(blob);
-  if(popup){ popup.location=url; }
-  else {
-    const a=document.createElement('a'); a.href=url; a.target='_blank'; a.download=(document.title||'DWL')+'.pdf'; document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),500);
-  }
-  if(msg) msg.innerHTML='<div class="success">Clean DWL PDF opened. Use Share / Print from the PDF viewer.</div>';
+  // Match the original boss DWL behavior: let jsPDF save/download the generated PDF directly.
+  // This avoids iPhone/Safari browser print headers/footers and avoids the blank second page
+  // caused by opening the form through the native print preview.
+  const filename = ((document.title || 'DWL').replace(/[\/:*?"<>|]/g,'').trim() || 'DWL') + '.pdf';
+  pdf.save(filename);
+  if(msg) msg.innerHTML='<div class="success">Clean DWL PDF saved. Open/share the downloaded PDF from your phone.</div>';
   return true;
 }
 
