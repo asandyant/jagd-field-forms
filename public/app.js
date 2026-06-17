@@ -1276,7 +1276,7 @@ async function dwlForm(){
   document.getElementById('dwlLoadLastCrewBtn').onclick=loadDwlLastCrew;
   document.getElementById('dwlResetBtn').onclick=resetDwlForm;
   setTimeout(()=>autoFillWeather(),350);
-  document.getElementById('dwlPrintBtn').onclick=async (e)=>{e.preventDefault(); try{saveDwlLastCrewFromRows(); const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); logGeneratedForm('dwl', data.project, data.reportDate, document.title); const madePdf=await saveDwlDirectPdf(data,'dwlMsg'); if(!madePdf){ buildDwlPrint(data); openPrintNow('dwlMsg'); }}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL PDF could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{saveDwlLastCrewFromRows(); const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); logGeneratedForm('dwl', data.project, data.reportDate, document.title); buildDwlPrint(data); openPrintNow('dwlMsg');}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
 
 // v63: DWL direct PDF generator. This avoids iPhone/Safari print headers/footers (URL, date, Page 1 of 2)
@@ -1402,7 +1402,7 @@ async function saveDwlDirectPdf(data, msgId){
   // caused by opening the form through the native print preview.
   const filename = ((document.title || 'DWL').replace(/[\/:*?"<>|]/g,'').trim() || 'DWL') + '.pdf';
   doc.save(filename);
-  if(msg) msg.innerHTML='<div class="success">Clean DWL PDF saved. Open/share the downloaded PDF from your phone.</div>';
+  if(msg) msg.innerHTML='<div class="success">DWL ready. Use the iPhone/Android print screen to save/share as PDF.</div>';
   return true;
 }
 
