@@ -708,3 +708,46 @@
   .bigDate2{font-size:12.5px!important;line-height:1!important;white-space:nowrap!important;}
   .dwlSinglePage .dwlPageNum{display:none!important;}
 }
+
+/* v61 DWL phone-preview readability: make the printed DWL fill the letter page more like the approved field sample. */
+@media print{
+  @page{size:letter portrait;margin:.035in!important;}
+  body:has(.dwlPrintSheet){background:#fff!important;}
+  .dwlPrintSheet{
+    width:8.22in!important;
+    height:10.78in!important;
+    max-height:10.78in!important;
+    margin:0 auto!important;
+    padding:0!important;
+    overflow:hidden!important;
+    font-size:12px!important;
+    line-height:1.05!important;
+    box-sizing:border-box!important;
+  }
+  .dwlSinglePage{height:10.78in!important;max-height:10.78in!important;page-break-after:avoid!important;break-after:avoid!important;}
+  .dwlPrintTop{height:.33in!important;font-size:14px!important;padding:0 2px!important;}
+  .dwlBrand img{width:.29in!important;height:.29in!important;}
+  .dwlBrand b{font-size:14px!important;}
+  .dwlHeadLine{height:.43in!important;grid-template-columns:1fr 1.85in!important;font-size:12.4px!important;padding:0 8px!important;border-bottom:2px solid #000!important;}
+  .dwlHeadLine>div:first-child{font-size:12.4px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+  .bigDate{font-size:23px!important;line-height:1!important;}
+  .dwlWeatherLine{height:.29in!important;font-size:12px!important;grid-template-columns:1fr 1.62in 1.45in!important;padding:0 8px!important;border-bottom:1.7px solid #000!important;}
+  .dwlActivitiesPrint th{font-size:10.3px!important;height:.14in!important;padding:1px 3px!important;border:1.4px solid #000!important;}
+  .dwlActivitiesPrint td{font-size:9.9px!important;height:.155in!important;padding:1px 5px!important;line-height:1!important;font-weight:900!important;border:1.3px solid #000!important;}
+  .dwlBox{height:.90in!important;font-size:12.8px!important;border:1.6px solid #000!important;}
+  .dwlBox.small{height:.29in!important;font-size:11.5px!important;}
+  .dwlBox b{font-size:11px!important;padding:1px 4px!important;background:#d9d9d9!important;border-bottom:1.3px solid #000!important;}
+  .dwlBox div{padding:3px 6px!important;line-height:1.08!important;}
+  .dwlPrintTable{font-size:11.4px!important;table-layout:fixed!important;border-collapse:collapse!important;}
+  .dwlPrintTable th{font-size:9.6px!important;padding:1px!important;line-height:1!important;background:#d9d9d9!important;border:1.4px solid #000!important;}
+  .dwlPrintTable td{height:.292in!important;padding:1px 2px!important;line-height:1!important;font-weight:900!important;vertical-align:middle!important;overflow:hidden!important;border:1.4px solid #000!important;}
+  .dwlPrintTable td:nth-child(2){font-size:17.2px!important;font-weight:900!important;letter-spacing:.1px!important;}
+  .dwlPrintTable td:nth-child(3){font-size:11.5px!important;}
+  .dwlPrintTable td:nth-child(4),.dwlPrintTable td:nth-child(5),.dwlPrintTable td:nth-child(6),.dwlPrintTable td:nth-child(7),.dwlPrintTable td:nth-child(8),.dwlPrintTable td:nth-child(9),.dwlPrintTable td:nth-child(10),.dwlPrintTable td:nth-child(11){font-size:14.5px!important;text-align:center!important;}
+  .dwlNoLunchPrint{font-size:14.5px!important;font-weight:900!important;}
+  .dwlPrintFoot{height:.24in!important;grid-template-columns:2.75in 1fr 1.35in!important;gap:8px!important;font-size:9.6px!important;padding-top:1px!important;align-items:end!important;}
+  .dwlPrintFoot>div{border-bottom:0!important;min-height:.18in!important;}
+  .dwlPrintFoot .sigPrint,.dwlPrintSheet .sigPrint{max-height:.18in!important;}
+  .bigDate2{font-size:13px!important;line-height:1!important;white-space:nowrap!important;}
+  .dwlSinglePage .dwlPageNum{display:none!important;}
+}
