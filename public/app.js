@@ -1276,8 +1276,138 @@ async function dwlForm(){
   document.getElementById('dwlLoadLastCrewBtn').onclick=loadDwlLastCrew;
   document.getElementById('dwlResetBtn').onclick=resetDwlForm;
   setTimeout(()=>autoFillWeather(),350);
-  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{saveDwlLastCrewFromRows(); const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); logGeneratedForm('dwl', data.project, data.reportDate, document.title); buildDwlPrint(data); openPrintNow('dwlMsg');}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  document.getElementById('dwlPrintBtn').onclick=async (e)=>{e.preventDefault(); try{saveDwlLastCrewFromRows(); const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); logGeneratedForm('dwl', data.project, data.reportDate, document.title); const madePdf=await saveDwlDirectPdf(data,'dwlMsg'); if(!madePdf){ buildDwlPrint(data); openPrintNow('dwlMsg'); }}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL PDF could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
+
+// v63: DWL direct PDF generator. This avoids iPhone/Safari print headers/footers (URL, date, Page 1 of 2)
+// and keeps the DWL to a true one-page PDF unless the user added/filled more than 20 worker rows.
+function dwlPdfText(doc, text, x, y, opts={}){
+  const value = String(text || '');
+  const maxWidth = opts.maxWidth || 9999;
+  const size = opts.size || 8;
+  const style = opts.style || 'normal';
+  const align = opts.align || 'left';
+  doc.setFont('helvetica', style);
+  doc.setFontSize(size);
+  let out = value;
+  if (doc.getTextWidth(out) > maxWidth) {
+    while(out.length > 3 && doc.getTextWidth(out + '…') > maxWidth) out = out.slice(0,-1);
+    out = out.trim() + '…';
+  }
+  doc.text(out, x, y, {align});
+}
+function dwlPdfCell(doc, x, y, w, h, text, opts={}){
+  if(opts.fill){ doc.setFillColor(opts.fill[0], opts.fill[1], opts.fill[2]); doc.rect(x,y,w,h,'F'); }
+  doc.setDrawColor(0); doc.setLineWidth(opts.lineWidth || 0.7); doc.rect(x,y,w,h);
+  const size=opts.size || 8;
+  const style=opts.style || 'normal';
+  const align=opts.align || 'left';
+  const tx = align==='center' ? x+w/2 : align==='right' ? x+w-3 : x+3;
+  const ty = y + h/2 + size*0.34;
+  dwlPdfText(doc, text, tx, ty, {maxWidth:w-6, size, style, align});
+}
+function dwlPdfWrapText(doc, text, x, y, w, h, opts={}){
+  const size=opts.size || 8;
+  const style=opts.style || 'normal';
+  doc.setFont('helvetica', style); doc.setFontSize(size);
+  const lines=doc.splitTextToSize(String(text||''), w-8);
+  const lineH=size*1.15;
+  let cy=y+size+3;
+  for(const line of lines){ if(cy > y+h-3) break; doc.text(line, x+4, cy); cy += lineH; }
+}
+function dwlPdfBox(doc, x, y, w, h, label, value, bodySize=9){
+  doc.setLineWidth(0.8); doc.rect(x,y,w,h);
+  doc.setFillColor(217,217,217); doc.rect(x,y,w,13,'F'); doc.rect(x,y,w,13);
+  dwlPdfText(doc, label, x+3, y+9.5, {size:8, style:'bold', maxWidth:w-6});
+  dwlPdfWrapText(doc, value, x, y+13, w, h-13, {size:bodySize, style:'normal'});
+}
+async function saveDwlDirectPdf(data, msgId){
+  if(!window.jspdf || !window.jspdf.jsPDF) return false;
+  const msg=document.getElementById(msgId);
+  if(msg) msg.innerHTML='<div class="notice">Building clean DWL PDF...</div>';
+  const popup = window.open('', '_blank');
+  const { jsPDF } = window.jspdf;
+  const filledRows=(data.rows||[]).filter(r=>r.employee||r.location||r.activity||r.class||r.local||r.straight||r.over||r.noLunch||r.pt||r.rt);
+  const needed=Math.max(1, Math.ceil(Math.max(filledRows.length,20)/20));
+  const rowsForPrint=(data.rows||[]).slice(0, needed*20);
+  while(rowsForPrint.length < needed*20) rowsForPrint.push({num:rowsForPrint.length+1});
+  const doc=new jsPDF({orientation:'portrait',unit:'pt',format:'letter',compress:true});
+  const pageW=612, pageH=792;
+  const dateSlash=dateToSlashYYYY(data.reportDate);
+  const m=14, w=pageW-m*2;
+  const cols=[18,176,45,42,42,42,44,42,52,40,40];
+  const headers=['#','Employee','Location','Activity','Class','Local','Straight','Over','No Lunch','P.T.','R.T.'];
+  for(let p=0;p<needed;p++){
+    if(p>0) doc.addPage('letter','portrait');
+    let y=14;
+    // Header
+    doc.setFont('helvetica','bold'); doc.setFontSize(9);
+    try{ doc.addImage('/assets/jagd-logo.png','PNG',m,y,18,13); }catch(e){}
+    dwlPdfText(doc,'JAGD Daily Work Log',m+24,y+10,{size:9,style:'bold',maxWidth:180});
+    dwlPdfText(doc,'DWL 4.0',pageW-m,y+10,{size:9,style:'bold',align:'right',maxWidth:70});
+    y += 26;
+    doc.setLineWidth(1.2); doc.line(m,y+w*0,w+m,y+w*0); // harmless reset line?
+    // Project / date line
+    dwlPdfText(doc,'Project:',m,y+14,{size:8,style:'bold'});
+    dwlPdfText(doc,data.project,m+36,y+15,{size:10,style:'bold',maxWidth:340});
+    dwlPdfText(doc,'Report Date:',pageW-m-120,y+8,{size:7,style:'bold',align:'left'});
+    dwlPdfText(doc,dateSlash,pageW-m,y+23,{size:18,style:'bold',align:'right',maxWidth:120});
+    doc.setLineWidth(1.1); doc.line(m,y+26,pageW-m,y+26);
+    y += 28;
+    // Weather line
+    dwlPdfText(doc,'Weather:',m,y+12,{size:8,style:'bold'});
+    dwlPdfText(doc,data.weather,m+42,y+12,{size:9,style:'bold',maxWidth:230});
+    dwlPdfText(doc,'Day:',m+365,y+12,{size:8,style:'bold'});
+    dwlPdfText(doc,data.day,m+390,y+12,{size:9,style:'bold',maxWidth:85});
+    dwlPdfText(doc,'Crew:',m+485,y+12,{size:8,style:'bold'});
+    dwlPdfText(doc,data.crew,m+515,y+12,{size:9,style:'bold',maxWidth:70});
+    doc.line(m,y+17,pageW-m,y+17); y += 18;
+    // Activities table
+    dwlPdfCell(doc,m,y,w,12,'Activities Performed',{fill:[217,217,217],size:7.5,style:'bold',align:'center'}); y += 12;
+    for(let i=0;i<DWL_ACTIVITIES.length;i+=2){
+      dwlPdfCell(doc,m,y,w/2,12,DWL_ACTIVITIES[i]||'',{size:7.3,style:'bold'});
+      dwlPdfCell(doc,m+w/2,y,w/2,12,DWL_ACTIVITIES[i+1]||'',{size:7.3,style:'bold'});
+      y += 12;
+    }
+    // Description / notes
+    dwlPdfBox(doc,m,y,w,74,'Location/Description of work',data.description,10); y += 74;
+    dwlPdfBox(doc,m,y,w,26,'Additional Notes',data.notes,9); y += 26;
+    dwlPdfBox(doc,m,y,w,26,'Safety Huddle Topic',data.safetyTopic,9); y += 26;
+    // Worker table
+    let x=m; const headerH=14;
+    for(let c=0;c<headers.length;c++){dwlPdfCell(doc,x,y,cols[c],headerH,headers[c],{fill:[217,217,217],size:6.8,style:'bold',align:'center'}); x+=cols[c];}
+    y += headerH;
+    const rowH=20;
+    for(let r=0;r<20;r++){
+      const row=rowsForPrint[p*20+r]||{num:p*20+r+1};
+      const vals=[p*20+r+1,row.employee,row.location,row.activity,row.class,row.local,row.straight,row.over,row.noLunch,row.pt,row.rt];
+      x=m;
+      for(let c=0;c<vals.length;c++){
+        const isName=c===1; const isNum=c!==0 && c!==2;
+        dwlPdfCell(doc,x,y,cols[c],rowH,vals[c]||'',{size:isName?13.7:(isNum?11.5:7.5),style:(isName||isNum)?'bold':'normal',align:c===1?'left':'center',lineWidth:0.75});
+        x += cols[c];
+      }
+      y += rowH;
+    }
+    y += 12;
+    dwlPdfText(doc,'Print Name:',m,y+10,{size:7,style:'bold'});
+    dwlPdfText(doc,data.printName||data.foreman||'',m+50,y+10,{size:8.5,style:'bold',maxWidth:160});
+    dwlPdfText(doc,'Sign:',m+230,y+10,{size:7,style:'bold'});
+    if(data.signatureData){ try{ doc.addImage(data.signatureData,'PNG',m+260,y-6,120,26); }catch(e){} }
+    dwlPdfText(doc,'Date:',pageW-m-70,y+10,{size:7,style:'bold'});
+    dwlPdfText(doc,dateSlash,pageW-m,y+10,{size:8.5,style:'bold',align:'right',maxWidth:70});
+    if(needed>1) dwlPdfText(doc,`Page ${p+1} of ${needed}`,pageW/2,pageH-12,{size:7,align:'center',maxWidth:100});
+  }
+  const blob=doc.output('blob');
+  const url=URL.createObjectURL(blob);
+  if(popup){ popup.location=url; }
+  else {
+    const a=document.createElement('a'); a.href=url; a.target='_blank'; a.download=(document.title||'DWL')+'.pdf'; document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),500);
+  }
+  if(msg) msg.innerHTML='<div class="success">Clean DWL PDF opened. Use Share / Print from the PDF viewer.</div>';
+  return true;
+}
+
 function collectDwl(){
   const rows=[]; for(let i=1;i<=40;i++){
     const emp=document.getElementById('dwlEmp'+i); if(!emp) continue;
