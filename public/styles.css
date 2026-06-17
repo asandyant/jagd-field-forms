@@ -751,3 +751,54 @@
   .bigDate2{font-size:13px!important;line-height:1!important;white-space:nowrap!important;}
   .dwlSinglePage .dwlPageNum{display:none!important;}
 }
+
+/* v62 DWL mobile-PDF readability: make the DWL use the full letter sheet like the older boss-approved mobile preview.
+   DWL only. No PIR/Weekly/Admin changes. */
+@media print{
+  @page{size:letter portrait;margin:0!important;}
+  body:has(.dwlPrintSheet){background:#fff!important;margin:0!important;padding:0!important;width:8.5in!important;min-height:11in!important;overflow:hidden!important;}
+  body:has(.dwlPrintSheet) .printPage{display:block!important;margin:0!important;padding:0!important;width:8.5in!important;height:11in!important;max-height:11in!important;overflow:hidden!important;}
+  .dwlPrintSheet{
+    width:8.48in!important;
+    height:10.96in!important;
+    max-height:10.96in!important;
+    margin:0!important;
+    padding:.02in .04in 0 .04in!important;
+    overflow:hidden!important;
+    font-size:13px!important;
+    line-height:1.02!important;
+    box-sizing:border-box!important;
+  }
+  .dwlSinglePage{height:10.96in!important;max-height:10.96in!important;page-break-after:avoid!important;break-after:avoid!important;page-break-inside:avoid!important;break-inside:avoid!important;}
+  .dwlPrintTop{height:.26in!important;font-size:14px!important;padding:0 2px!important;align-items:center!important;}
+  .dwlBrand{gap:4px!important;}
+  .dwlBrand img{width:.24in!important;height:.24in!important;}
+  .dwlBrand b{font-size:14px!important;}
+  .dwlPrintTop>div:last-child{font-size:14px!important;font-weight:900!important;}
+  .dwlHeadLine{height:.48in!important;grid-template-columns:1fr 1.9in!important;font-size:13px!important;padding:0 4px!important;border-bottom:2px solid #000!important;align-items:end!important;}
+  .dwlHeadLine>div:first-child{font-size:13px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+  .dwlHeadLine>div:first-child b{font-size:13px!important;}
+  .dwlHeadLine>div:last-child{font-size:12px!important;text-align:right!important;}
+  .bigDate{font-size:27px!important;line-height:.95!important;}
+  .dwlWeatherLine{height:.31in!important;font-size:13px!important;grid-template-columns:1fr 1.7in 1.45in!important;padding:0 4px!important;border-bottom:1.8px solid #000!important;}
+  .dwlActivitiesPrint{width:100%!important;border-collapse:collapse!important;table-layout:fixed!important;margin:0!important;}
+  .dwlActivitiesPrint th{font-size:10.8px!important;height:.145in!important;padding:0!important;border:1.4px solid #000!important;}
+  .dwlActivitiesPrint td{font-size:10.3px!important;height:.165in!important;padding:1px 4px!important;line-height:1!important;font-weight:900!important;border:1.35px solid #000!important;}
+  .dwlBox{height:.96in!important;font-size:14px!important;border:1.6px solid #000!important;margin:0!important;}
+  .dwlBox.small{height:.34in!important;font-size:12.5px!important;}
+  .dwlBox b{font-size:12px!important;padding:1px 4px!important;background:#d9d9d9!important;border-bottom:1.35px solid #000!important;}
+  .dwlBox div{padding:3px 6px!important;line-height:1.08!important;}
+  .dwlPrintTable{font-size:12px!important;table-layout:fixed!important;border-collapse:collapse!important;width:100%!important;margin:0!important;}
+  .dwlPrintTable th{font-size:10px!important;padding:1px!important;line-height:1!important;background:#d9d9d9!important;border:1.45px solid #000!important;}
+  .dwlPrintTable td{height:.300in!important;padding:1px 2px!important;line-height:1!important;font-weight:900!important;vertical-align:middle!important;overflow:hidden!important;border:1.45px solid #000!important;}
+  .dwlPrintTable td:nth-child(1){font-size:10.5px!important;}
+  .dwlPrintTable td:nth-child(2){font-size:18.4px!important;font-weight:900!important;letter-spacing:.05px!important;}
+  .dwlPrintTable td:nth-child(3){font-size:12px!important;}
+  .dwlPrintTable td:nth-child(4),.dwlPrintTable td:nth-child(5),.dwlPrintTable td:nth-child(6),.dwlPrintTable td:nth-child(7),.dwlPrintTable td:nth-child(8),.dwlPrintTable td:nth-child(9),.dwlPrintTable td:nth-child(10),.dwlPrintTable td:nth-child(11){font-size:15.8px!important;text-align:center!important;}
+  .dwlNoLunchPrint{font-size:15.8px!important;font-weight:900!important;}
+  .dwlPrintFoot{height:.22in!important;grid-template-columns:2.85in 1fr 1.3in!important;gap:8px!important;font-size:10px!important;padding:1px 2px 0!important;align-items:end!important;}
+  .dwlPrintFoot>div{border-bottom:0!important;min-height:.16in!important;}
+  .dwlPrintFoot .sigPrint,.dwlPrintSheet .sigPrint{max-height:.16in!important;}
+  .bigDate2{font-size:13px!important;line-height:1!important;white-space:nowrap!important;}
+  .dwlSinglePage .dwlPageNum{display:none!important;}
+}
