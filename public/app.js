@@ -1401,7 +1401,7 @@ async function saveDwlDirectPdf(data, msgId){
   // This avoids iPhone/Safari browser print headers/footers and avoids the blank second page
   // caused by opening the form through the native print preview.
   const filename = ((document.title || 'DWL').replace(/[\/:*?"<>|]/g,'').trim() || 'DWL') + '.pdf';
-  pdf.save(filename);
+  doc.save(filename);
   if(msg) msg.innerHTML='<div class="success">Clean DWL PDF saved. Open/share the downloaded PDF from your phone.</div>';
   return true;
 }
