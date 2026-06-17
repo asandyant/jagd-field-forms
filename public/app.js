@@ -241,19 +241,102 @@ function fileProjectName(projectName){ return String(projectName||'').trim().rep
 function dsifSaveTitle(dateValue, projectName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); return projectPart ? `DSIF_${datePart}_${projectPart}` : `DSIF_${datePart}`; }
 function dwlSaveTitle(dateValue, projectName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); return projectPart ? `DWL_${datePart}_${projectPart}` : `DWL_${datePart}`; }
 
-function openPrintNow(msgId){
+function safePdfFileName(){
+  return ((document.title || 'JAGD Field Form').replace(/[\\/:*?"<>|]/g,'').trim() || 'JAGD Field Form') + '.pdf';
+}
+function collectPrintCssForCleanPdf(){
+  let css='';
+  for(const sheet of Array.from(document.styleSheets)){
+    try{
+      for(const rule of Array.from(sheet.cssRules || [])){
+        if(rule.type === CSSRule.MEDIA_RULE && String(rule.conditionText||'').toLowerCase().includes('print')){
+          for(const inner of Array.from(rule.cssRules || [])) css += inner.cssText + '\n';
+        } else if(rule.type !== CSSRule.MEDIA_RULE) {
+          css += rule.cssText + '\n';
+        }
+      }
+    }catch(e){}
+  }
+  // In the capture iframe, these print rules must not hide the generated print pages.
+  css = css.replace(/\.topbar\s*,\s*#app\s*,\s*\.no-print\s*\{[^}]*\}/g, '.topbar,#app,.no-print{display:none!important}');
+  css += '\nhtml,body{margin:0!important;padding:0!important;background:#fff!important;}\n';
+  css += '.printPage{display:block!important;margin:0!important;padding:0!important;background:#fff!important;}\n';
+  css += '.pdfCaptureBody{background:#fff!important;margin:0!important;padding:0!important;}\n';
+  css += '.pdfCaptureBody .printPage{display:block!important;position:relative!important;left:auto!important;top:auto!important;}\n';
+  css += '.pdfCaptureBody .printPage + .printPage{margin-top:0!important;}\n';
+  return css;
+}
+function waitForImagesIn(node){
+  const imgs = Array.from(node.querySelectorAll('img'));
+  return Promise.all(imgs.map(img=>{
+    if(img.complete) return Promise.resolve();
+    return new Promise(res=>{img.onload=res; img.onerror=res; setTimeout(res,1200);});
+  }));
+}
+async function saveCleanPdfFromPrintPage(msgId){
+  if(!window.jspdf || !window.jspdf.jsPDF || !window.html2canvas) return false;
+  const sourcePages = Array.from(document.querySelectorAll('.printPage'));
+  if(!sourcePages.length) return false;
+  const msg = msgId ? document.getElementById(msgId) : null;
+  if(msg) msg.innerHTML = '<div class="notice">Building clean PDF...</div>';
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden','true');
+  iframe.style.position='fixed';
+  iframe.style.left='-10000px';
+  iframe.style.top='0';
+  iframe.style.width='900px';
+  iframe.style.height='1200px';
+  iframe.style.border='0';
+  document.body.appendChild(iframe);
+  try{
+    const css = collectPrintCssForCleanPdf();
+    const pagesHtml = sourcePages.map(p=>p.outerHTML).join('');
+    const docEl = iframe.contentDocument;
+    docEl.open();
+    docEl.write(`<!doctype html><html><head><base href="${location.origin}/"><meta charset="utf-8"><style>${css}</style></head><body class="pdfCaptureBody">${pagesHtml}</body></html>`);
+    docEl.close();
+    await new Promise(res=>setTimeout(res,120));
+    await waitForImagesIn(docEl.body);
+    const pages = Array.from(docEl.querySelectorAll('.printPage'));
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({orientation:'portrait', unit:'pt', format:'letter', compress:true});
+    const pageW = 612, pageH = 792;
+    for(let i=0;i<pages.length;i++){
+      const page = pages[i];
+      page.style.display='block';
+      page.style.background='#fff';
+      const canvas = await window.html2canvas(page, {scale:2, backgroundColor:'#ffffff', useCORS:true, allowTaint:true, logging:false, windowWidth:900, windowHeight:1200});
+      if(i>0) pdf.addPage('letter','portrait');
+      const imgData = canvas.toDataURL('image/jpeg', 0.94);
+      let imgW = pageW;
+      let imgH = canvas.height * imgW / canvas.width;
+      if(imgH > pageH){ imgH = pageH; imgW = canvas.width * imgH / canvas.height; }
+      const x = (pageW-imgW)/2;
+      const y = 0;
+      pdf.addImage(imgData, 'JPEG', x, y, imgW, imgH);
+    }
+    pdf.save(safePdfFileName());
+    if(msg) msg.innerHTML = '<div class="success">Clean PDF created. Use Share/Files/Dropbox to send it.</div>';
+    return true;
+  } finally {
+    setTimeout(()=>{try{iframe.remove();}catch(e){}}, 500);
+  }
+}
+async function openPrintNow(msgId){
   const msg = msgId ? document.getElementById(msgId) : null;
   if (msg) msg.innerHTML = '';
   try {
+    // Field fix: generate a clean PDF from the app print page first.
+    // This avoids iPhone/Safari adding URL/date/page headers and blank second pages.
+    const saved = await saveCleanPdfFromPrintPage(msgId);
+    if(saved) return;
     if (typeof window.print !== 'function') throw new Error('Print is not available in this browser');
-    // Force Safari/iPhone to lay out the newly-created print page before invoking print,
-    // while staying inside the original button tap.
     const printEl = document.querySelector('.printPage');
     if (printEl) void printEl.offsetHeight;
     window.focus();
     window.print();
   } catch (err) {
-    if (msg) msg.innerHTML = `<div class="notice">Print preview could not open: ${esc(err.message)}. Use the browser Share button and choose Print / Save as PDF.</div>`;
+    if (msg) msg.innerHTML = `<div class="notice">PDF could not open: ${esc(err.message)}. Refresh once and try again. If needed, use the browser Share button and choose Print / Save as PDF.</div>`;
     console.error(err);
   }
 }
