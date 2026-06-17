@@ -802,3 +802,20 @@
   .bigDate2{font-size:13px!important;line-height:1!important;white-space:nowrap!important;}
   .dwlSinglePage .dwlPageNum{display:none!important;}
 }
+
+/* v67 emergency print stability: keep MEWP reliable on iPhone and tighten PIR to one page. */
+@media print{
+  body:has(.mewpSheetSafe){background:#fff!important;margin:0!important;padding:0!important;width:8.5in!important;height:11in!important;overflow:hidden!important;}
+  body:has(.mewpSheetSafe) .printPage{display:block!important;margin:0!important;padding:0!important;width:8.5in!important;height:11in!important;max-height:11in!important;overflow:hidden!important;page-break-after:avoid!important;break-after:avoid!important;}
+  .mewpSheetSafe{width:8.12in!important;height:10.55in!important;max-height:10.55in!important;margin:.10in auto 0 auto!important;padding:.08in!important;overflow:hidden!important;font-size:9.2px!important;line-height:1.05!important;page-break-after:avoid!important;break-after:avoid!important;page-break-inside:avoid!important;break-inside:avoid!important;}
+  .mewpSheetSafe .mewpHeader{padding-bottom:4px!important;margin-bottom:5px!important;}
+  .mewpSheetSafe .mewpHeader img{width:.85in!important;}
+  .mewpSheetSafe .mewpTitle{font-size:14px!important;line-height:1.05!important;}
+  .mewpSheetSafe h3{font-size:10px!important;margin:5px 0 3px!important;}
+  .mewpSheetSafe .printTable td,.mewpSheetSafe .printTable th{padding:3px 4px!important;line-height:1.05!important;}
+  .mewpSheetSafe .mewpCheckTable td,.mewpSheetSafe .mewpCheckTable th{font-size:8.4px!important;padding:2px 3px!important;}
+  .mewpSheetSafe .mewpNotesPrint,.mewpSheetSafe .mewpSigPrint{font-size:9px!important;margin:5px 0!important;}
+
+  body:has(.pirSheetV7):not(:has(.pirNotesSheet)) .printPage{height:10.82in!important;max-height:10.82in!important;overflow:hidden!important;page-break-after:avoid!important;break-after:avoid!important;}
+  body:has(.pirSheetV7):not(:has(.pirNotesSheet)) .pirSheetV7{height:10.10in!important;max-height:10.10in!important;overflow:hidden!important;page-break-after:avoid!important;break-after:avoid!important;page-break-inside:avoid!important;break-inside:avoid!important;}
+}
