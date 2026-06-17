@@ -624,3 +624,39 @@
 .pirNotesSheet{width:8.05in;height:10.55in;margin:0 auto;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:1.15;overflow:hidden;page-break-before:always;break-before:page;page-break-after:avoid;page-break-inside:avoid;padding:.18in;box-sizing:border-box;border:1px solid #000}
 .pirNotesHeader{display:grid;grid-template-columns:.85in 1fr;gap:.12in;align-items:center;border-bottom:2px solid #000;margin-bottom:.1in;padding-bottom:.08in}.pirNotesHeader img{width:.75in;max-height:.55in;object-fit:contain}.pirNotesHeader h1{font-size:18px;margin:0;text-align:center}.pirNotesHeader p{font-size:10px;margin:4px 0 0 0;text-align:center}.pirNotesTable th:nth-child(1){width:13%}.pirNotesTable th:nth-child(2){width:22%}.pirNotesTable th:nth-child(3){width:27%}.pirNotesTable th:nth-child(4){width:38%}.pirNotesTable td{height:.42in}.extraSectionTitle{font-size:12px;text-align:left;margin:.08in 0 .04in 0;border-bottom:1px solid #000}
 @media print{.pirNotesSheet{border:0!important;width:7.9in!important;height:10.35in!important;padding:.14in!important}.extraSectionTitle{font-size:11px!important}}
+
+/* v59 DWL emergency print readability + one-page fix
+   Goal: keep normal one-page DWL on one printed page, make Jill's office copy easier to read,
+   and only create a second DWL page when there are more than 20 filled worker rows. */
+@media print{
+  body:has(.dwlPrintSheet){height:auto!important;max-height:none!important;overflow:visible!important;background:#fff!important;}
+  body:has(.dwlPrintSheet) .printPage{height:auto!important;max-height:none!important;overflow:visible!important;page-break-after:avoid!important;break-after:avoid!important;page-break-inside:avoid!important;break-inside:avoid!important;}
+  body:has(.dwlPrintSheet) @page{size:letter portrait;margin:.10in!important;}
+  .dwlPrintSheet{width:7.78in!important;height:9.62in!important;max-height:9.62in!important;margin:0 auto!important;overflow:hidden!important;font-size:10.8px!important;line-height:1.08!important;page-break-inside:avoid!important;break-inside:avoid!important;box-sizing:border-box!important;}
+  .dwlSinglePage{height:9.62in!important;max-height:9.62in!important;page-break-after:avoid!important;break-after:avoid!important;}
+  .dwlPrintTop{height:.30in!important;font-size:13px!important;}
+  .dwlBrand img{width:.26in!important;height:.26in!important;}
+  .dwlBrand b{font-size:13.5px!important;}
+  .dwlHeadLine{height:.36in!important;grid-template-columns:1fr 1.65in!important;font-size:11.5px!important;padding:0 6px!important;}
+  .dwlHeadLine>div:first-child{font-size:11.5px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+  .bigDate{font-size:20px!important;line-height:1!important;}
+  .dwlWeatherLine{height:.25in!important;font-size:11px!important;grid-template-columns:1fr 1.45in 1.35in!important;padding:0 6px!important;}
+  .dwlActivitiesPrint th{font-size:9.3px!important;height:.115in!important;padding:0 2px!important;}
+  .dwlActivitiesPrint td{font-size:8.7px!important;height:.132in!important;padding:1px 4px!important;line-height:1!important;}
+  .dwlBox{height:.68in!important;font-size:11.2px!important;border:1.4px solid #000!important;}
+  .dwlBox.small{height:.23in!important;font-size:10.6px!important;}
+  .dwlBox b{font-size:10.2px!important;padding:1px 3px!important;}
+  .dwlBox div{padding:2px 4px!important;line-height:1.05!important;}
+  .dwlPrintTable{font-size:10.8px!important;table-layout:fixed!important;}
+  .dwlPrintTable th{font-size:9.4px!important;padding:1px!important;line-height:1!important;}
+  .dwlPrintTable td{height:.205in!important;padding:1px 2px!important;line-height:1!important;font-weight:900!important;vertical-align:middle!important;overflow:hidden!important;}
+  .dwlPrintTable td:nth-child(2){font-size:15.6px!important;font-weight:900!important;letter-spacing:.1px!important;}
+  .dwlPrintTable td:nth-child(3){font-size:11.3px!important;}
+  .dwlPrintTable td:nth-child(4),.dwlPrintTable td:nth-child(5),.dwlPrintTable td:nth-child(6),.dwlPrintTable td:nth-child(7),.dwlPrintTable td:nth-child(8),.dwlPrintTable td:nth-child(9),.dwlPrintTable td:nth-child(10),.dwlPrintTable td:nth-child(11){font-size:13.3px!important;text-align:center!important;}
+  .dwlNoLunchPrint{font-size:13.3px!important;font-weight:900!important;}
+  .dwlPrintFoot{height:.34in!important;grid-template-columns:2.7in 1fr 1.25in!important;gap:8px!important;font-size:9.2px!important;padding-top:1px!important;align-items:end!important;}
+  .dwlPrintFoot>div{min-height:.25in!important;}
+  .dwlPrintFoot .sigPrint,.dwlPrintSheet .sigPrint{max-height:.22in!important;}
+  .bigDate2{font-size:12.5px!important;line-height:1!important;white-space:nowrap!important;}
+  .dwlSinglePage .dwlPageNum{display:none!important;}
+}
