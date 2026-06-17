@@ -246,6 +246,10 @@ function openPrintNow(msgId){
   if (msg) msg.innerHTML = '';
   try {
     if (typeof window.print !== 'function') throw new Error('Print is not available in this browser');
+    // Force Safari/iPhone to lay out the newly-created print page before invoking print,
+    // while staying inside the original button tap.
+    const printEl = document.querySelector('.printPage');
+    if (printEl) void printEl.offsetHeight;
     window.focus();
     window.print();
   } catch (err) {
@@ -463,6 +467,11 @@ function openSignatureModal(targetId, title){
 }
 function sigPrint(dataUrl, typed){return dataUrl ? `<img class="sigPrint" src="${dataUrl}">` : esc(typed || '');}
 
+function freshRoute(hash){
+  // iPhone Safari can keep stale route/print state in a single-page hash app.
+  // Loading the selected form through a normal page request gives every form a fresh print context.
+  return `/?r=${Date.now()}${hash}`;
+}
 
 function home(){
   app.innerHTML=`<div class="container printOnly homeContainer">
@@ -471,7 +480,7 @@ function home(){
       <p>Choose a form below. Each form is field-friendly for phones and can be saved as a PDF, then texted, emailed, or sent to Dropbox.</p>
     </section>
     <section class="formLibrary" aria-label="Form Library">
-      <a class="formCard" href="#/dwl">
+      <a class="formCard" href="${freshRoute('#/dwl')}">
         <div>
           <span class="formTag">Daily Log</span>
           <h2>Daily Work Log</h2>
@@ -479,7 +488,7 @@ function home(){
         </div>
         <strong>Open</strong>
       </a>
-      <a class="formCard" href="#/pir">
+      <a class="formCard" href="${freshRoute('#/pir')}">
         <div>
           <span class="formTag">Paint / QC</span>
           <h2>Paint Inspection Report</h2>
@@ -487,7 +496,7 @@ function home(){
         </div>
         <strong>Open</strong>
       </a>
-      <a class="formCard" href="#/mewp">
+      <a class="formCard" href="${freshRoute('#/mewp')}">
         <div>
           <span class="formTag">Equipment</span>
           <h2>MEWP Daily Inspection</h2>
@@ -495,7 +504,7 @@ function home(){
         </div>
         <strong>Open</strong>
       </a>
-      <a class="formCard" href="#/daily-equipment">
+      <a class="formCard" href="${freshRoute('#/daily-equipment')}">
         <div>
           <span class="formTag">Original Equipment</span>
           <h2>Daily Equipment Inspection</h2>
@@ -503,7 +512,7 @@ function home(){
         </div>
         <strong>Open</strong>
       </a>
-      <a class="formCard" href="#/dsif">
+      <a class="formCard" href="${freshRoute('#/dsif')}">
         <div>
           <span class="formTag">Safety</span>
           <h2>Daily Safety Inspection Form</h2>
@@ -511,7 +520,7 @@ function home(){
         </div>
         <strong>Open</strong>
       </a>
-      <a class="formCard" href="#/weekly-safety">
+      <a class="formCard" href="${freshRoute('#/weekly-safety')}">
         <div>
           <span class="formTag">Safety Meeting</span>
           <h2>Weekly Safety Meeting</h2>
@@ -519,7 +528,7 @@ function home(){
         </div>
         <strong>Open</strong>
       </a>
-      <a class="formCard" href="#/bill-of-lading">
+      <a class="formCard" href="${freshRoute('#/bill-of-lading')}">
         <div>
           <span class="formTag">Material</span>
           <h2>Bill of Lading</h2>
@@ -527,7 +536,7 @@ function home(){
         </div>
         <strong>Open Form</strong>
       </a>
-      <a class="formCard" href="#/incident-report">
+      <a class="formCard" href="${freshRoute('#/incident-report')}">
         <div>
           <span class="formTag">Safety</span>
           <h2>Incident Report</h2>
@@ -535,7 +544,7 @@ function home(){
         </div>
         <strong>Open Form</strong>
       </a>
-      <a class="formCard" href="#/heavy-accident-report">
+      <a class="formCard" href="${freshRoute('#/heavy-accident-report')}">
         <div>
           <span class="formTag">Safety</span>
           <h2>Accident Report</h2>
@@ -543,7 +552,7 @@ function home(){
         </div>
         <strong>Open Form</strong>
       </a>
-      <a class="formCard" href="#/disciplinary-report">
+      <a class="formCard" href="${freshRoute('#/disciplinary-report')}">
         <div>
           <span class="formTag">Employee</span>
           <h2>Disciplinary Report</h2>
@@ -551,7 +560,7 @@ function home(){
         </div>
         <strong>Open Form</strong>
       </a>
-      <a class="formCard adminCard" href="#/admin">
+      <a class="formCard adminCard" href="${freshRoute('#/admin')}">
         <div>
           <span class="formTag">Office / Admin</span>
           <h2>Admin Dashboard</h2>

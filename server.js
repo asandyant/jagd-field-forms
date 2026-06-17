@@ -45,7 +45,13 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024, files: 24 } });
 
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res, filePath) => {
+    if (/\.(html|js|css)$/i.test(filePath)) res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  }
+}));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
 function readSubmissions() {
