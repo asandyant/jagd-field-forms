@@ -1707,10 +1707,18 @@ async function renderAdminWorkers(editWorker=null, showForm=false){
   const c=document.getElementById('adminContent'); if(!c)return;
   c.innerHTML='<div class="panel"><div class="notice">Loading workers...</div></div>';
   try{
-    const json=await adminFetch('/api/admin/workers');
-    let rows=(json.rows||[]).slice();
+    let fallbackNotice='';
+    let rows=[];
+    try{
+      const json=await adminFetch('/api/admin/workers');
+      rows=(json.rows||[]).slice();
+    }catch(apiErr){
+      rows=builtInWorkerRows();
+      fallbackNotice=`<div class="notice">Live worker API is not responding, so this page is showing the built-in worker list. The field DWL autocomplete can still use these names.</div>`;
+    }
     if(!rows.length){
       rows=builtInWorkerRows();
+      fallbackNotice=`<div class="notice">Live worker list was empty, so this page is showing the built-in worker list.</div>`;
       try{ await adminFetch('/api/admin/workers/restore-built-in',{method:'POST'}); }catch(e){}
     }
     rows=rows.sort((a,b)=>workerFullName(a).localeCompare(workerFullName(b)));
