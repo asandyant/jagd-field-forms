@@ -1069,20 +1069,37 @@ function buildWeeklyPrint(meeting){
 }
 
 
+function normalizeWorkerNameKey(w){
+  return String(workerDisplayName(w) || `${w.firstName||''} ${w.lastName||''}`.trim()).trim().toLowerCase().replace(/[^a-z0-9]+/g,' ');
+}
+function mergeWorkerSources(...sources){
+  const map = new Map();
+  sources.flat().filter(Boolean).forEach(w=>{
+    const key = normalizeWorkerNameKey(w);
+    if(!key) return;
+    const existing = map.get(key) || {};
+    map.set(key, {...existing, ...w, fullName: workerDisplayName({...existing, ...w})});
+  });
+  return Array.from(map.values()).sort((a,b)=>workerDisplayName(a).localeCompare(workerDisplayName(b)));
+}
 async function loadActiveWorkers(){
   if(activeWorkers.length) return activeWorkers;
+  let apiRows = [];
+  let staticRows = [];
+  const embeddedRows = Array.isArray(EMBEDDED_ACTIVE_WORKERS) ? EMBEDDED_ACTIVE_WORKERS.slice() : [];
   try{
-    const res = await fetch('/api/workers?v=20260618v149', {cache:'no-store'});
-    if(res.ok){
-      const json = await res.json();
-      if(Array.isArray(json.rows) && json.rows.length){ activeWorkers = json.rows; return activeWorkers; }
-    }
-  }catch(e){ console.warn('Worker API unavailable, trying static worker file', e); }
+    const res = await fetch('/api/workers?v=20260618v150', {cache:'no-store', headers:{Accept:'application/json'}});
+    const text = await res.text();
+    const json = text ? JSON.parse(text) : {};
+    if(res.ok && Array.isArray(json.rows)) apiRows = json.rows;
+  }catch(e){ console.warn('Worker API unavailable or returned non-JSON, merging static worker file instead', e); }
   try{
-    const res = await fetch('/data/active-workers.json?v=20260618v149', {cache:'no-store'});
-    if(res.ok){ const json = await res.json(); if(Array.isArray(json) && json.length){ activeWorkers = json; return activeWorkers; } }
+    const res = await fetch('/data/active-workers.json?v=20260618v150', {cache:'no-store', headers:{Accept:'application/json'}});
+    const text = await res.text();
+    const json = text ? JSON.parse(text) : [];
+    if(res.ok && Array.isArray(json)) staticRows = json;
   }catch(e){ console.warn('Static worker file unavailable, using embedded worker list fallback', e); }
-  activeWorkers = Array.isArray(EMBEDDED_ACTIVE_WORKERS) ? EMBEDDED_ACTIVE_WORKERS.slice() : [];
+  activeWorkers = mergeWorkerSources(apiRows, staticRows, embeddedRows).filter(isWorkerActive);
   return activeWorkers;
 }
 
