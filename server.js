@@ -224,6 +224,76 @@ function parseCsv(text) {
 function normalizeHeader(h) { return String(h || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
 function pick(row, map, names) { for (const n of names) { const i = map[normalizeHeader(n)]; if (i !== undefined) return cleanText(row[i]); } return ''; }
 function slug(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70) || nanoid(8); }
+
+function cleanLocalValue(v) {
+  let s = String(v || '').trim();
+  if (/^\d+\.0+$/.test(s)) s = s.replace(/\.0+$/, '');
+  return s;
+}
+
+const REQUIRED_DWL_WORKERS = [
+  { firstName: 'Michael', lastName: 'Valenti', fullName: 'Michael Valenti', class: 'JM', local: '806', currentJob: 'GWB Cables', status: 'Active', trade: 'Painter' },
+  { firstName: 'Daniel', lastName: 'Amorim', fullName: 'Daniel Amorim', class: '', local: '', currentJob: '', status: 'Active', trade: 'Painter' }
+];
+
+function normalizeNameKey(v) {
+  return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+}
+
+function ensureRequiredDwlWorkers(rows) {
+  const next = Array.isArray(rows) ? rows.map(w => ({ ...w, local: cleanLocalValue(w.local) })) : [];
+  let changed = false;
+  const byName = new Map();
+  next.forEach((w, idx) => {
+    const fullName = cleanText(w.fullName || `${w.firstName || ''} ${w.lastName || ''}`.trim());
+    if (fullName && !w.fullName) { w.fullName = fullName; changed = true; }
+    const key = normalizeNameKey(fullName);
+    if (key && !byName.has(key)) byName.set(key, idx);
+  });
+
+  for (const required of REQUIRED_DWL_WORKERS) {
+    const key = normalizeNameKey(required.fullName);
+    const idx = byName.get(key);
+    if (idx === undefined) {
+      next.push({
+        id: slug(required.fullName),
+        firstName: required.firstName,
+        lastName: required.lastName,
+        fullName: required.fullName,
+        class: required.class || '',
+        local: cleanLocalValue(required.local),
+        currentJob: required.currentJob || '',
+        status: required.status || 'Active',
+        employeeId: required.employeeId || '',
+        trade: required.trade || '',
+        crew: required.crew || '',
+        disabled: false,
+        updatedAt: new Date().toISOString(),
+        protectedWorker: true
+      });
+      byName.set(key, next.length - 1);
+      changed = true;
+      continue;
+    }
+
+    const w = next[idx];
+    let touched = false;
+    if (w.disabled) { w.disabled = false; touched = true; }
+    if (!w.status || /inactive|disabled|terminated/i.test(String(w.status))) { w.status = 'Active'; touched = true; }
+    for (const field of ['firstName','lastName','fullName','class','local','currentJob','trade']) {
+      if (!String(w[field] || '').trim() && String(required[field] || '').trim()) {
+        w[field] = field === 'local' ? cleanLocalValue(required[field]) : required[field];
+        touched = true;
+      }
+    }
+    if (touched) {
+      w.updatedAt = new Date().toISOString();
+      changed = true;
+    }
+  }
+  return { rows: next, changed };
+}
+
 function makeMaterialLabel(m) {
   const parts = [m.component || 'Material', m.prodName || m.description || 'COA Material'];
   if (m.batch) parts.push(`Batch ${m.batch}`);
