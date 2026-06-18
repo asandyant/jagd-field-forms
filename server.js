@@ -242,6 +242,10 @@ function requireAdmin(req, res, next) {
   if (supplied !== ADMIN_PIN) return res.status(401).json({ error: 'Admin PIN required.' });
   next();
 }
+
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, app: 'jagd-field-forms', version: 'dwl-worker-api-fix-20260618', time: new Date().toISOString() });
+});
 function cleanText(v) {
   return String(v || '').trim().slice(0, 500);
 }
@@ -570,6 +574,18 @@ app.post('/api/submissions', upload.array('photos', 24), (req, res) => {
   rows.push(record);
   writeSubmissions(rows);
   res.json({ ok: true, id, title, record });
+});
+
+app.use('/api', (req, res) => {
+  res.status(404).json({ ok: false, error: 'API route not found on this deployed server.', path: req.originalUrl });
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  if (req.path && req.path.startsWith('/api/')) {
+    return res.status(500).json({ ok: false, error: 'Server error while handling API request.' });
+  }
+  next(err);
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));

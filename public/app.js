@@ -1602,7 +1602,34 @@ function adminView(){
 function adminLoginHtml(){return `<div class="panel"><h2>Admin Login</h2><p class="tiny">Admin password for now. Later we can move this into portal login.</p><div class="grid two"><div><label for="adminPinInput">Admin Password</label><input id="adminPinInput" type="password" placeholder="Enter admin password"></div></div><div class="actions"><button class="btn" id="adminLoginBtn">Open Admin</button></div><div id="adminLoginMsg"></div></div>`;}
 function setupAdminLogin(){const btn=document.getElementById('adminLoginBtn'); if(!btn)return; btn.onclick=()=>{const v=val('adminPinInput'); if(!v){document.getElementById('adminLoginMsg').innerHTML='<div class="notice">Enter the admin PIN.</div>';return;} localStorage.setItem('jagdAdminPin',v); adminView();};}
 function adminDashboardHtml(){return `<div class="adminTabs"><button class="btn small" data-admin-tab="tracker">Tracker</button><button class="btn small light" data-admin-tab="workers">DWL Names</button><button class="btn small light" data-admin-tab="coa">COA Materials</button><button class="btn small light" id="adminLogoutBtn">Logout</button></div><div id="adminContent"><div class="notice">Loading admin dashboard...</div></div>`;}
-async function adminFetch(path, opts={}){const headers={Accept:'application/json',...(opts.headers||{}),'x-admin-pin':adminPin()}; const res=await fetch(path,{...opts,headers}); if(res.status===401){localStorage.removeItem('jagdAdminPin'); adminView(); throw new Error('Admin PIN required.');} const text=await res.text(); let json=null; try{json=text?JSON.parse(text):{};}catch(e){throw new Error('Server returned a webpage instead of JSON. Hard refresh and make sure the latest server deploy is live.');} if(!res.ok) throw new Error(json.error||'Admin request failed'); return json;}
+async function fetchBuiltInWorkersForAdmin(){
+  const embeddedRows = Array.isArray(EMBEDDED_ACTIVE_WORKERS) ? EMBEDDED_ACTIVE_WORKERS.slice() : [];
+  let staticRows = [];
+  try{
+    const res = await fetch('/data/active-workers.json?v=20260618v160', {cache:'no-store', headers:{Accept:'application/json'}});
+    const text = await res.text();
+    const json = text ? JSON.parse(text) : [];
+    if(res.ok && Array.isArray(json)) staticRows = json;
+  }catch(e){ console.warn('Admin built-in worker fallback failed', e); }
+  return mergeWorkerSources(staticRows, embeddedRows).filter(isWorkerActive);
+}
+async function adminFetch(path, opts={}){
+  const headers={Accept:'application/json',...(opts.headers||{}),'x-admin-pin':adminPin()};
+  const res=await fetch(path,{...opts,headers,cache:'no-store'});
+  if(res.status===401){localStorage.removeItem('jagdAdminPin'); adminView(); throw new Error('Admin PIN required.');}
+  const text=await res.text();
+  let json=null;
+  try{json=text?JSON.parse(text):{};}
+  catch(e){
+    if(String(path).includes('/api/admin/workers') && (!opts.method || String(opts.method).toUpperCase()==='GET')){
+      const rows = await fetchBuiltInWorkersForAdmin();
+      return {ok:true, rows, apiFallback:true, warning:'Server worker API returned the app page, so the admin screen is showing the built-in worker list. Deploy the API fix, then hard refresh.'};
+    }
+    throw new Error('Server worker API returned the website page instead of JSON. This patch fixes that after Render finishes deploying.');
+  }
+  if(!res.ok) throw new Error(json.error||'Admin request failed');
+  return json;
+}
 function setupAdminTabs(logs){
   document.querySelectorAll('[data-admin-tab]').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('[data-admin-tab]').forEach(b=>b.classList.add('light')); btn.classList.remove('light'); const tab=btn.dataset.adminTab; if(tab==='tracker') renderAdminTracker(logs); if(tab==='workers') renderAdminWorkers(); if(tab==='coa') renderAdminCoa();};});
   const out=document.getElementById('adminLogoutBtn'); if(out) out.onclick=()=>{localStorage.removeItem('jagdAdminPin'); adminView();};
@@ -1688,7 +1715,7 @@ async function renderAdminWorkers(editWorker=null, showForm=false){
     }
     rows=rows.sort((a,b)=>workerFullName(a).localeCompare(workerFullName(b)));
     const activeCount=rows.filter(w=>!w.disabled && !String(w.status||'').toLowerCase().includes('term') && !String(w.status||'').toLowerCase().includes('inactive') && !String(w.status||'').toLowerCase().includes('disabled')).length;
-    c.innerHTML=`<div class="panel"><h2>DWL Names / Workers</h2><p class="tiny">This shows the full worker list used by DWL autocomplete. Start typing in search just like the DWL employee box, or click Edit next to any worker.</p><div class="adminToolbar"><button class="btn" id="adminAddWorkerBtn" type="button">+ Add Worker</button><button class="btn light" id="adminOpenWorkerImportBtn" type="button">Import New Excel / CSV</button><a class="btn light" id="adminWorkerExportBtn" href="/api/admin/workers/export.csv?pin=${encodeURIComponent(adminPin())}">Export Worker List</a><button class="btn light" id="adminRestoreBuiltInWorkersBtn" type="button">Reload Built-In Worker List</button><span><b>${activeCount}</b> active / <b>${rows.length}</b> total</span></div><div id="adminWorkerFormHolder">${showForm||editWorker?workerFormHtml(editWorker||{}):''}</div><details class="adminDetail" id="adminWorkerImportDetails"><summary>Import new Excel / CSV worker list</summary><p class="tiny">Best option: export/save Excel as CSV, then upload it here or paste it below. Import replaces the Forms worker list.</p><input id="adminWorkerCsvFile" type="file" accept=".csv,.txt,text/csv"><textarea id="adminWorkerCsv" class="adminBigText" placeholder="Or paste active workers CSV here"></textarea><div class="actions"><button class="btn" id="adminWorkerImportBtn" type="button">Import Worker List</button></div><div id="adminWorkerImportMsg"></div></details><div class="adminToolbar"><input id="adminWorkerSearch" placeholder="Start typing a name like the DWL autocomplete"><select id="adminWorkerStatusFilter"><option value="">All statuses</option><option value="active">Active only</option><option value="disabled">Disabled / inactive</option></select></div><div id="adminWorkerTable"></div></div>`;
+    c.innerHTML=`<div class="panel"><h2>DWL Names / Workers</h2>${fallbackNotice}<p class="tiny">This shows the full worker list used by DWL autocomplete. Start typing in search just like the DWL employee box, or click Edit next to any worker.</p><div class="adminToolbar"><button class="btn" id="adminAddWorkerBtn" type="button">+ Add Worker</button><button class="btn light" id="adminOpenWorkerImportBtn" type="button">Import New Excel / CSV</button><a class="btn light" id="adminWorkerExportBtn" href="/api/admin/workers/export.csv?pin=${encodeURIComponent(adminPin())}">Export Worker List</a><button class="btn light" id="adminRestoreBuiltInWorkersBtn" type="button">Reload Built-In Worker List</button><span><b>${activeCount}</b> active / <b>${rows.length}</b> total</span></div><div id="adminWorkerFormHolder">${showForm||editWorker?workerFormHtml(editWorker||{}):''}</div><details class="adminDetail" id="adminWorkerImportDetails"><summary>Import new Excel / CSV worker list</summary><p class="tiny">Best option: export/save Excel as CSV, then upload it here or paste it below. Import replaces the Forms worker list.</p><input id="adminWorkerCsvFile" type="file" accept=".csv,.txt,text/csv"><textarea id="adminWorkerCsv" class="adminBigText" placeholder="Or paste active workers CSV here"></textarea><div class="actions"><button class="btn" id="adminWorkerImportBtn" type="button">Import Worker List</button></div><div id="adminWorkerImportMsg"></div></details><div class="adminToolbar"><input id="adminWorkerSearch" placeholder="Start typing a name like the DWL autocomplete"><select id="adminWorkerStatusFilter"><option value="">All statuses</option><option value="active">Active only</option><option value="disabled">Disabled / inactive</option></select></div><div id="adminWorkerTable"></div></div>`;
     const holder=document.getElementById('adminWorkerFormHolder');
     const add=document.getElementById('adminAddWorkerBtn'); if(add) add.onclick=()=>{holder.innerHTML=workerFormHtml({}); setupAdminWorkerForm(); holder.scrollIntoView({behavior:'smooth',block:'start'});};
     const restoreBuiltIn=document.getElementById('adminRestoreBuiltInWorkersBtn'); if(restoreBuiltIn) restoreBuiltIn.onclick=async()=>{if(!confirm('Reload the built-in active worker list? This replaces the current Forms worker list.'))return; try{const out=await adminFetch('/api/admin/workers/restore-built-in',{method:'POST'}); activeWorkers=[]; alert(`Reloaded ${out.count} workers (${out.activeCount} active).`); renderAdminWorkers();}catch(e){alert(e.message);}};
