@@ -12,6 +12,8 @@ const SUBMISSIONS_FILE = path.join(DATA_DIR, 'submissions.json');
 const WEEKLY_MEETINGS_FILE = path.join(DATA_DIR, 'weekly-meetings.json');
 const FORM_LOGS_FILE = path.join(DATA_DIR, 'form-logs.json');
 const WORKERS_FILE = path.join(DATA_DIR, 'workers.json');
+const WORKERS_VERSION_FILE = path.join(DATA_DIR, 'workers-source-version.json');
+const BUILT_IN_WORKERS_VERSION_FILE = path.join(__dirname, 'public', 'data', 'active-workers-version.json');
 const MATERIALS_FILE = path.join(DATA_DIR, 'materials.json');
 const ADMIN_PIN = process.env.ADMIN_PIN || process.env.ADMIN_PASSWORD || 'JadgForms123!!!';
 
@@ -139,6 +141,34 @@ function seedMaterialsFromPublic() {
   }
   return mats;
 }
+
+function readJsonSafe(filePath, fallback) {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    return fallback;
+  }
+}
+function writeJsonSafe(filePath, value) {
+  fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
+}
+function syncWorkersFromBuiltInVersionIfNeeded() {
+  const builtInVersion = readJsonSafe(BUILT_IN_WORKERS_VERSION_FILE, null);
+  if (!builtInVersion || !builtInVersion.hash) return;
+  const currentVersion = readJsonSafe(WORKERS_VERSION_FILE, null);
+  if (currentVersion && currentVersion.hash === builtInVersion.hash) return;
+  const seeded = seedWorkersFromPublic();
+  if (!seeded.length) return;
+  writeWorkers(seeded);
+  writeJsonSafe(WORKERS_VERSION_FILE, {
+    ...builtInVersion,
+    syncedAt: new Date().toISOString(),
+    source: 'public/data/active-workers.json'
+  });
+  console.log(`Synced DWL worker list from built-in roster: ${seeded.length} workers (${builtInVersion.hash}).`);
+}
+
 function readMaterials() {
   try {
     const rows = JSON.parse(fs.readFileSync(MATERIALS_FILE, 'utf8'));
@@ -210,6 +240,8 @@ function csvCell(v) {
   const s = String(v == null ? '' : v);
   return /[\",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
+
+syncWorkersFromBuiltInVersionIfNeeded();
 
 app.post('/api/weekly-meetings', (req, res) => {
   const project = cleanText(req.body.project);
