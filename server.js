@@ -104,10 +104,11 @@ function seedWorkersFromPublic() {
         disabled: !!w.disabled,
         updatedAt: new Date().toISOString()
       })).filter(w => w.fullName);
-      return normalized;
+      const ensured = ensureRequiredDwlWorkers(normalized);
+      return ensured.rows;
     }
   } catch (e) {}
-  return [];
+  return ensureRequiredDwlWorkers([]).rows;
 }
 function normalizeWorkerRows(rows) {
   return (Array.isArray(rows) ? rows : []).map(w => ({ ...w, local: cleanLocalValue(w.local) }));
@@ -115,17 +116,25 @@ function normalizeWorkerRows(rows) {
 function readWorkers() {
   try {
     const rows = JSON.parse(fs.readFileSync(WORKERS_FILE, 'utf8'));
-    if (Array.isArray(rows) && rows.length) return normalizeWorkerRows(rows);
+    if (Array.isArray(rows) && rows.length) {
+      const normalized = normalizeWorkerRows(rows);
+      const ensured = ensureRequiredDwlWorkers(normalized);
+      if (ensured.changed) writeWorkers(ensured.rows);
+      return ensured.rows;
+    }
   } catch (e) {}
   const seeded = seedWorkersFromPublic();
   if (seeded.length) {
     writeWorkers(seeded);
     return seeded;
   }
-  return [];
+  const required = ensureRequiredDwlWorkers([]).rows;
+  writeWorkers(required);
+  return required;
 }
 function writeWorkers(rows) {
-  fs.writeFileSync(WORKERS_FILE, JSON.stringify(rows, null, 2));
+  const ensured = ensureRequiredDwlWorkers(rows);
+  fs.writeFileSync(WORKERS_FILE, JSON.stringify(ensured.rows, null, 2));
 }
 function seedMaterialsFromPublic() {
   const seeds = ['gwb-materials.json', 'dyre-materials.json'];
