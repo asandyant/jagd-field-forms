@@ -241,8 +241,14 @@ function fileProjectName(projectName){ return String(projectName||'').trim().rep
 function dsifSaveTitle(dateValue, projectName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); return projectPart ? `DSIF_${datePart}_${projectPart}` : `DSIF_${datePart}`; }
 function dwlSaveTitle(dateValue, projectName='', crewName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); const crewPart=fileProjectName(crewName); return ['DWL', datePart, projectPart, crewPart].filter(Boolean).join('_'); }
 
+let nextPdfFileTitle = '';
+function setNextPdfFileTitle(title){
+  nextPdfFileTitle = String(title || '').trim();
+  if(nextPdfFileTitle) document.title = nextPdfFileTitle;
+}
 function safePdfFileName(){
-  return ((document.title || 'JAGD Field Form').replace(/[\\/:*?"<>|]/g,'').trim() || 'JAGD Field Form') + '.pdf';
+  const title = nextPdfFileTitle || document.title || 'JAGD Field Form';
+  return (String(title).replace(/[\\/:*?"<>|]/g,'').trim() || 'JAGD Field Form') + '.pdf';
 }
 function collectPrintCssForCleanPdf(){
   let css='';
@@ -1410,7 +1416,7 @@ async function dwlForm(){
   document.getElementById('dwlLoadLastCrewBtn').onclick=loadDwlLastCrew;
   document.getElementById('dwlResetBtn').onclick=resetDwlForm;
   setTimeout(()=>autoFillWeather(),350);
-  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{saveDwlLastCrewFromRows(); const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project, data.crew); logGeneratedForm('dwl', data.project, data.reportDate, document.title); buildDwlPrint(data); openPrintNow('dwlMsg');}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{saveDwlLastCrewFromRows(); const data=collectDwl(); const dwlFileTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew')); setNextPdfFileTitle(dwlFileTitle); logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle); buildDwlPrint(data); openPrintNow('dwlMsg');}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
 
 // v63: DWL direct PDF generator. This avoids iPhone/Safari print headers/footers (URL, date, Page 1 of 2)
@@ -1534,7 +1540,7 @@ async function saveDwlDirectPdf(data, msgId){
   // Match the original boss DWL behavior: let jsPDF save/download the generated PDF directly.
   // This avoids iPhone/Safari browser print headers/footers and avoids the blank second page
   // caused by opening the form through the native print preview.
-  const filename = ((document.title || 'DWL').replace(/[\/:*?"<>|]/g,'').trim() || 'DWL') + '.pdf';
+  const filename = safePdfFileName();
   doc.save(filename);
   if(msg) msg.innerHTML='<div class="success">DWL ready. Use the iPhone/Android print screen to save/share as PDF.</div>';
   return true;
@@ -1873,7 +1879,7 @@ window.addEventListener('beforeprint',()=>{
   if(h.startsWith('#/mewp') && document.getElementById('mewpJobName')) { const data=collectMewp(); document.title=formSaveTitle('mewp', data.inspectionDate, data.jobName); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); }
   if(h.startsWith('#/daily-equipment') && document.getElementById('dailyProject')) { const data=collectDailyEquipment(); document.title=formSaveTitle('daily', data.date, data.project); buildDailyEquipmentPrint(data); }
   if(h.startsWith('#/dsif') && document.getElementById('dsifProject')) { const data=collectDsif(); document.title=formSaveTitle('dsif', data.reportDate, data.project); buildDsifPrint(data); }
-  if(h.startsWith('#/dwl') && document.getElementById('dwlProject')) { const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); buildDwlPrint(data); }
+  if(h.startsWith('#/dwl') && document.getElementById('dwlProject')) { const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew')); buildDwlPrint(data); }
   if(h.startsWith('#/bill-of-lading') && document.getElementById('bolProject')) buildBolPrint();
   if(h.startsWith('#/incident-report') && document.getElementById('irProject')) buildIncidentPrint();
   if(h.startsWith('#/heavy-accident-report') && document.getElementById('harProject')) buildHeavyAccidentPrint();
