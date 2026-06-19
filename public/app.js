@@ -514,8 +514,26 @@ function mixBlockForm(i){
 function renderPirMixBlocks(){
   const box=document.getElementById('pirMixBlocks');
   if(!box) return;
+
+  // Preserve all existing mix-block entries before rebuilding the blocks.
+  // Without this, adding/opening Mix Block 2 redraws the entire section and wipes Mix Block 1.
+  const previousValues = {};
+  box.querySelectorAll('input, select, textarea').forEach(el=>{
+    if(!el.id) return;
+    previousValues[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+
   box.innerHTML=Array.from({length:pirMixCount},(_,idx)=>mixBlockForm(idx+1)).join('');
+
+  Object.entries(previousValues).forEach(([id, value])=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    if(el.type === 'checkbox') el.checked = !!value;
+    else el.value = value;
+  });
+
   setupPirMaterialLibrary();
+  updatePirMaterialVisibility();
   const btn=document.getElementById('addPirMixBlock');
   if(btn) btn.style.display = pirMixCount >= 4 ? 'none' : 'inline-block';
 }
@@ -1103,6 +1121,15 @@ async function loadActiveWorkers(){
   return activeWorkers;
 }
 
+
+function isWorkerActive(w){
+  if(!w) return false;
+  if(w.disabled === true) return false;
+  const status = String(w.status || w.employmentStatus || '').trim().toLowerCase();
+  if(['inactive','disabled','terminated','removed'].includes(status)) return false;
+  return true;
+}
+
 function cleanWorkerLocal(v){ return String(v||'').replace(/\.0$/,''); }
 function workerDisplayName(w){ return String(w.fullName || `${w.firstName||''} ${w.lastName||''}`.trim()).trim(); }
 function workerSearchText(w){ return `${workerDisplayName(w)} ${w.firstName||''} ${w.lastName||''} ${w.class||''} ${w.local||''}`.toLowerCase().replace(/[^a-z0-9 ]+/g,' '); }
@@ -1131,11 +1158,6 @@ function normalizeDwlClass(c){
 function cleanDwlLocal(v){
   const s=cleanWorkerLocal(v);
   return s.replace(/\.0$/,'');
-}
-
-function isWorkerActive(w){
-  const status = String((w && w.status) || 'Active').trim().toLowerCase();
-  return !!w && !w.disabled && !['inactive','terminated','disabled','false','no'].includes(status);
 }
 
 function dwlRow(i){
