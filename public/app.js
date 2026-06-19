@@ -227,9 +227,9 @@ function crewValue(id){const sel=document.getElementById(id); if(!sel)return '';
 function dateToMMDDYY(dateValue){ const d = String(dateValue||''); const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return ''; return `${m[2]}${m[3]}${m[1].slice(2)}`; }
 function dateToDisplay(dateValue){ const d = String(dateValue||''); const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return d; return `${m[2]}-${m[3]}-${m[1].slice(2)}`; }
 function cleanFilePart(v){ return String(v||'').trim().replace(/[\/:*?"<>|]+/g,'-').replace(/\s+/g,' ').slice(0,80); }
-function formSaveTitle(type, dateValue, projectName=''){
+function formSaveTitle(type, dateValue, projectName='', crewName=''){
   if(type === 'dsif') return dsifSaveTitle(dateValue, projectName);
-  if(type === 'dwl') return dwlSaveTitle(dateValue, projectName);
+  if(type === 'dwl') return dwlSaveTitle(dateValue, projectName, crewName);
   const prefix = type === 'pir' ? 'PIR' : (type === 'mewp' ? 'MEWP' : 'Daily Equipment Inspection');
   const datePart = dateToDisplay(dateValue) || 'No Date';
   const projectPart = cleanFilePart(projectName);
@@ -239,7 +239,7 @@ function dateToDotMMDDYY(dateValue){ const d=String(dateValue||''); const m=d.ma
 function dateToSlashYYYY(dateValue){ const d=String(dateValue||''); const m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return d; return `${m[2]}/${m[3]}/${m[1]}`; }
 function fileProjectName(projectName){ return String(projectName||'').trim().replace(/[\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').replace(/_+/g,'_').slice(0,120); }
 function dsifSaveTitle(dateValue, projectName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); return projectPart ? `DSIF_${datePart}_${projectPart}` : `DSIF_${datePart}`; }
-function dwlSaveTitle(dateValue, projectName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); return projectPart ? `DWL_${datePart}_${projectPart}` : `DWL_${datePart}`; }
+function dwlSaveTitle(dateValue, projectName='', crewName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); const crewPart=fileProjectName(crewName); return ['DWL', datePart, projectPart, crewPart].filter(Boolean).join('_'); }
 
 function safePdfFileName(){
   return ((document.title || 'JAGD Field Form').replace(/[\\/:*?"<>|]/g,'').trim() || 'JAGD Field Form') + '.pdf';
@@ -1184,7 +1184,7 @@ function showDwlSuggestions(i){
   if(!emp || !box) return;
   const q=emp.value.toLowerCase().trim();
   if(q.length<1){ hideDwlSuggestions(); return; }
-  const matches=dwlMatchesForQuery(q).slice(0,7);
+  const matches=dwlMatchesForQuery(q).slice(0,80);
   if(!matches.length){ hideDwlSuggestions(); return; }
   document.querySelectorAll('.dwlSuggest').forEach(other=>{
     if(other!==box){ other.style.display='none'; other.innerHTML=''; }
@@ -1227,7 +1227,7 @@ function dwlMatchesForQuery(q){
     if(name.startsWith(raw) || first.startsWith(raw) || last.startsWith(raw)) starts.push(w);
     else if(hay.includes(clean)) contains.push(w);
   });
-  return starts.concat(contains).slice(0,15);
+  return starts.concat(contains);
 }
 
 function setupDwlWorkerAutofill(){
@@ -1410,7 +1410,7 @@ async function dwlForm(){
   document.getElementById('dwlLoadLastCrewBtn').onclick=loadDwlLastCrew;
   document.getElementById('dwlResetBtn').onclick=resetDwlForm;
   setTimeout(()=>autoFillWeather(),350);
-  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{saveDwlLastCrewFromRows(); const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project); logGeneratedForm('dwl', data.project, data.reportDate, document.title); buildDwlPrint(data); openPrintNow('dwlMsg');}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{saveDwlLastCrewFromRows(); const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project, data.crew); logGeneratedForm('dwl', data.project, data.reportDate, document.title); buildDwlPrint(data); openPrintNow('dwlMsg');}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`; console.error(err);}};
 }
 
 // v63: DWL direct PDF generator. This avoids iPhone/Safari print headers/footers (URL, date, Page 1 of 2)

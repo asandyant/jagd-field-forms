@@ -16,6 +16,10 @@ const WORKERS_VERSION_FILE = path.join(DATA_DIR, 'workers-source-version.json');
 const BUILT_IN_WORKERS_VERSION_FILE = path.join(__dirname, 'public', 'data', 'active-workers-version.json');
 const MATERIALS_FILE = path.join(DATA_DIR, 'materials.json');
 const ADMIN_PIN = process.env.ADMIN_PIN || process.env.ADMIN_PASSWORD || 'JadgForms123!!!';
+const PORTAL_ACTIVE_WORKERS_URL = process.env.PORTAL_ACTIVE_WORKERS_URL || 'https://portal.jagdapps.com/api/forms/active-workers';
+const PORTAL_SYNC_TOKEN = process.env.PORTAL_SYNC_TOKEN || process.env.FORMS_SYNC_TOKEN || '';
+const PORTAL_WORKER_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_WORKER_SYNC_TIMEOUT_MS || 4000);
+
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(SUBMISSIONS_FILE)) fs.writeFileSync(SUBMISSIONS_FILE, '[]');
@@ -135,6 +139,55 @@ function readWorkers() {
 function writeWorkers(rows) {
   const ensured = ensureRequiredDwlWorkers(rows);
   fs.writeFileSync(WORKERS_FILE, JSON.stringify(ensured.rows, null, 2));
+}
+
+function mergeWorkersByName(primaryRows, fallbackRows) {
+  const out = [];
+  const seen = new Set();
+  const add = (w) => {
+    if (!w) return;
+    const fullName = cleanText(w.fullName || `${w.firstName || ''} ${w.lastName || ''}`.trim());
+    const key = normalizeNameKey(fullName);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push({ ...w, fullName });
+  };
+  (Array.isArray(primaryRows) ? primaryRows : []).forEach(add);
+  (Array.isArray(fallbackRows) ? fallbackRows : []).forEach(add);
+  return ensureRequiredDwlWorkers(normalizeWorkerRows(out)).rows;
+}
+
+async function fetchPortalActiveWorkers() {
+  if (!PORTAL_ACTIVE_WORKERS_URL) return [];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PORTAL_WORKER_SYNC_TIMEOUT_MS);
+  try {
+    const headers = { Accept: 'application/json' };
+    if (PORTAL_SYNC_TOKEN) headers['X-Forms-Sync-Token'] = PORTAL_SYNC_TOKEN;
+    const res = await fetch(PORTAL_ACTIVE_WORKERS_URL, { headers, signal: controller.signal });
+    const text = await res.text();
+    const json = text ? JSON.parse(text) : {};
+    if (!res.ok) throw new Error(json.error || `Portal workers returned HTTP ${res.status}`);
+    const rows = Array.isArray(json.rows) ? json.rows : (Array.isArray(json) ? json : []);
+    return normalizeWorkerRows(rows).filter(isWorkerActive);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readWorkersWithPortalSync() {
+  const localRows = readWorkers().filter(isWorkerActive);
+  try {
+    const portalRows = await fetchPortalActiveWorkers();
+    if (portalRows.length) {
+      const merged = mergeWorkersByName(portalRows, localRows).filter(isWorkerActive);
+      writeWorkers(merged);
+      return { rows: merged, source: 'portal+forms-cache', portalCount: portalRows.length };
+    }
+  } catch (err) {
+    console.warn('Portal worker sync unavailable; using Field Forms cached worker list:', err.message || err);
+  }
+  return { rows: localRows, source: 'forms-cache', portalCount: 0 };
 }
 function seedMaterialsFromPublic() {
   const seeds = ['gwb-materials.json', 'dyre-materials.json'];
@@ -425,9 +478,9 @@ app.delete('/api/admin/form-logs/:id', requireAdmin, (req, res) => {
 });
 
 
-app.get('/api/workers', (req, res) => {
-  const rows = readWorkers().filter(isWorkerActive);
-  res.json({ ok: true, rows });
+app.get('/api/workers', async (req, res) => {
+  const result = await readWorkersWithPortalSync();
+  res.json({ ok: true, rows: result.rows, source: result.source, portalCount: result.portalCount });
 });
 
 app.get('/api/admin/workers/export.csv', requireAdmin, (req, res) => {
