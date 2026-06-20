@@ -238,8 +238,26 @@ function formSaveTitle(type, dateValue, projectName='', crewName=''){
 function dateToDotMMDDYY(dateValue){ const d=String(dateValue||''); const m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return ''; return `${m[2]}.${m[3]}.${m[1].slice(2)}`; }
 function dateToSlashYYYY(dateValue){ const d=String(dateValue||''); const m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return d; return `${m[2]}/${m[3]}/${m[1]}`; }
 function fileProjectName(projectName){ return String(projectName||'').trim().replace(/[\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').replace(/_+/g,'_').slice(0,120); }
+function cleanDwlFilePart(value){
+  return String(value||'')
+    .trim()
+    .replace(/[\/:*?"<>|]+/g,'-')
+    .replace(/\s+/g,' ')
+    .replace(/\s+-\s+/g,' - ')
+    .slice(0,120);
+}
+function normalizeDwlCrewForFile(crewName=''){
+  const crew = cleanDwlFilePart(crewName);
+  if(!crew) return '';
+  return /^day\s+/i.test(crew) ? crew : `Day ${crew}`;
+}
 function dsifSaveTitle(dateValue, projectName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); return projectPart ? `DSIF_${datePart}_${projectPart}` : `DSIF_${datePart}`; }
-function dwlSaveTitle(dateValue, projectName='', crewName=''){ const datePart=dateToDotMMDDYY(dateValue)||'No.Date'; const projectPart=fileProjectName(projectName); const crewPart=fileProjectName(crewName); return ['DWL', datePart, projectPart, crewPart].filter(Boolean).join('_'); }
+function dwlSaveTitle(dateValue, projectName='', crewName=''){
+  const datePart = dateToDotMMDDYY(dateValue) || 'No.Date';
+  const projectPart = cleanDwlFilePart(projectName);
+  const crewPart = normalizeDwlCrewForFile(crewName);
+  return ['DWL', projectPart, datePart, crewPart].filter(Boolean).join(' ');
+}
 
 let nextPdfFileTitle = '';
 function setNextPdfFileTitle(title){
