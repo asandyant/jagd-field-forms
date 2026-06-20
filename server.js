@@ -19,12 +19,16 @@ const ADMIN_PIN = process.env.ADMIN_PIN || process.env.ADMIN_PASSWORD || 'JadgFo
 const PORTAL_ACTIVE_WORKERS_URL = process.env.PORTAL_ACTIVE_WORKERS_URL || 'https://portal.jagdapps.com/api/forms/active-workers';
 const PORTAL_SYNC_TOKEN = process.env.PORTAL_SYNC_TOKEN || process.env.FORMS_SYNC_TOKEN || '';
 const PORTAL_WORKER_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_WORKER_SYNC_TIMEOUT_MS || 4000);
+const PORTAL_DWL_SUBMIT_URL = process.env.PORTAL_DWL_SUBMIT_URL || 'https://portal.jagdapps.com/api/forms/dwl/submit';
+const PORTAL_DWL_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_DWL_SYNC_TIMEOUT_MS || 6000);
+const DWL_PORTAL_SYNC_LOG_FILE = path.join(DATA_DIR, 'dwl-portal-sync-log.json');
 
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(SUBMISSIONS_FILE)) fs.writeFileSync(SUBMISSIONS_FILE, '[]');
 if (!fs.existsSync(WEEKLY_MEETINGS_FILE)) fs.writeFileSync(WEEKLY_MEETINGS_FILE, '[]');
 if (!fs.existsSync(FORM_LOGS_FILE)) fs.writeFileSync(FORM_LOGS_FILE, '[]');
+if (!fs.existsSync(DWL_PORTAL_SYNC_LOG_FILE)) fs.writeFileSync(DWL_PORTAL_SYNC_LOG_FILE, '[]');
 if (!fs.existsSync(WORKERS_FILE)) {
   const seed = path.join(__dirname, 'public', 'data', 'active-workers.json');
   fs.writeFileSync(WORKERS_FILE, fs.existsSync(seed) ? fs.readFileSync(seed, 'utf8') : '[]');
@@ -360,6 +364,54 @@ function readFormLogs() {
 function writeFormLogs(rows) {
   fs.writeFileSync(FORM_LOGS_FILE, JSON.stringify(rows, null, 2));
 }
+
+function readDwlPortalSyncLog() {
+  try {
+    const rows = JSON.parse(fs.readFileSync(DWL_PORTAL_SYNC_LOG_FILE, 'utf8'));
+    return Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    return [];
+  }
+}
+function writeDwlPortalSyncLog(rows) {
+  fs.writeFileSync(DWL_PORTAL_SYNC_LOG_FILE, JSON.stringify(Array.isArray(rows) ? rows.slice(-1000) : [], null, 2));
+}
+function dwlSyncCleanText(v, max = 500) {
+  return String(v || '').trim().slice(0, max);
+}
+function dwlSyncWeekEndingSaturdayIso(value = '') {
+  const text = dwlSyncCleanText(value, 30);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return '';
+  const d = new Date(`${text}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + (6 - d.getDay()));
+  return d.toISOString().slice(0, 10);
+}
+function dwlSyncIdFor(data = {}, title = '') {
+  const seed = [data.reportDate, data.project, data.crew, data.foreman, data.printName, title, Date.now(), nanoid(5)].join('|');
+  return `forms-dwl-${slug(seed).slice(0, 30)}-${nanoid(6)}`;
+}
+async function postDwlToPortal(payload) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PORTAL_DWL_SYNC_TIMEOUT_MS);
+  try {
+    const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
+    if (PORTAL_SYNC_TOKEN) headers['x-forms-sync-token'] = PORTAL_SYNC_TOKEN;
+    const res = await fetch(PORTAL_DWL_SUBMIT_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    const text = await res.text();
+    let json = {};
+    try { json = text ? JSON.parse(text) : {}; } catch (e) { json = { raw: text.slice(0, 250) }; }
+    if (!res.ok) throw new Error(json.error || json.raw || `Portal returned ${res.status}`);
+    return json;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 function requireAdmin(req, res, next) {
   const supplied = req.get('x-admin-pin') || req.query.pin || '';
   if (supplied !== ADMIN_PIN) return res.status(401).json({ error: 'Admin PIN required.' });
@@ -442,6 +494,68 @@ app.post('/api/form-logs', (req, res) => {
   rows.push(row);
   writeFormLogs(rows);
   res.json({ ok: true, row });
+});
+
+
+app.post('/api/dwl/portal-sync', async (req, res) => {
+  const data = req.body && typeof req.body.data === 'object' ? req.body.data : {};
+  const title = dwlSyncCleanText(req.body?.title || req.body?.sourceFileName || '', 220);
+  const syncId = dwlSyncCleanText(req.body?.syncId || '', 120) || dwlSyncIdFor(data, title);
+  const project = dwlSyncCleanText(data.project || 'No Project', 180) || 'No Project';
+  const reportDate = dwlSyncCleanText(data.reportDate || new Date().toISOString().slice(0, 10), 30);
+  const crew = dwlSyncCleanText(data.crew || '', 80);
+  const logRow = {
+    id: syncId,
+    syncId,
+    project,
+    reportDate,
+    crew,
+    weekEnding: dwlSyncWeekEndingSaturdayIso(reportDate),
+    title,
+    sourceFileName: title ? `${title.replace(/\.pdf$/i, '')}.pdf` : '',
+    status: 'pending',
+    attempts: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    error: ''
+  };
+  const payload = {
+    syncId,
+    sourceApp: 'jagd-field-forms',
+    sourceFileName: logRow.sourceFileName,
+    submittedAt: new Date().toISOString(),
+    data: {
+      ...data,
+      project,
+      reportDate,
+      crew,
+      sourceFileName: logRow.sourceFileName,
+      submittedAt: new Date().toISOString()
+    }
+  };
+  const rows = readDwlPortalSyncLog();
+  rows.push(logRow);
+  try {
+    const portal = await postDwlToPortal(payload);
+    logRow.status = 'synced';
+    logRow.portalId = portal.id || '';
+    logRow.portalWeekEnding = portal.weekEnding || logRow.weekEnding;
+    logRow.syncedAt = new Date().toISOString();
+    logRow.updatedAt = logRow.syncedAt;
+    writeDwlPortalSyncLog(rows);
+    res.json({ ok: true, status: 'synced', id: syncId, portalId: logRow.portalId, weekEnding: logRow.portalWeekEnding });
+  } catch (err) {
+    logRow.status = 'failed';
+    logRow.error = err.message || 'Portal sync failed';
+    logRow.updatedAt = new Date().toISOString();
+    writeDwlPortalSyncLog(rows);
+    res.status(202).json({ ok: false, status: 'failed', id: syncId, error: logRow.error, manualUploadNeeded: true, message: `${dateToDisplay(reportDate)} DWL failed to import to portal. Office may need manual upload.` });
+  }
+});
+
+app.get('/api/admin/dwl-portal-sync-log', requireAdmin, (req, res) => {
+  const rows = readDwlPortalSyncLog().sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+  res.json({ ok: true, rows });
 });
 
 app.get('/api/admin/form-logs', requireAdmin, (req, res) => {
