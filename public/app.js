@@ -314,8 +314,46 @@ function setNextPdfFileTitle(title){
 }
 function safePdfFileName(){
   const title = nextPdfFileTitle || document.title || 'JAGD Field Form';
-  return (String(title).replace(/[\\/:*?"<>|]/g,'').trim() || 'JAGD Field Form') + '.pdf';
+  return (String(title).replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').trim() || 'JAGD Field Form') + '.pdf';
 }
+function base64FromDataUrl(dataUrl){
+  return String(dataUrl||'').replace(/^data:application\/pdf;?base64,/i,'');
+}
+async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
+  const msg = msgId ? document.getElementById(msgId) : null;
+  const safeName = String(filename || safePdfFileName()).replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').trim() || 'JAGD Field Form.pdf';
+  try{
+    if(msg) msg.innerHTML = '<div class="notice">Preparing named PDF download...</div>';
+    const dataUrl = pdfDoc.output('datauristring');
+    const pdfBase64 = base64FromDataUrl(dataUrl);
+    const res = await fetch('/api/dwl/generated-pdf', {
+      method:'POST',
+      headers:{'Content-Type':'application/json', Accept:'application/json'},
+      body: JSON.stringify({ fileName: safeName, pdfBase64 })
+    });
+    const json = await res.json().catch(()=>({}));
+    if(!res.ok || !json.ok || !json.downloadUrl) throw new Error(json.error || 'Server PDF download was not ready.');
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if(isIOS){
+      window.location.href = json.downloadUrl;
+    } else {
+      const a=document.createElement('a');
+      a.href=json.downloadUrl;
+      a.download=json.fileName || safeName;
+      a.rel='noopener';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{ try{ a.remove(); }catch(e){} }, 1000);
+    }
+    if(msg) msg.innerHTML = '<div class="success">DWL PDF saved with the correct file name. If the download screen opens, use Share to send/save it.</div>';
+    return true;
+  }catch(err){
+    console.warn('Server named PDF download failed, falling back to browser save:', err);
+    try{ pdfDoc.save(safeName); if(msg) msg.innerHTML='<div class="success">DWL PDF saved. If iPhone changes the file name, office can rename it from the PDF contents.</div>'; return true; }
+    catch(e){ if(msg) msg.innerHTML=`<div class="notice">PDF save failed: ${esc(e.message || err.message || '')}</div>`; return false; }
+  }
+}
+
 function collectPrintCssForCleanPdf(){
   let css='';
   for(const sheet of Array.from(document.styleSheets)){
@@ -1474,12 +1512,23 @@ function appendDwlSyncMessage(html) {
   div.innerHTML = html;
   msg.appendChild(div.firstElementChild || div);
 }
-async function syncDwlToPortal(data, title) {
+function makeDwlSyncId(data, title){
+  const parts=[data?.reportDate||'', data?.project||'', data?.crew||'', cleanDwlRevision(data?.revision||'0')||'0', title||'', Date.now(), Math.random().toString(36).slice(2,8)];
+  return 'forms-dwl-' + parts.join('|').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80);
+}
+function dwlPortalPayload(data, title, syncId){
+  const rows = dwlVisibleRows(data);
+  const leanData = { ...data, rows, signatureData:'' };
+  return { syncId, title, sourceFileName: title ? `${String(title).replace(/\.pdf$/i, '')}.pdf` : '', data: leanData };
+}
+async function syncDwlToPortal(data, title, options = {}) {
   const rows = dwlVisibleRows(data);
   if (!data || (!data.project && !data.reportDate && !rows.length)) return;
+  const syncId = options.syncId || makeDwlSyncId(data, title);
+  const payload = dwlPortalPayload(data, title, syncId);
   try {
-    const payload = { title, sourceFileName: title ? `${String(title).replace(/\.pdf$/i, '')}.pdf` : '', data: { ...data, rows } };
-    const res = await fetch('/api/dwl/portal-sync', { method:'POST', headers:{'Content-Type':'application/json', Accept:'application/json'}, body: JSON.stringify(payload) });
+    const body = JSON.stringify(payload);
+    const res = await fetch('/api/dwl/portal-sync', { method:'POST', headers:{'Content-Type':'application/json', Accept:'application/json'}, body, keepalive: !!options.keepalive });
     const json = await res.json().catch(()=>({}));
     if (res.ok && json.ok) {
       appendDwlSyncMessage('<div class="success">DWL sent to portal.</div>');
@@ -1487,6 +1536,12 @@ async function syncDwlToPortal(data, title) {
       appendDwlSyncMessage(`<div class="notice">DWL PDF saved, but portal import needs attention. ${esc(json.message || json.error || 'Office may need manual upload.')}</div>`);
     }
   } catch (err) {
+    try{
+      if(navigator.sendBeacon){
+        const ok = navigator.sendBeacon('/api/dwl/portal-sync', new Blob([JSON.stringify(payload)], {type:'application/json'}));
+        if(ok){ appendDwlSyncMessage('<div class="notice">DWL portal send was queued in the background.</div>'); return; }
+      }
+    }catch(e){}
     appendDwlSyncMessage(`<div class="notice">DWL PDF saved, but portal import failed. Office may need manual upload. ${esc(err.message || '')}</div>`);
   }
 }
@@ -1510,7 +1565,27 @@ async function dwlForm(){
   document.getElementById('dwlLoadLastCrewBtn').onclick=loadDwlLastCrew;
   document.getElementById('dwlResetBtn').onclick=resetDwlForm;
   setTimeout(()=>autoFillWeather(),350);
-  document.getElementById('dwlPrintBtn').onclick=(e)=>{e.preventDefault(); try{saveDwlLastCrewFromRows(); const data=collectDwl(); const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew')); const dwlFileTitle=dwlFileTitleWithRevision(baseTitle, data.revision); if(!confirmDwlSaveAndSend(data,dwlFileTitle)) return; setNextPdfFileTitle(dwlFileTitle); logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle); buildDwlPrint(data); openPrintNow('dwlMsg'); markDwlSubmittedLocally(data,dwlFileTitle); setTimeout(()=>syncDwlToPortal(data,dwlFileTitle),900);}catch(err){document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`; console.error(err);}};
+  document.getElementById('dwlPrintBtn').onclick=async(e)=>{
+    e.preventDefault();
+    try{
+      saveDwlLastCrewFromRows();
+      const data=collectDwl();
+      const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
+      const dwlFileTitle=dwlFileTitleWithRevision(baseTitle, data.revision);
+      if(!confirmDwlSaveAndSend(data,dwlFileTitle)) return;
+      setNextPdfFileTitle(dwlFileTitle);
+      markDwlSubmittedLocally(data,dwlFileTitle);
+      logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle);
+      const syncId = makeDwlSyncId(data, dwlFileTitle);
+      const portalSend = syncDwlToPortal(data, dwlFileTitle, { syncId, keepalive:true });
+      const savedDirect = await saveDwlDirectPdf(data,'dwlMsg');
+      if(!savedDirect){ buildDwlPrint(data); await openPrintNow('dwlMsg'); }
+      portalSend.catch(()=>{});
+    }catch(err){
+      document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`;
+      console.error(err);
+    }
+  };
 }
 
 // v63: DWL direct PDF generator. This avoids iPhone/Safari print headers/footers (URL, date, Page 1 of 2)
@@ -1637,8 +1712,7 @@ async function saveDwlDirectPdf(data, msgId){
   // This avoids iPhone/Safari browser print headers/footers and avoids the blank second page
   // caused by opening the form through the native print preview.
   const filename = safePdfFileName();
-  doc.save(filename);
-  if(msg) msg.innerHTML='<div class="success">DWL ready. Use the iPhone/Android print screen to save/share as PDF.</div>';
+  await downloadPdfDocThroughServer(doc, filename, msgId);
   return true;
 }
 

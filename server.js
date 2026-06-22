@@ -22,9 +22,11 @@ const PORTAL_WORKER_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_WORKER_SYNC_TIME
 const PORTAL_DWL_SUBMIT_URL = process.env.PORTAL_DWL_SUBMIT_URL || 'https://portal.jagdapps.com/api/forms/dwl/submit';
 const PORTAL_DWL_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_DWL_SYNC_TIMEOUT_MS || 6000);
 const DWL_PORTAL_SYNC_LOG_FILE = path.join(DATA_DIR, 'dwl-portal-sync-log.json');
+const DWL_GENERATED_PDF_DIR = path.join(DATA_DIR, 'dwl-generated-pdfs');
 
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(DWL_GENERATED_PDF_DIR, { recursive: true });
 if (!fs.existsSync(SUBMISSIONS_FILE)) fs.writeFileSync(SUBMISSIONS_FILE, '[]');
 if (!fs.existsSync(WEEKLY_MEETINGS_FILE)) fs.writeFileSync(WEEKLY_MEETINGS_FILE, '[]');
 if (!fs.existsSync(FORM_LOGS_FILE)) fs.writeFileSync(FORM_LOGS_FILE, '[]');
@@ -391,6 +393,25 @@ function dwlSyncIdFor(data = {}, title = '') {
   const seed = [data.reportDate, data.project, data.crew, data.foreman, data.printName, title, Date.now(), nanoid(5)].join('|');
   return `forms-dwl-${slug(seed).slice(0, 30)}-${nanoid(6)}`;
 }
+function dwlDownloadSafeFileName(value = '') {
+  const cleaned = String(value || '')
+    .replace(/\.pdf$/i, '')
+    .replace(/[\/:*?"<>|]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180);
+  return `${cleaned || 'JAGD DWL'}.pdf`;
+}
+function cleanupOldGeneratedDwlPdfs() {
+  try {
+    const cutoff = Date.now() - (3 * 24 * 60 * 60 * 1000);
+    for (const file of fs.readdirSync(DWL_GENERATED_PDF_DIR)) {
+      const full = path.join(DWL_GENERATED_PDF_DIR, file);
+      const stat = fs.statSync(full);
+      if (stat.isFile() && stat.mtimeMs < cutoff) fs.unlinkSync(full);
+    }
+  } catch (e) {}
+}
 async function postDwlToPortal(payload) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PORTAL_DWL_SYNC_TIMEOUT_MS);
@@ -496,6 +517,39 @@ app.post('/api/form-logs', (req, res) => {
   res.json({ ok: true, row });
 });
 
+
+app.post('/api/dwl/generated-pdf', (req, res) => {
+  try {
+    cleanupOldGeneratedDwlPdfs();
+    const fileName = dwlDownloadSafeFileName(req.body?.fileName || 'JAGD DWL.pdf');
+    const pdfBase64 = String(req.body?.pdfBase64 || '').replace(/^data:application\/pdf;?base64,/i, '');
+    if (!pdfBase64) return res.status(400).json({ ok: false, error: 'PDF data missing.' });
+    const buffer = Buffer.from(pdfBase64, 'base64');
+    if (!buffer.length || buffer.length > 20 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'PDF is empty or too large.' });
+    if (buffer.slice(0, 4).toString() !== '%PDF') return res.status(400).json({ ok: false, error: 'Generated file was not a valid PDF.' });
+    const id = `${Date.now()}-${nanoid(10)}`;
+    const stored = `${id}.pdf`;
+    fs.writeFileSync(path.join(DWL_GENERATED_PDF_DIR, stored), buffer);
+    res.json({ ok: true, id, fileName, downloadUrl: `/api/dwl/generated-pdf/${encodeURIComponent(id)}/download?name=${encodeURIComponent(fileName)}` });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || 'Unable to prepare named PDF download.' });
+  }
+});
+
+app.get('/api/dwl/generated-pdf/:id/download', (req, res) => {
+  try {
+    const id = String(req.params.id || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const filePath = path.join(DWL_GENERATED_PDF_DIR, `${id}.pdf`);
+    if (!id || !fs.existsSync(filePath)) return res.status(404).send('PDF not found. Please save the DWL again.');
+    const fileName = dwlDownloadSafeFileName(req.query.name || 'JAGD DWL.pdf');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName.replace(/"/g, '')}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    res.status(500).send('Unable to download PDF.');
+  }
+});
 
 app.post('/api/dwl/portal-sync', async (req, res) => {
   const data = req.body && typeof req.body.data === 'object' ? req.body.data : {};
