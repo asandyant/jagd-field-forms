@@ -682,13 +682,16 @@ app.get('/api/bol/next-number', (req, res) => {
 app.get('/api/bol/inventory-items', async (req, res) => {
   try {
     const baseUrl = new URL(PORTAL_BOL_SUBMIT_URL);
-    const invUrl = `${baseUrl.origin}/api/inventory`;
+    const invUrl = `${baseUrl.origin}/api/forms/inventory/items`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PORTAL_BOL_SYNC_TIMEOUT_MS);
-    const r = await fetch(invUrl, { signal: controller.signal });
+    const headers = { Accept: 'application/json' };
+    if (PORTAL_SYNC_TOKEN) headers['x-forms-sync-token'] = PORTAL_SYNC_TOKEN;
+    const r = await fetch(invUrl, { headers, signal: controller.signal });
     clearTimeout(timer);
     const json = await r.json().catch(() => ({}));
     if (!r.ok || !json.ok) throw new Error(json.error || 'Portal inventory unavailable');
+    if (Array.isArray(json.items)) return res.json({ ok: true, items: json.items });
     const seen = new Map();
     const add = (row) => {
       const item = bolCleanText(row.item || row.product || '', 180);

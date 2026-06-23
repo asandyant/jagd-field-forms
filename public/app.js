@@ -49,6 +49,7 @@ let serverMaterials = [];
 let serverMaterialsLoaded = false;
 let bolInventoryItems = [];
 let bolInventoryLoaded = false;
+let activeBolProductInput = null;
 
 function slug(text){
   return String(text || '')
@@ -1831,16 +1832,55 @@ function bolLocationField(id,label){
 function setupOtherBolLocation(id){ setupOtherProject(id); }
 function bolLocationValue(id){ return projectValue(id); }
 function bolInventoryDatalist(){
-  return `<datalist id="bolInventoryProducts">${(bolInventoryItems||[]).map(i=>`<option value="${esc(i.item||'')}">${esc([i.location,i.quantity,i.unit].filter(Boolean).join(' - '))}</option>`).join('')}</datalist>`;
+  return `<datalist id="bolInventoryProducts">${(bolInventoryItems||[]).map(i=>`<option value="${esc(i.item||'')}">${esc([i.sku,i.location,i.quantity,i.unit].filter(Boolean).join(' - '))}</option>`).join('')}</datalist><div id="bolInventoryPicker" class="bolInventoryPicker" style="display:none"></div>`;
+}
+function bolInventoryDisplayLabel(item){
+  return [item.sku ? `#${item.sku}` : '', item.item || '', item.location ? `@ ${item.location}` : '', String(item.quantity ?? '') !== '' ? `Qty ${item.quantity}` : '', item.unit || ''].filter(Boolean).join(' - ');
+}
+function pickBolInventoryItem(input, item){
+  if(!input || !item) return;
+  input.value=item.item||'';
+  input.dataset.sku=item.sku||'';
+  const row=input.closest('tr');
+  const unit=row?.querySelector('.bolUnitInput');
+  if(unit && !unit.value) unit.value=item.unit||'';
+  const picker=document.getElementById('bolInventoryPicker');
+  if(picker) picker.style.display='none';
+  input.dispatchEvent(new Event('change', {bubbles:true}));
+}
+function showBolInventoryPicker(input){
+  activeBolProductInput=input;
+  const picker=document.getElementById('bolInventoryPicker');
+  if(!picker) return;
+  const items=Array.isArray(bolInventoryItems)?bolInventoryItems:[];
+  if(!bolInventoryLoaded){ picker.style.display='block'; picker.innerHTML='<div class="notice">Loading portal inventory...</div>'; return; }
+  if(!items.length){ picker.style.display='block'; picker.innerHTML='<div class="notice">No inventory items loaded yet. You can still type manually.</div>'; return; }
+  const render=(term='')=>{
+    const q=String(term||'').toLowerCase().trim();
+    const filtered=items.filter(i=>!q || [i.item,i.sku,i.location,i.unit].some(v=>String(v||'').toLowerCase().includes(q))).slice(0,80);
+    picker.innerHTML=`<div class="bolInventoryPickerBox"><div class="bolInventoryPickerHead"><b>Choose inventory item</b><button type="button" class="btn small light" id="closeBolInventoryPicker">Close</button></div><input id="bolInventorySearch" class="full" placeholder="Search inventory / SKU / location" value="${esc(term)}"><div class="bolInventoryPickerList">${filtered.map((i,idx)=>`<button type="button" class="bolInventoryPickBtn" data-idx="${items.indexOf(i)}"><b>${esc(i.item||'')}</b><span>${esc([i.sku?`SKU ${i.sku}`:'', i.location||'', i.quantity!==undefined?`Qty ${i.quantity}`:'', i.unit||''].filter(Boolean).join(' • '))}</span></button>`).join('') || '<div class="notice">No matching inventory items.</div>'}</div></div>`;
+    const search=document.getElementById('bolInventorySearch');
+    if(search){ search.focus({preventScroll:true}); search.oninput=()=>render(search.value); }
+    const close=document.getElementById('closeBolInventoryPicker');
+    if(close) close.onclick=()=>{ picker.style.display='none'; };
+    picker.querySelectorAll('.bolInventoryPickBtn').forEach(btn=>{
+      btn.onclick=()=>pickBolInventoryItem(activeBolProductInput, items[Number(btn.dataset.idx)]);
+    });
+  };
+  picker.style.display='block';
+  render(input.value||'');
 }
 function setupBolInventoryAutocomplete(){
   const msg=document.getElementById('bolInventoryMsg');
   const apply=()=>{
     document.querySelectorAll('.bolProductInput').forEach(inp=>{
       inp.setAttribute('list','bolInventoryProducts');
+      inp.onfocus=()=>showBolInventoryPicker(inp);
+      inp.onclick=()=>showBolInventoryPicker(inp);
       inp.onchange=()=>{
         const match=(bolInventoryItems||[]).find(i=>String(i.item||'').toLowerCase()===String(inp.value||'').toLowerCase());
         if(match){
+          inp.dataset.sku=match.sku||'';
           const row=inp.closest('tr');
           const unit=row?.querySelector('.bolUnitInput');
           if(unit && !unit.value) unit.value=match.unit||'';
@@ -1854,10 +1894,11 @@ function setupBolInventoryAutocomplete(){
     bolInventoryLoaded=true;
     bolInventoryItems=Array.isArray(json.items)?json.items:[];
     const dl=document.getElementById('bolInventoryProducts');
-    if(dl) dl.innerHTML=(bolInventoryItems||[]).map(i=>`<option value="${esc(i.item||'')}">${esc([i.location,i.quantity,i.unit].filter(Boolean).join(' - '))}</option>`).join('');
+    if(dl) dl.innerHTML=(bolInventoryItems||[]).map(i=>`<option value="${esc(i.item||'')}">${esc([i.sku,i.location,i.quantity,i.unit].filter(Boolean).join(' - '))}</option>`).join('');
     apply();
-    if(msg) msg.textContent=bolInventoryItems.length ? `Inventory list loaded from portal (${bolInventoryItems.length} items).` : 'No portal inventory items yet. You can still type manually.';
-  }).catch(()=>{ if(msg) msg.textContent='Portal inventory list did not load. You can still type materials manually.'; });
+    if(activeBolProductInput) showBolInventoryPicker(activeBolProductInput);
+    if(msg) msg.textContent=bolInventoryItems.length ? `Inventory list loaded from portal (${bolInventoryItems.length} items). Tap Product / Material to choose from stock.` : 'No portal inventory items yet. You can still type manually.';
+  }).catch(()=>{ bolInventoryLoaded=true; if(msg) msg.textContent='Portal inventory list did not load. You can still type materials manually.'; });
 }
 function bolItemRows(){
   return Array.from({length:EXTRA_FORM_ROWS},(_,idx)=>{
@@ -1871,7 +1912,9 @@ function collectBolItems(){
     const quantity=val('bolQty'+i);
     const product=val('bolProduct'+i);
     const unit=val('bolUnit'+i);
-    if(quantity || product || unit) rows.push({quantity, product, unit});
+    const productEl=document.getElementById('bolProduct'+i);
+    const sku=productEl?.dataset?.sku || '';
+    if(quantity || product || unit || sku) rows.push({quantity, product, unit, sku});
   }
   return rows;
 }

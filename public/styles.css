@@ -830,3 +830,48 @@
 .pirExtraMixGrid .mixPrintBlock{min-height:2.35in;}
 .pirExtraMixGrid .mixPrintBlock:nth-child(2n){border-right:0;}
 @media print{.mixBlockTitleRow .pirDeleteMixBlock{display:none!important;}.pirMixExtraSheet{page-break-before:always;break-before:page;}}
+
+/* BOL inventory picker */
+.bolInventoryPicker{
+  position:fixed;
+  left:12px;
+  right:12px;
+  bottom:12px;
+  z-index:9999;
+  max-height:70vh;
+  overflow:auto;
+}
+.bolInventoryPickerBox{
+  background:#fff;
+  border:2px solid #111;
+  border-radius:18px;
+  box-shadow:0 16px 40px rgba(0,0,0,.25);
+  padding:14px;
+}
+.bolInventoryPickerHead{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  margin-bottom:10px;
+}
+.bolInventoryPickerList{
+  display:grid;
+  gap:8px;
+  margin-top:10px;
+}
+.bolInventoryPickBtn{
+  text-align:left;
+  border:1px solid #ccc;
+  background:#f8f8f8;
+  border-radius:12px;
+  padding:12px;
+  font-size:16px;
+}
+.bolInventoryPickBtn b{display:block;font-size:17px;color:#111;}
+.bolInventoryPickBtn span{display:block;font-size:13px;color:#444;margin-top:3px;}
+@media (max-width: 700px){
+  .bolInventoryPicker{left:8px;right:8px;bottom:8px;max-height:78vh;}
+  .bolInventoryPickBtn{font-size:18px;padding:14px;}
+  .bolInventoryPickBtn b{font-size:19px;}
+}
