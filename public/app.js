@@ -47,6 +47,8 @@ const DAILY_EQUIPMENT_URL = 'https://jagdconstruction.github.io/daily_equipment_
 let activeWorkers = [];
 let serverMaterials = [];
 let serverMaterialsLoaded = false;
+let bolInventoryItems = [];
+let bolInventoryLoaded = false;
 
 function slug(text){
   return String(text || '')
@@ -1817,10 +1819,50 @@ function extraPrintButton(id, buildFn, msgId, logFn=null){
 }
 function extraRadio(name, opts=['Yes','No']){return `<div class="choiceBtns extraChoice">${opts.map(o=>`<label><input type="radio" name="${name}" value="${esc(o)}">${esc(o)}</label>`).join('')}</div>`;}
 function radioVal(name){const el=document.querySelector(`[name="${name}"]:checked`); return el?el.value:'';}
+
+function bolLocationOptions(){
+  const base=['','Warehouse','Main Yard','Shop'];
+  const merged=[...base, ...PROJECT_OPTIONS.filter(x=>x && !['Warehouse'].includes(x)), 'Other'];
+  return [...new Set(merged)];
+}
+function bolLocationField(id,label){
+  return `<div><label for="${id}">${label}</label><select id="${id}" class="projectSelect">${bolLocationOptions().map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select><input id="${id}Other" class="projectOther" type="text" placeholder="Enter location / job" style="display:none;margin-top:8px"></div>`;
+}
+function setupOtherBolLocation(id){ setupOtherProject(id); }
+function bolLocationValue(id){ return projectValue(id); }
+function bolInventoryDatalist(){
+  return `<datalist id="bolInventoryProducts">${(bolInventoryItems||[]).map(i=>`<option value="${esc(i.item||'')}">${esc([i.location,i.quantity,i.unit].filter(Boolean).join(' - '))}</option>`).join('')}</datalist>`;
+}
+function setupBolInventoryAutocomplete(){
+  const msg=document.getElementById('bolInventoryMsg');
+  const apply=()=>{
+    document.querySelectorAll('.bolProductInput').forEach(inp=>{
+      inp.setAttribute('list','bolInventoryProducts');
+      inp.onchange=()=>{
+        const match=(bolInventoryItems||[]).find(i=>String(i.item||'').toLowerCase()===String(inp.value||'').toLowerCase());
+        if(match){
+          const row=inp.closest('tr');
+          const unit=row?.querySelector('.bolUnitInput');
+          if(unit && !unit.value) unit.value=match.unit||'';
+        }
+      };
+    });
+  };
+  apply();
+  if(bolInventoryLoaded){ if(msg) msg.textContent=bolInventoryItems.length ? `Inventory list loaded (${bolInventoryItems.length} items).` : 'No portal inventory items yet.'; return; }
+  fetch('/api/bol/inventory-items').then(r=>r.json()).then(json=>{
+    bolInventoryLoaded=true;
+    bolInventoryItems=Array.isArray(json.items)?json.items:[];
+    const dl=document.getElementById('bolInventoryProducts');
+    if(dl) dl.innerHTML=(bolInventoryItems||[]).map(i=>`<option value="${esc(i.item||'')}">${esc([i.location,i.quantity,i.unit].filter(Boolean).join(' - '))}</option>`).join('');
+    apply();
+    if(msg) msg.textContent=bolInventoryItems.length ? `Inventory list loaded from portal (${bolInventoryItems.length} items).` : 'No portal inventory items yet. You can still type manually.';
+  }).catch(()=>{ if(msg) msg.textContent='Portal inventory list did not load. You can still type materials manually.'; });
+}
 function bolItemRows(){
   return Array.from({length:EXTRA_FORM_ROWS},(_,idx)=>{
     const i=idx+1;
-    return `<tr><td><input id="bolQty${i}" inputmode="decimal" placeholder="Qty"></td><td><input id="bolProduct${i}" placeholder="Product / material"></td><td><input id="bolUnit${i}" placeholder="Unit"></td></tr>`;
+    return `<tr><td><input id="bolQty${i}" inputmode="decimal" placeholder="Qty"></td><td><input id="bolProduct${i}" class="bolProductInput" list="bolInventoryProducts" placeholder="Product / material"></td><td><input id="bolUnit${i}" class="bolUnitInput" placeholder="Unit"></td></tr>`;
   }).join('');
 }
 function collectBolItems(){
@@ -1839,8 +1881,8 @@ function bolData(){
   return {
     bolNumber: val('bolNumber'),
     date: val('bolDate'),
-    fromLocation: val('bolFromLocation'),
-    toJob: projectValue('bolToJob'),
+    fromLocation: bolLocationValue('bolFromLocation'),
+    toJob: bolLocationValue('bolToJob'),
     poNumber: val('bolPO'),
     deliveredBy: val('bolDeliveredBy'),
     deliveredBySignatureData: signatureStore.bolDeliveredBySig||'',
@@ -1877,8 +1919,8 @@ async function syncBolToPortal(){
   const data=bolData();
   const msg=document.getElementById('bolMsg');
   if(!data.bolNumber || !data.toJob || !data.items.length){
-    if(msg) msg.innerHTML='<div class="notice">BOL needs a BOL number, To Job, and at least one material row.</div>';
-    throw new Error('BOL needs a BOL number, To Job, and at least one material row.');
+    if(msg) msg.innerHTML='<div class="notice">BOL needs a BOL number, To Location/Job, and at least one material row.</div>';
+    throw new Error('BOL needs a BOL number, To Location/Job, and at least one material row.');
   }
   try{
     const res=await fetch('/api/bol/portal-sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data}),keepalive:true});
@@ -1894,8 +1936,8 @@ async function syncBolToPortal(){
   }
 }
 function bolForm(){
-  app.innerHTML=extraFormIntro('JAGD - Bill of Lading','Material transfer ticket. Inventory moves in the portal only after the receiver signs and the BOL is marked Received.')+`<div class="panel"><h2>Delivery Info</h2><div class="grid three">${field('bolNumber','BOL Number','text','readonly')} ${field('bolDate','Date','date')} ${selectField('bolFromLocation','From Location',['Warehouse','Main Yard','Shop','Other'])} ${projectField('bolToJob','To Job')} ${field('bolPO','PO Number (optional)')} ${selectField('bolStatusPreview','Status',['In Transit','Received','Issue'])}</div><p class="tiny"><b>Inventory rule:</b> warehouse stock decreases and job stock increases only when the receiver signs and this BOL is Received.</p></div><div class="panel"><h2>Materials</h2><div class="extraTableWrap"><table class="table extraEntryTable"><thead><tr><th>Quantity</th><th>Product / Material</th><th>Unit</th></tr></thead><tbody>${bolItemRows()}</tbody></table></div>${textarea('bolNotes','Delivery Notes')}</div><div class="panel"><h2>Signatures</h2><div class="grid two">${field('bolDeliveredBy','Delivered By')} ${sigField('bolDeliveredBySig','Delivered By Signature')} ${field('bolReceiver','Received By')} ${sigField('bolReceiverSig','Received By Signature')}</div><div class="actions"><button class="btn" id="bolPrintBtn">Save PDF / Print Bill of Lading</button></div>${printPdfHelp('bol')}<div id="bolMsg"></div></div></div>`;
-  setupToday('bolDate'); setupOtherProject('bolToJob'); initSignatureButtons(); setupBolNumber();
+  app.innerHTML=extraFormIntro('JAGD - Bill of Lading','Material transfer ticket. Inventory moves in the portal only after the receiver signs and the BOL is marked Received.')+`<div class="panel"><h2>Delivery Info</h2><div class="grid three">${field('bolNumber','BOL Number','text','readonly')} ${field('bolDate','Date','date')} ${bolLocationField('bolFromLocation','From Location / Job')} ${bolLocationField('bolToJob','To Location / Job')} ${field('bolPO','PO Number (optional)')} ${selectField('bolStatusPreview','Status',['In Transit','Received','Issue'])}</div><p class="tiny"><b>Inventory rule:</b> stock moves from the From location to the To location only when the receiver signs and this BOL is Received.</p></div><div class="panel"><h2>Materials</h2><p class="tiny" id="bolInventoryMsg">Loading portal inventory list...</p>${bolInventoryDatalist()}<div class="extraTableWrap"><table class="table extraEntryTable"><thead><tr><th>Quantity</th><th>Product / Material</th><th>Unit</th></tr></thead><tbody>${bolItemRows()}</tbody></table></div>${textarea('bolNotes','Delivery Notes')}</div><div class="panel"><h2>Signatures</h2><div class="grid two">${field('bolDeliveredBy','Delivered By')} ${sigField('bolDeliveredBySig','Delivered By Signature')} ${field('bolReceiver','Received By')} ${sigField('bolReceiverSig','Received By Signature')}</div><div class="actions"><button class="btn" id="bolPrintBtn">Save PDF / Print Bill of Lading</button></div>${printPdfHelp('bol')}<div id="bolMsg"></div></div></div>`;
+  setupToday('bolDate'); setupOtherBolLocation('bolFromLocation'); setupOtherBolLocation('bolToJob'); setupBolInventoryAutocomplete(); initSignatureButtons(); setupBolNumber();
   const status=document.getElementById('bolStatusPreview');
   const receiver=document.getElementById('bolReceiver');
   const updateStatus=()=>{ if(status) status.value=(signatureStore.bolReceiverSig||receiver?.value)?'Received':'In Transit'; };
@@ -1909,7 +1951,7 @@ function bolForm(){
       const ok=confirm('This BOL will save/print and sync to Portal Inventory. Inventory will only move if the receiver signed and the BOL is Received. Continue?');
       if(!ok) return;
       await syncBolToPortal();
-      logGeneratedForm('bol', projectValue('bolToJob'), val('bolDate'), `Bill of Lading - ${val('bolNumber')} - ${cleanFilePart(projectValue('bolToJob'))}`);
+      logGeneratedForm('bol', bolLocationValue('bolToJob'), val('bolDate'), `Bill of Lading - ${val('bolNumber')} - ${cleanFilePart(bolLocationValue('bolToJob'))}`);
       buildBolPrint();
       openPrintNow('bolMsg');
     }catch(err){const m=document.getElementById('bolMsg'); if(m) m.innerHTML=`<div class="notice">Bill of Lading could not open: ${esc(err.message)}.</div>`; console.error(err);}
@@ -1918,7 +1960,7 @@ function bolForm(){
 function buildBolPrint(){
   const data=bolData();
   const rows=data.items.length ? data.items.map(r=>`<tr><td>${esc(r.quantity)}</td><td>${esc(r.product)}</td><td>${esc(r.unit)}</td></tr>`).join('') : `<tr><td colspan="3">No materials listed.</td></tr>`;
-  const html=`<div class="extraPrintSheet bolPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>JAGD - BILL OF LADING</h1></div><table class="extraPrintTable bolTop"><tr><th>BOL #</th><td>${esc(data.bolNumber)}</td><th>Date</th><td>${esc(dateToSlashYYYY(data.date))}</td></tr><tr><th>From Location</th><td>${esc(data.fromLocation)}</td><th>To Job</th><td>${esc(data.toJob)}</td></tr><tr><th>PO #</th><td>${esc(data.poNumber)}</td><th>Status</th><td>${esc(data.status)}</td></tr></table><table class="extraPrintTable bolItems"><tr><th>Quantity</th><th>Product / Material</th><th>Unit</th></tr>${rows}</table><div class="extraNotes"><b>Delivery Notes:</b><br>${esc(data.deliveryNotes)}</div><div class="extraSigGrid two"><div><b>Delivered By:</b> ${esc(data.deliveredBy)}<br><b>Signature:</b> ${sigPrint(data.deliveredBySignatureData,'')}</div><div><b>Received By:</b> ${esc(data.receivedBy)}<br><b>Signature:</b> ${sigPrint(data.receivedBySignatureData,'')}</div></div><div class="tiny"><b>Inventory rule:</b> Portal transfers inventory only after status is Received.</div></div>`;
+  const html=`<div class="extraPrintSheet bolPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>JAGD - BILL OF LADING</h1></div><table class="extraPrintTable bolTop"><tr><th>BOL #</th><td>${esc(data.bolNumber)}</td><th>Date</th><td>${esc(dateToSlashYYYY(data.date))}</td></tr><tr><th>From Location / Job</th><td>${esc(data.fromLocation)}</td><th>To Location / Job</th><td>${esc(data.toJob)}</td></tr><tr><th>PO #</th><td>${esc(data.poNumber)}</td><th>Status</th><td>${esc(data.status)}</td></tr></table><table class="extraPrintTable bolItems"><tr><th>Quantity</th><th>Product / Material</th><th>Unit</th></tr>${rows}</table><div class="extraNotes"><b>Delivery Notes:</b><br>${esc(data.deliveryNotes)}</div><div class="extraSigGrid two"><div><b>Delivered By:</b> ${esc(data.deliveredBy)}<br><b>Signature:</b> ${sigPrint(data.deliveredBySignatureData,'')}</div><div><b>Received By:</b> ${esc(data.receivedBy)}<br><b>Signature:</b> ${sigPrint(data.receivedBySignatureData,'')}</div></div><div class="tiny"><b>Inventory rule:</b> Portal transfers inventory only after status is Received.</div></div>`;
   document.title=`Bill of Lading - ${data.bolNumber} - ${cleanFilePart(data.toJob)}`; setPrint(html);
 }
 function incidentReportForm(){

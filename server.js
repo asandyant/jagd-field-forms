@@ -679,6 +679,33 @@ app.get('/api/bol/next-number', (req, res) => {
   res.json({ ok: true, bolNumber });
 });
 
+app.get('/api/bol/inventory-items', async (req, res) => {
+  try {
+    const baseUrl = new URL(PORTAL_BOL_SUBMIT_URL);
+    const invUrl = `${baseUrl.origin}/api/inventory`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PORTAL_BOL_SYNC_TIMEOUT_MS);
+    const r = await fetch(invUrl, { signal: controller.signal });
+    clearTimeout(timer);
+    const json = await r.json().catch(() => ({}));
+    if (!r.ok || !json.ok) throw new Error(json.error || 'Portal inventory unavailable');
+    const seen = new Map();
+    const add = (row) => {
+      const item = bolCleanText(row.item || row.product || '', 180);
+      const unit = bolCleanText(row.unit || '', 40);
+      if (!item) return;
+      const location = bolCleanText(row.location || 'Warehouse', 180);
+      const key = `${item.toLowerCase()}|${unit.toLowerCase()}|${location.toLowerCase()}`;
+      if (!seen.has(key)) seen.set(key, { item, unit, location, quantity: row.quantity || 0 });
+    };
+    (Array.isArray(json.warehouse) ? json.warehouse : []).forEach(add);
+    (Array.isArray(json.jobs) ? json.jobs : []).forEach(add);
+    res.json({ ok: true, items: Array.from(seen.values()).sort((a,b)=>String(a.item).localeCompare(String(b.item)) || String(a.location).localeCompare(String(b.location))) });
+  } catch (err) {
+    res.json({ ok: false, items: [], error: err.message || 'Could not load inventory items' });
+  }
+});
+
 app.post('/api/bol/portal-sync', async (req, res) => {
   const data = req.body && typeof req.body.data === 'object' ? req.body.data : {};
   const bolNumber = bolCleanText(data.bolNumber || req.body?.bolNumber || '', 80) || nextBolNumber(data.date || '');
