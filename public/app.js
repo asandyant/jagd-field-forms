@@ -327,7 +327,7 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const isMobile = isIOS || /Android/i.test(navigator.userAgent);
   try{
-    if(msg) msg.innerHTML = '<div class="notice">Preparing PDF...</div>';
+    if(msg) msg.innerHTML = '<div class="notice">Preparing official DWL PDF...</div>';
     const dataUrl = pdfDoc.output('datauristring');
     const pdfBase64 = base64FromDataUrl(dataUrl);
     const res = await fetch('/api/dwl/generated-pdf', {
@@ -339,28 +339,27 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
     if(!res.ok || !json.ok || !json.downloadUrl) throw new Error(json.error || 'Server PDF download was not ready.');
     const shareUrl = json.downloadUrl;
 
-    // On phones, try to open the native Share sheet with the actual PDF file attached.
-    // This avoids iPhone Messages sharing a website link or a confusing blob link.
+    // Mobile: share the real server PDF file when the browser supports it.
+    // This keeps one button and avoids sharing the web page URL by mistake.
     if(isMobile && navigator.share && typeof File !== 'undefined'){
       try{
-        if(msg) msg.innerHTML = '<div class="notice">Opening phone share/save screen...</div>';
+        if(msg) msg.innerHTML = '<div class="notice">Opening phone share/save screen with the official DWL PDF...</div>';
         const pdfRes = await fetch(shareUrl, { cache:'no-store' });
-        if(!pdfRes.ok) throw new Error('PDF download was not ready for sharing.');
+        if(!pdfRes.ok) throw new Error('PDF was not ready for sharing.');
         const pdfBlob = await pdfRes.blob();
         const file = new File([pdfBlob], json.fileName || safeName, { type:'application/pdf' });
         const shareData = { files:[file], title:(json.fileName || safeName).replace(/\.pdf$/i,'') };
         if(!navigator.canShare || navigator.canShare(shareData)){
           await navigator.share(shareData);
-          if(msg) msg.innerHTML = '<div class="success">DWL PDF was opened in the phone share/save screen. The DWL was also sent to the office portal.</div>';
+          if(msg) msg.innerHTML = '<div class="success">Official DWL PDF opened in the phone share/save screen. The DWL was also sent to the office portal.</div>';
           return true;
         }
       }catch(shareErr){
-        // If user cancels share sheet, do not treat it as a broken DWL.
         if(shareErr && (shareErr.name === 'AbortError' || /cancel/i.test(String(shareErr.message||'')))){
           if(msg) msg.innerHTML = '<div class="notice">Share was cancelled. The DWL was still sent to the portal. Tap Save PDF / Print DWL again if you need to share/save it.</div>';
           return true;
         }
-        console.warn('Native PDF share failed, falling back to download screen:', shareErr);
+        console.warn('Native PDF share failed, falling back to PDF screen:', shareErr);
       }
     }
 
@@ -375,11 +374,11 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
       a.click();
       setTimeout(()=>{ try{ a.remove(); }catch(e){} }, 1000);
     }
-    if(msg) msg.innerHTML = '<div class="success">DWL PDF is ready. If the PDF screen opens, use the Share button from that PDF screen.</div>';
+    if(msg) msg.innerHTML = '<div class="success">Official DWL PDF is ready. If the PDF screen opens, use the Share button from that PDF screen.</div>';
     return true;
   }catch(err){
     console.warn('Server named PDF download failed, falling back to browser save:', err);
-    try{ pdfDoc.save(safeName); if(msg) msg.innerHTML='<div class="success">DWL PDF saved. If iPhone changes the file name, office can rename it from the PDF contents.</div>'; return true; }
+    try{ pdfDoc.save(safeName); if(msg) msg.innerHTML='<div class="success">Official DWL PDF saved. If iPhone changes the file name, office can rename it from the PDF contents.</div>'; return true; }
     catch(e){ if(msg) msg.innerHTML=`<div class="notice">PDF save failed: ${esc(e.message || err.message || '')}</div>`; return false; }
   }
 }
@@ -1628,7 +1627,7 @@ async function dwlForm(){
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
     <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved on this phone.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
-    <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the phone share/save screen should open with the PDF attached. Choose Messages, Mail, Files, or Dropbox from that screen.</p><div id="dwlMsg"></div></div>
+    <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the official DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the phone share/save screen should open with the PDF attached. Choose Messages, Mail, Files, or Dropbox from that screen.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
   const dateEl=document.getElementById('dwlReportDate'), dayEl=document.getElementById('dwlDay');
@@ -1653,8 +1652,7 @@ async function dwlForm(){
       logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle);
       const syncId = makeDwlSyncId(data, dwlFileTitle);
       const portalSend = syncDwlToPortal(data, dwlFileTitle, { syncId, keepalive:true });
-      const isMobileDwlSave = /iPad|iPhone|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      const savedDirect = isMobileDwlSave ? await saveDwlPhoneViewPdf(data,'dwlMsg') : await saveDwlDirectPdf(data,'dwlMsg');
+      const savedDirect = await saveDwlDirectPdf(data,'dwlMsg');
       if(!savedDirect){ buildDwlPrint(data); await openPrintNow('dwlMsg'); }
       portalSend.catch(()=>{});
     }catch(err){
@@ -1662,7 +1660,6 @@ async function dwlForm(){
       console.error(err);
     }
   };
-
 }
 
 // v63: DWL direct PDF generator. This avoids iPhone/Safari print headers/footers (URL, date, Page 1 of 2)
@@ -1707,148 +1704,6 @@ function dwlPdfBox(doc, x, y, w, h, label, value, bodySize=9){
   dwlPdfText(doc, label, x+3, y+9.5, {size:8, style:'bold', maxWidth:w-6});
   dwlPdfWrapText(doc, value, x, y+13, w, h-13, {size:bodySize, style:'normal'});
 }
-
-function dwlPhoneHeader(doc, data, pageW, m, y){
-  const w = pageW - m*2;
-  const dateSlash = dateToSlashYYYY(data.reportDate);
-  try{ doc.addImage('/assets/jagd-logo.png','PNG',m,y,16,12); }catch(e){}
-  dwlPdfText(doc,'JAGD Daily Work Log',m+22,y+10,{size:11,style:'bold',maxWidth:w-92});
-  dwlPdfText(doc,'DWL 4.0',pageW-m,y+10,{size:10,style:'bold',align:'right',maxWidth:70});
-  y += 20;
-  doc.setLineWidth(1.1); doc.line(m,y,pageW-m,y); y += 7;
-  dwlPdfText(doc,'Project:',m,y+11,{size:8.5,style:'bold'});
-  dwlPdfText(doc,data.project||'',m+38,y+12,{size:10.5,style:'bold',maxWidth:w-165});
-  dwlPdfText(doc,'Date:',pageW-m-92,y+9,{size:8.5,style:'bold'});
-  dwlPdfText(doc,dateSlash,pageW-m,y+18,{size:15,style:'bold',align:'right',maxWidth:88});
-  y += 27;
-  dwlPdfText(doc,'Weather:',m,y+10,{size:8.5,style:'bold'});
-  dwlPdfText(doc,data.weather||'',m+44,y+10,{size:9.5,style:'bold',maxWidth:w-52});
-  y += 18;
-  dwlPdfText(doc,'Day:',m,y+10,{size:8.5,style:'bold'});
-  dwlPdfText(doc,data.day||'',m+28,y+10,{size:9.5,style:'bold',maxWidth:95});
-  dwlPdfText(doc,'Crew:',m+150,y+10,{size:8.5,style:'bold'});
-  dwlPdfText(doc,data.crew||'',m+184,y+10,{size:9.5,style:'bold',maxWidth:w-184});
-  y += 18;
-  return {y,w,dateSlash};
-}
-function dwlPhoneActivities(doc, y, m, w){
-  dwlPdfCell(doc,m,y,w,14,'Activities Performed',{fill:[217,217,217],size:8.5,style:'bold',align:'center'}); y += 14;
-  const half=w/2;
-  for(let i=0;i<DWL_ACTIVITIES.length;i+=2){
-    dwlPdfCell(doc,m,y,half,14,DWL_ACTIVITIES[i]||'',{size:7.2,style:'bold'});
-    dwlPdfCell(doc,m+half,y,half,14,DWL_ACTIVITIES[i+1]||'',{size:7.2,style:'bold'});
-    y += 14;
-  }
-  return y;
-}
-function dwlPhoneEmployeeHeader(doc, y, m, w){
-  const cols = dwlPhoneCols(m,w);
-  doc.setFillColor(217,217,217); doc.rect(m,y,w,18,'F'); doc.rect(m,y,w,18);
-  dwlPdfText(doc,'Employees / Hours',m+5,y+12,{size:10.5,style:'bold',maxWidth:150});
-  const labels=[['ST',cols.st],['OT',cols.ot],['NL',cols.nl],['PT',cols.pt],['RT',cols.rt]];
-  for(const [label,x] of labels){
-    doc.rect(x,y,cols.hourW,18);
-    dwlPdfText(doc,label,x+cols.hourW/2,y+12,{size:8,style:'bold',align:'center',maxWidth:cols.hourW-2});
-  }
-  return y+18;
-}
-function dwlPhoneCols(m,w){
-  const numW=24;
-  const hourW=30;
-  const empW=w-numW-hourW*5;
-  const emp=m+numW;
-  const st=emp+empW;
-  return {numW,hourW,empW,emp,st,ot:st+hourW,nl:st+hourW*2,pt:st+hourW*3,rt:st+hourW*4};
-}
-function dwlPhoneRow(doc, y, row, rowNum, m, w){
-  const h=36;
-  const cols=dwlPhoneCols(m,w);
-  const hasData = !!(row && (row.employee||row.location||row.activity||row.class||row.local||row.straight||row.over||row.noLunch||row.pt||row.rt));
-  doc.setDrawColor(0); doc.setLineWidth(0.85);
-  // Full grid lines, including blank rows, so the phone PDF still looks like a real DWL table.
-  doc.rect(m,y,w,h);
-  doc.setFillColor(235,235,235); doc.rect(m,y,cols.numW,h,'F'); doc.rect(m,y,cols.numW,h);
-  doc.rect(cols.emp,y,cols.empW,h);
-  for(const x of [cols.st,cols.ot,cols.nl,cols.pt,cols.rt]) doc.rect(x,y,cols.hourW,h);
-  dwlPdfText(doc,String(rowNum),m+cols.numW/2,y+22,{size:9,style:'bold',align:'center',maxWidth:cols.numW-3});
-  if(hasData){
-    dwlPdfText(doc,row.employee||'',cols.emp+4,y+13,{size:11,style:'bold',maxWidth:cols.empW-8});
-    const line2=[];
-    if(row.class) line2.push('Class: '+row.class);
-    if(row.local) line2.push('Local: '+row.local);
-    if(row.location) line2.push('Loc: '+row.location);
-    if(row.activity) line2.push('Act: '+row.activity);
-    dwlPdfText(doc,line2.join('   '),cols.emp+4,y+27,{size:7.5,style:'bold',maxWidth:cols.empW-8});
-    const vals=[row.straight,row.over,row.noLunch,row.pt,row.rt];
-    const xs=[cols.st,cols.ot,cols.nl,cols.pt,cols.rt];
-    for(let i=0;i<vals.length;i++){
-      dwlPdfText(doc,vals[i]||'',xs[i]+cols.hourW/2,y+23,{size:12,style:'bold',align:'center',maxWidth:cols.hourW-3});
-    }
-  }
-  return h;
-}
-function dwlPhoneSmallFooter(doc, pageNum, totalPages, pageW, pageH){
-  dwlPdfText(doc,`Page ${pageNum} of ${totalPages}`,pageW/2,pageH-10,{size:7,style:'bold',align:'center',maxWidth:160});
-}
-async function saveDwlPhoneViewPdf(data, msgId){
-  if(!window.jspdf || !window.jspdf.jsPDF) return false;
-  const msg=document.getElementById(msgId);
-  if(msg) msg.innerHTML='<div class="notice">Building phone-friendly DWL PDF...</div>';
-  const { jsPDF } = window.jspdf;
-  const filledRows=(data.rows||[]).filter(r=>r.employee||r.location||r.activity||r.class||r.local||r.straight||r.over||r.noLunch||r.pt||r.rt);
-  const rows = filledRows.length ? filledRows : [];
-  const rowsPerPage=12;
-  const employeePages=Math.max(1, Math.ceil(Math.max(rows.length,1)/rowsPerPage));
-  const totalPages=1 + employeePages;
-  // Narrower custom page = iPhone preview opens larger/readable instead of shrinking a full 8.5x11 sheet.
-  const pageW=390, pageH=760, m=12;
-  const doc=new jsPDF({orientation:'portrait',unit:'pt',format:[pageW,pageH],compress:true});
-  let pageNum=1;
-  let y=12;
-  let hdr=dwlPhoneHeader(doc,data,pageW,m,y); y=hdr.y;
-  y=dwlPhoneActivities(doc,y,m,hdr.w);
-  dwlPdfBox(doc,m,y,hdr.w,86,'Location/Description of work',data.description,11); y += 86;
-  dwlPdfBox(doc,m,y,hdr.w,42,'Additional Notes',data.notes,10); y += 42;
-  dwlPdfBox(doc,m,y,hdr.w,42,'Safety Huddle Topic',data.safetyTopic,10); y += 48;
-  dwlPdfText(doc,'Employee hours continue on the next page.',m,y+13,{size:9.5,style:'bold',maxWidth:260});
-  dwlPhoneSmallFooter(doc,pageNum,totalPages,pageW,pageH);
-
-  for(let p=0;p<employeePages;p++){
-    doc.addPage([pageW,pageH],'portrait');
-    pageNum++;
-    y=12;
-    hdr=dwlPhoneHeader(doc,data,pageW,m,y); y=hdr.y;
-    const start=p*rowsPerPage;
-    const pageRows=rows.slice(start,start+rowsPerPage);
-    y=dwlPhoneEmployeeHeader(doc,y,m,hdr.w);
-    const minRows = rows.length ? pageRows.length : rowsPerPage;
-    for(let i=0;i<minRows;i++){
-      const idx=start+i;
-      const row=pageRows[i] || {};
-      y += dwlPhoneRow(doc,y,row,idx+1,m,hdr.w);
-    }
-    y += 12;
-    if(p===employeePages-1){
-      const dateSlash=hdr.dateSlash;
-      if(y > pageH-70){
-        doc.addPage([pageW,pageH],'portrait');
-        pageNum++;
-        y=18;
-      }
-      dwlPdfText(doc,'Print Name:',m,y+12,{size:8.5,style:'bold'});
-      dwlPdfText(doc,data.printName||data.foreman||'',m+56,y+13,{size:9.5,style:'bold',maxWidth:110});
-      dwlPdfText(doc,'Sign:',m+190,y+12,{size:8.5,style:'bold'});
-      if(data.signatureData){ try{ doc.addImage(data.signatureData,'PNG',m+220,y-8,82,28); }catch(e){} }
-      dwlPdfText(doc,'Date:',pageW-m-72,y+12,{size:8.5,style:'bold'});
-      dwlPdfText(doc,dateSlash,pageW-m,y+12,{size:9.5,style:'bold',align:'right',maxWidth:68});
-    }
-    dwlPhoneSmallFooter(doc,pageNum,totalPages,pageW,pageH);
-  }
-  const filename = safePdfFileName();
-  await downloadPdfDocThroughServer(doc, filename, msgId);
-  return true;
-}
-
 async function saveDwlDirectPdf(data, msgId){
   if(!window.jspdf || !window.jspdf.jsPDF) return false;
   const msg=document.getElementById(msgId);
