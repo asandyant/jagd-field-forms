@@ -428,12 +428,48 @@ async function saveCleanPdfFromPrintPage(msgId){
       pdf.addImage(imgData, 'JPEG', x, y, imgW, imgH);
     }
     pdf.save(safePdfFileName());
-    if(msg) msg.innerHTML = '<div class="success">Clean PDF created. Use Share/Files/Dropbox to send it.</div>';
+    if(msg){
+      msg.innerHTML = '<div class="success">Clean PDF created. Use Share/Files/Dropbox to send it.</div>';
+      if(document.querySelector('.dwlPrintSheet')) appendDwlLargePreviewButton(msg);
+    }
     return true;
   } finally {
     setTimeout(()=>{try{iframe.remove();}catch(e){}}, 500);
   }
 }
+
+function isSmallTouchScreen(){
+  try{ return window.matchMedia && window.matchMedia('(max-width: 850px)').matches; }catch(e){ return window.innerWidth <= 850; }
+}
+function showDwlLargeMobilePreview(){
+  const existing=document.getElementById('dwlLargeMobilePreview');
+  if(existing) existing.remove();
+  if(!currentPrint || !document.querySelector('.dwlPrintSheet')) return;
+  const wrap=document.createElement('div');
+  wrap.id='dwlLargeMobilePreview';
+  wrap.className='dwlLargePreviewOverlay';
+  wrap.innerHTML=`<div class="dwlLargePreviewTop"><div><b>Large DWL Preview</b><span> Scroll left/right and pinch zoom if needed. This is preview only; the saved PDF stays the same.</span></div><button type="button" class="btn light" id="dwlLargePreviewClose">Close</button></div><div class="dwlLargePreviewScroll"><div class="dwlLargePreviewCanvas">${currentPrint}</div></div>`;
+  document.body.appendChild(wrap);
+  const close=document.getElementById('dwlLargePreviewClose');
+  if(close) close.onclick=()=>wrap.remove();
+}
+function appendDwlLargePreviewButton(msg){
+  if(!msg || !document.querySelector('.dwlPrintSheet')) return;
+  const existing=document.getElementById('dwlLargePreviewBtn');
+  if(existing) existing.remove();
+  const p=document.createElement('p');
+  p.className='tiny';
+  p.innerHTML='Phone hard to read? Use the large in-app preview below. It does not change the saved PDF.';
+  const btn=document.createElement('button');
+  btn.type='button';
+  btn.id='dwlLargePreviewBtn';
+  btn.className='btn light';
+  btn.textContent='Open Bigger DWL Preview';
+  btn.onclick=showDwlLargeMobilePreview;
+  msg.appendChild(p);
+  msg.appendChild(btn);
+}
+
 async function openPrintNow(msgId){
   const msg = msgId ? document.getElementById(msgId) : null;
   if (msg) msg.innerHTML = '';
