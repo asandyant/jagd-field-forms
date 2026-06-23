@@ -324,8 +324,10 @@ function base64FromDataUrl(dataUrl){
 async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
   const msg = msgId ? document.getElementById(msgId) : null;
   const safeName = String(filename || safePdfFileName()).replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').trim() || 'JAGD Field Form.pdf';
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isMobile = isIOS || /Android/i.test(navigator.userAgent);
   try{
-    if(msg) msg.innerHTML = '<div class="notice">Preparing named PDF download...</div>';
+    if(msg) msg.innerHTML = '<div class="notice">Preparing PDF...</div>';
     const dataUrl = pdfDoc.output('datauristring');
     const pdfBase64 = base64FromDataUrl(dataUrl);
     const res = await fetch('/api/dwl/generated-pdf', {
@@ -335,19 +337,45 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
     });
     const json = await res.json().catch(()=>({}));
     if(!res.ok || !json.ok || !json.downloadUrl) throw new Error(json.error || 'Server PDF download was not ready.');
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const shareUrl = json.downloadUrl;
+
+    // On phones, try to open the native Share sheet with the actual PDF file attached.
+    // This avoids iPhone Messages sharing a website link or a confusing blob link.
+    if(isMobile && navigator.share && typeof File !== 'undefined'){
+      try{
+        if(msg) msg.innerHTML = '<div class="notice">Opening phone share/save screen...</div>';
+        const pdfRes = await fetch(shareUrl, { cache:'no-store' });
+        if(!pdfRes.ok) throw new Error('PDF download was not ready for sharing.');
+        const pdfBlob = await pdfRes.blob();
+        const file = new File([pdfBlob], json.fileName || safeName, { type:'application/pdf' });
+        const shareData = { files:[file], title:(json.fileName || safeName).replace(/\.pdf$/i,'') };
+        if(!navigator.canShare || navigator.canShare(shareData)){
+          await navigator.share(shareData);
+          if(msg) msg.innerHTML = '<div class="success">DWL PDF was opened in the phone share/save screen. The DWL was also sent to the office portal.</div>';
+          return true;
+        }
+      }catch(shareErr){
+        // If user cancels share sheet, do not treat it as a broken DWL.
+        if(shareErr && (shareErr.name === 'AbortError' || /cancel/i.test(String(shareErr.message||'')))){
+          if(msg) msg.innerHTML = '<div class="notice">Share was cancelled. The DWL was still sent to the portal. Tap Save PDF / Print DWL again if you need to share/save it.</div>';
+          return true;
+        }
+        console.warn('Native PDF share failed, falling back to download screen:', shareErr);
+      }
+    }
+
     if(isIOS){
-      window.location.href = json.downloadUrl;
+      window.location.href = shareUrl;
     } else {
       const a=document.createElement('a');
-      a.href=json.downloadUrl;
+      a.href=shareUrl;
       a.download=json.fileName || safeName;
       a.rel='noopener';
       document.body.appendChild(a);
       a.click();
       setTimeout(()=>{ try{ a.remove(); }catch(e){} }, 1000);
     }
-    if(msg) msg.innerHTML = '<div class="success">DWL PDF saved with the correct file name. If the download screen opens, use Share to send/save it.</div>';
+    if(msg) msg.innerHTML = '<div class="success">DWL PDF is ready. If the PDF screen opens, use the Share button from that PDF screen.</div>';
     return true;
   }catch(err){
     console.warn('Server named PDF download failed, falling back to browser save:', err);
@@ -1600,7 +1628,7 @@ async function dwlForm(){
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
     <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved on this phone.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
-    <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button><button class="btn light" id="dwlPhonePdfBtn" type="button">Save/Text Phone View PDF</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the official PDF and also sends the DWL to the office portal. On iPhone, use Share from the PDF screen to text it, email it, or save/send to Dropbox.</p><p class="tiny saveHelp"><b>Phone View PDF:</b> Optional bigger-text copy for texting to someone on a phone. It also sends the DWL to the portal, but the normal Save PDF / Print DWL is still the official office/Dropbox copy.</p><div id="dwlMsg"></div></div>
+    <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the phone share/save screen should open with the PDF attached. Choose Messages, Mail, Files, or Dropbox from that screen.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
   const dateEl=document.getElementById('dwlReportDate'), dayEl=document.getElementById('dwlDay');
@@ -1625,7 +1653,8 @@ async function dwlForm(){
       logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle);
       const syncId = makeDwlSyncId(data, dwlFileTitle);
       const portalSend = syncDwlToPortal(data, dwlFileTitle, { syncId, keepalive:true });
-      const savedDirect = await saveDwlDirectPdf(data,'dwlMsg');
+      const isMobileDwlSave = /iPad|iPhone|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const savedDirect = isMobileDwlSave ? await saveDwlPhoneViewPdf(data,'dwlMsg') : await saveDwlDirectPdf(data,'dwlMsg');
       if(!savedDirect){ buildDwlPrint(data); await openPrintNow('dwlMsg'); }
       portalSend.catch(()=>{});
     }catch(err){
@@ -1633,32 +1662,7 @@ async function dwlForm(){
       console.error(err);
     }
   };
-  document.getElementById('dwlPhonePdfBtn').onclick=async(e)=>{
-    e.preventDefault();
-    try{
-      saveDwlLastCrewFromRows();
-      const data=collectDwl();
-      const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
-      const officialTitle=dwlFileTitleWithRevision(baseTitle, data.revision);
-      const phoneTitle=String(officialTitle || 'DWL').replace(/\.pdf$/i,'') + ' Phone View';
-      const ok=window.confirm(`Create a bigger-text phone view PDF for texting?
 
-This also sends the DWL data to the office portal.
-
-Use the normal Save PDF / Print DWL button for the official office/Dropbox PDF.`);
-      if(!ok) return;
-      setNextPdfFileTitle(phoneTitle);
-      markDwlSubmittedLocally(data, officialTitle);
-      logGeneratedForm('dwl', data.project, data.reportDate, phoneTitle);
-      const syncId = makeDwlSyncId(data, officialTitle);
-      const portalSend = syncDwlToPortal(data, officialTitle, { syncId, keepalive:true });
-      await saveDwlPhoneViewPdf(data,'dwlMsg');
-      portalSend.catch(()=>{});
-    }catch(err){
-      document.getElementById('dwlMsg').innerHTML=`<div class="notice">Phone View PDF could not open: ${esc(err.message)}.</div>`;
-      console.error(err);
-    }
-  };
 }
 
 // v63: DWL direct PDF generator. This avoids iPhone/Safari print headers/footers (URL, date, Page 1 of 2)
@@ -1745,7 +1749,7 @@ async function saveDwlPhoneViewPdf(data, msgId){
     if(p>0) doc.addPage('letter','portrait');
     let y=18;
     try{ doc.addImage('/assets/jagd-logo.png','PNG',m,y,22,16); }catch(e){}
-    dwlPdfText(doc,'JAGD Daily Work Log - Phone View',m+30,y+13,{size:13,style:'bold',maxWidth:310});
+    dwlPdfText(doc,'JAGD Daily Work Log',m+30,y+13,{size:13,style:'bold',maxWidth:310});
     dwlPdfText(doc,'DWL 4.0',pageW-m,y+13,{size:12,style:'bold',align:'right',maxWidth:90});
     y += 28;
     doc.setLineWidth(1.4); doc.line(m,y,pageW-m,y); y += 6;
@@ -1787,7 +1791,7 @@ async function saveDwlPhoneViewPdf(data, msgId){
       dwlPdfText(doc,'Date:',pageW-m-85,y+12,{size:9,style:'bold'});
       dwlPdfText(doc,dateSlash,pageW-m,y+12,{size:11,style:'bold',align:'right',maxWidth:85});
     }
-    dwlPdfText(doc,`Phone View PDF - Page ${p+1} of ${pages}`,pageW/2,pageH-14,{size:8,style:'bold',align:'center',maxWidth:180});
+    dwlPdfText(doc,`Page ${p+1} of ${pages}`,pageW/2,pageH-14,{size:8,style:'bold',align:'center',maxWidth:180});
   }
   const filename = safePdfFileName();
   await downloadPdfDocThroughServer(doc, filename, msgId);
