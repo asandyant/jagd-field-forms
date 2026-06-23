@@ -22,6 +22,10 @@ const PORTAL_WORKER_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_WORKER_SYNC_TIME
 const PORTAL_DWL_SUBMIT_URL = process.env.PORTAL_DWL_SUBMIT_URL || 'https://portal.jagdapps.com/api/forms/dwl/submit';
 const PORTAL_DWL_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_DWL_SYNC_TIMEOUT_MS || 6000);
 const DWL_PORTAL_SYNC_LOG_FILE = path.join(DATA_DIR, 'dwl-portal-sync-log.json');
+const PORTAL_BOL_SUBMIT_URL = process.env.PORTAL_BOL_SUBMIT_URL || 'https://portal.jagdapps.com/api/forms/bol/submit';
+const PORTAL_BOL_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_BOL_SYNC_TIMEOUT_MS || 6000);
+const BOL_PORTAL_SYNC_LOG_FILE = path.join(DATA_DIR, 'bol-portal-sync-log.json');
+const BOL_COUNTERS_FILE = path.join(DATA_DIR, 'bol-counters.json');
 const DWL_GENERATED_PDF_DIR = path.join(DATA_DIR, 'dwl-generated-pdfs');
 
 
@@ -31,6 +35,8 @@ if (!fs.existsSync(SUBMISSIONS_FILE)) fs.writeFileSync(SUBMISSIONS_FILE, '[]');
 if (!fs.existsSync(WEEKLY_MEETINGS_FILE)) fs.writeFileSync(WEEKLY_MEETINGS_FILE, '[]');
 if (!fs.existsSync(FORM_LOGS_FILE)) fs.writeFileSync(FORM_LOGS_FILE, '[]');
 if (!fs.existsSync(DWL_PORTAL_SYNC_LOG_FILE)) fs.writeFileSync(DWL_PORTAL_SYNC_LOG_FILE, '[]');
+if (!fs.existsSync(BOL_PORTAL_SYNC_LOG_FILE)) fs.writeFileSync(BOL_PORTAL_SYNC_LOG_FILE, '[]');
+if (!fs.existsSync(BOL_COUNTERS_FILE)) fs.writeFileSync(BOL_COUNTERS_FILE, '{}');
 if (!fs.existsSync(WORKERS_FILE)) {
   const seed = path.join(__dirname, 'public', 'data', 'active-workers.json');
   fs.writeFileSync(WORKERS_FILE, fs.existsSync(seed) ? fs.readFileSync(seed, 'utf8') : '[]');
@@ -378,6 +384,66 @@ function readDwlPortalSyncLog() {
 function writeDwlPortalSyncLog(rows) {
   fs.writeFileSync(DWL_PORTAL_SYNC_LOG_FILE, JSON.stringify(Array.isArray(rows) ? rows.slice(-1000) : [], null, 2));
 }
+
+function readBolPortalSyncLog() {
+  try {
+    const rows = JSON.parse(fs.readFileSync(BOL_PORTAL_SYNC_LOG_FILE, 'utf8'));
+    return Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    return [];
+  }
+}
+function writeBolPortalSyncLog(rows) {
+  fs.writeFileSync(BOL_PORTAL_SYNC_LOG_FILE, JSON.stringify(Array.isArray(rows) ? rows.slice(-1000) : [], null, 2));
+}
+function readBolCounters() {
+  try {
+    const data = JSON.parse(fs.readFileSync(BOL_COUNTERS_FILE, 'utf8'));
+    return data && typeof data === 'object' ? data : {};
+  } catch (e) {
+    return {};
+  }
+}
+function writeBolCounters(data) {
+  fs.writeFileSync(BOL_COUNTERS_FILE, JSON.stringify(data && typeof data === 'object' ? data : {}, null, 2));
+}
+function nextBolNumber(dateValue = '') {
+  const raw = String(dateValue || '').trim();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : new Date().toISOString().slice(0, 10);
+  const key = date.replace(/-/g, '');
+  const counters = readBolCounters();
+  counters[key] = Number(counters[key] || 0) + 1;
+  writeBolCounters(counters);
+  return `BOL-${key}-${String(counters[key]).padStart(3, '0')}`;
+}
+function bolCleanText(v, max = 500) {
+  return String(v || '').trim().slice(0, max);
+}
+function bolSyncIdFor(data = {}) {
+  const seed = [data.bolNumber, data.date, data.toJob, data.fromLocation, Date.now(), nanoid(5)].join('|');
+  return `forms-bol-${slug(seed).slice(0, 30)}-${nanoid(6)}`;
+}
+async function postBolToPortal(payload) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PORTAL_BOL_SYNC_TIMEOUT_MS);
+  try {
+    const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
+    if (PORTAL_SYNC_TOKEN) headers['x-forms-sync-token'] = PORTAL_SYNC_TOKEN;
+    const res = await fetch(PORTAL_BOL_SUBMIT_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    const text = await res.text();
+    let json = {};
+    try { json = text ? JSON.parse(text) : {}; } catch (e) { json = { raw: text.slice(0, 250) }; }
+    if (!res.ok) throw new Error(json.error || json.raw || `Portal returned ${res.status}`);
+    return json;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 function dwlSyncCleanText(v, max = 500) {
   return String(v || '').trim().slice(0, max);
 }
@@ -605,6 +671,72 @@ app.post('/api/dwl/portal-sync', async (req, res) => {
     writeDwlPortalSyncLog(rows);
     res.status(202).json({ ok: false, status: 'failed', id: syncId, error: logRow.error, manualUploadNeeded: true, message: `${dateToDisplay(reportDate)} DWL failed to import to portal. Office may need manual upload.` });
   }
+});
+
+
+app.get('/api/bol/next-number', (req, res) => {
+  const bolNumber = nextBolNumber(req.query.date || req.query.bolDate || '');
+  res.json({ ok: true, bolNumber });
+});
+
+app.post('/api/bol/portal-sync', async (req, res) => {
+  const data = req.body && typeof req.body.data === 'object' ? req.body.data : {};
+  const bolNumber = bolCleanText(data.bolNumber || req.body?.bolNumber || '', 80) || nextBolNumber(data.date || '');
+  const syncId = bolCleanText(req.body?.syncId || '', 120) || bolSyncIdFor({ ...data, bolNumber });
+  const date = bolCleanText(data.date || new Date().toISOString().slice(0, 10), 30);
+  const fromLocation = bolCleanText(data.fromLocation || '', 120);
+  const toJob = bolCleanText(data.toJob || data.project || 'No Job', 180) || 'No Job';
+  const status = bolCleanText(data.status || '', 40) || (data.receivedBy || data.receivedBySignatureData ? 'Received' : 'In Transit');
+  const logRow = {
+    id: syncId,
+    syncId,
+    bolNumber,
+    date,
+    fromLocation,
+    toJob,
+    status: 'pending',
+    bolStatus: status,
+    attempts: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    error: ''
+  };
+  const payload = {
+    syncId,
+    sourceApp: 'jagd-field-forms',
+    submittedAt: new Date().toISOString(),
+    data: {
+      ...data,
+      bolNumber,
+      date,
+      fromLocation,
+      toJob,
+      status,
+      submittedAt: new Date().toISOString()
+    }
+  };
+  const rows = readBolPortalSyncLog();
+  rows.push(logRow);
+  try {
+    const portal = await postBolToPortal(payload);
+    logRow.status = 'synced';
+    logRow.portalId = portal.id || '';
+    logRow.syncedAt = new Date().toISOString();
+    logRow.updatedAt = logRow.syncedAt;
+    writeBolPortalSyncLog(rows);
+    res.json({ ok: true, status: 'synced', id: syncId, portalId: logRow.portalId, bolNumber });
+  } catch (err) {
+    logRow.status = 'failed';
+    logRow.error = err.message || 'Portal BOL sync failed';
+    logRow.updatedAt = new Date().toISOString();
+    writeBolPortalSyncLog(rows);
+    res.status(202).json({ ok: false, status: 'failed', id: syncId, bolNumber, error: logRow.error, manualUploadNeeded: true, message: `${dateToDisplay(date)} BOL failed to import to portal. Office may need manual entry.` });
+  }
+});
+
+app.get('/api/admin/bol-portal-sync-log', requireAdmin, (req, res) => {
+  const rows = readBolPortalSyncLog().sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+  res.json({ ok: true, rows });
 });
 
 app.get('/api/admin/dwl-portal-sync-log', requireAdmin, (req, res) => {

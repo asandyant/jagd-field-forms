@@ -1817,14 +1817,109 @@ function extraPrintButton(id, buildFn, msgId, logFn=null){
 }
 function extraRadio(name, opts=['Yes','No']){return `<div class="choiceBtns extraChoice">${opts.map(o=>`<label><input type="radio" name="${name}" value="${esc(o)}">${esc(o)}</label>`).join('')}</div>`;}
 function radioVal(name){const el=document.querySelector(`[name="${name}"]:checked`); return el?el.value:'';}
+function bolItemRows(){
+  return Array.from({length:EXTRA_FORM_ROWS},(_,idx)=>{
+    const i=idx+1;
+    return `<tr><td><input id="bolQty${i}" inputmode="decimal" placeholder="Qty"></td><td><input id="bolProduct${i}" placeholder="Product / material"></td><td><input id="bolUnit${i}" placeholder="Unit"></td></tr>`;
+  }).join('');
+}
+function collectBolItems(){
+  const rows=[];
+  for(let i=1;i<=EXTRA_FORM_ROWS;i++){
+    const quantity=val('bolQty'+i);
+    const product=val('bolProduct'+i);
+    const unit=val('bolUnit'+i);
+    if(quantity || product || unit) rows.push({quantity, product, unit});
+  }
+  return rows;
+}
+function bolData(){
+  const receiverSig=signatureStore.bolReceiverSig||'';
+  const status=receiverSig || val('bolReceiver') ? 'Received' : 'In Transit';
+  return {
+    bolNumber: val('bolNumber'),
+    date: val('bolDate'),
+    fromLocation: val('bolFromLocation'),
+    toJob: projectValue('bolToJob'),
+    poNumber: val('bolPO'),
+    deliveredBy: val('bolDeliveredBy'),
+    deliveredBySignatureData: signatureStore.bolDeliveredBySig||'',
+    receivedBy: val('bolReceiver'),
+    receivedBySignatureData: receiverSig,
+    deliveryNotes: val('bolNotes'),
+    status,
+    items: collectBolItems()
+  };
+}
+async function setupBolNumber(){
+  const el=document.getElementById('bolNumber');
+  const dateEl=document.getElementById('bolDate');
+  if(!el) return;
+  const load=async()=>{
+    if(el.value) return;
+    try{
+      const date=encodeURIComponent(val('bolDate')||new Date().toISOString().slice(0,10));
+      const res=await fetch(`/api/bol/next-number?date=${date}`);
+      const json=await res.json();
+      if(json && json.bolNumber) el.value=json.bolNumber;
+    }catch(e){
+      const d=(val('bolDate')||new Date().toISOString().slice(0,10)).replace(/-/g,'');
+      const key='jagdBolSeq-'+d;
+      let n=Number(localStorage.getItem(key)||0)+1;
+      localStorage.setItem(key,String(n));
+      el.value=`BOL-${d}-${String(n).padStart(3,'0')}`;
+    }
+  };
+  await load();
+  if(dateEl) dateEl.addEventListener('change',()=>{ el.value=''; load(); });
+}
+async function syncBolToPortal(){
+  const data=bolData();
+  const msg=document.getElementById('bolMsg');
+  if(!data.bolNumber || !data.toJob || !data.items.length){
+    if(msg) msg.innerHTML='<div class="notice">BOL needs a BOL number, To Job, and at least one material row.</div>';
+    throw new Error('BOL needs a BOL number, To Job, and at least one material row.');
+  }
+  try{
+    const res=await fetch('/api/bol/portal-sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data}),keepalive:true});
+    const json=await res.json().catch(()=>({}));
+    if(!res.ok && res.status!==202) throw new Error(json.error || json.message || 'Portal sync failed');
+    if(msg){
+      msg.innerHTML=json.ok ? '<div class="notice success">BOL synced to portal inventory.</div>' : `<div class="notice">BOL PDF can still save, but portal sync needs office review: ${esc(json.message||json.error||'sync failed')}</div>`;
+    }
+    return json;
+  }catch(err){
+    if(msg) msg.innerHTML=`<div class="notice">BOL PDF can still save, but portal sync failed: ${esc(err.message)}. Office can enter it manually in Inventory if needed.</div>`;
+    return {ok:false,error:err.message};
+  }
+}
 function bolForm(){
-  app.innerHTML=extraFormIntro('JAGD - Bill of Lading','Material delivery / shipping paperwork. Date and project use the same field tools as the rest of the app.')+`<div class="panel"><h2>Delivery Info</h2><div class="grid three">${projectField('bolProject','Job / Project')} ${field('bolDate','Date','date')} ${field('bolBL','BL #')} ${field('bolTo','To')} ${field('bolFrom','From')} ${field('bolPO','PO #')}</div></div><div class="panel"><h2>Products</h2><div class="extraTableWrap"><table class="table extraEntryTable"><thead><tr><th>Quote #</th><th>Quantity</th><th>Product</th></tr></thead><tbody>${Array.from({length:EXTRA_FORM_ROWS},(_,idx)=>{const i=idx+1;return `<tr><td><input id="bolA${i}"></td><td><input id="bolB${i}"></td><td><input id="bolC${i}"></td></tr>`}).join('')}</tbody></table></div>${textarea('bolNotes','Additional Notes')}</div><div class="panel"><h2>Signatures</h2><div class="grid three">${field('bolName','Name (Print)')} ${sigField('bolSignature','Signature')} ${field('bolShipper','Shipper / Loader')} ${sigField('bolShipperSig','Shipper / Loader Signature')} ${field('bolReceiver','Receiver')} ${sigField('bolReceiverSig','Receiver Signature')}</div><div class="actions"><button class="btn" id="bolPrintBtn">Save PDF / Print Bill of Lading</button></div>${printPdfHelp('bol')}<div id="bolMsg"></div></div></div>`;
-  setupOtherProject('bolProject'); setupToday('bolDate'); initSignatureButtons(); extraPrintButton('bolPrintBtn', buildBolPrint, 'bolMsg', ()=>logGeneratedForm('bol', projectValue('bolProject'), val('bolDate'), `Bill of Lading - ${dateToDisplay(val('bolDate'))} - ${cleanFilePart(projectValue('bolProject'))}`));
+  app.innerHTML=extraFormIntro('JAGD - Bill of Lading','Material transfer ticket. Inventory moves in the portal only after the receiver signs and the BOL is marked Received.')+`<div class="panel"><h2>Delivery Info</h2><div class="grid three">${field('bolNumber','BOL Number','text','readonly')} ${field('bolDate','Date','date')} ${selectField('bolFromLocation','From Location',['Warehouse','Main Yard','Shop','Other'])} ${projectField('bolToJob','To Job')} ${field('bolPO','PO Number (optional)')} ${selectField('bolStatusPreview','Status',['In Transit','Received','Issue'])}</div><p class="tiny"><b>Inventory rule:</b> warehouse stock decreases and job stock increases only when the receiver signs and this BOL is Received.</p></div><div class="panel"><h2>Materials</h2><div class="extraTableWrap"><table class="table extraEntryTable"><thead><tr><th>Quantity</th><th>Product / Material</th><th>Unit</th></tr></thead><tbody>${bolItemRows()}</tbody></table></div>${textarea('bolNotes','Delivery Notes')}</div><div class="panel"><h2>Signatures</h2><div class="grid two">${field('bolDeliveredBy','Delivered By')} ${sigField('bolDeliveredBySig','Delivered By Signature')} ${field('bolReceiver','Received By')} ${sigField('bolReceiverSig','Received By Signature')}</div><div class="actions"><button class="btn" id="bolPrintBtn">Save PDF / Print Bill of Lading</button></div>${printPdfHelp('bol')}<div id="bolMsg"></div></div></div>`;
+  setupToday('bolDate'); setupOtherProject('bolToJob'); initSignatureButtons(); setupBolNumber();
+  const status=document.getElementById('bolStatusPreview');
+  const receiver=document.getElementById('bolReceiver');
+  const updateStatus=()=>{ if(status) status.value=(signatureStore.bolReceiverSig||receiver?.value)?'Received':'In Transit'; };
+  if(receiver) receiver.addEventListener('input',updateStatus);
+  if(status) status.disabled=true;
+  const btn=document.getElementById('bolPrintBtn');
+  if(btn) btn.onclick=async(e)=>{
+    e.preventDefault();
+    try{
+      updateStatus();
+      const ok=confirm('This BOL will save/print and sync to Portal Inventory. Inventory will only move if the receiver signed and the BOL is Received. Continue?');
+      if(!ok) return;
+      await syncBolToPortal();
+      logGeneratedForm('bol', projectValue('bolToJob'), val('bolDate'), `Bill of Lading - ${val('bolNumber')} - ${cleanFilePart(projectValue('bolToJob'))}`);
+      buildBolPrint();
+      openPrintNow('bolMsg');
+    }catch(err){const m=document.getElementById('bolMsg'); if(m) m.innerHTML=`<div class="notice">Bill of Lading could not open: ${esc(err.message)}.</div>`; console.error(err);}
+  };
 }
 function buildBolPrint(){
-  const rows=collectExtraRows('bol').map(r=>`<tr><td>${esc(r.a)}</td><td>${esc(r.b)}</td><td>${esc(r.c)}</td></tr>`).join('');
-  const html=`<div class="extraPrintSheet bolPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>JAGD - BILL OF LADING</h1></div><table class="extraPrintTable bolTop"><tr><th>Job # / Project</th><td>${esc(projectValue('bolProject'))}</td><th>Date</th><td>${esc(dateToSlashYYYY(val('bolDate')))}</td></tr><tr><th>To</th><td>${esc(val('bolTo'))}</td><th>From</th><td>${esc(val('bolFrom'))}</td></tr><tr><th>BL #</th><td>${esc(val('bolBL'))}</td><th>PO #</th><td>${esc(val('bolPO'))}</td></tr></table><table class="extraPrintTable bolItems"><tr><th>Quote #</th><th>Quantity</th><th>Product</th></tr>${rows}</table><div class="extraNotes"><b>Additional Notes:</b><br>${esc(val('bolNotes'))}</div><div class="extraSigGrid"><div><b>Name (Print):</b> ${esc(val('bolName'))}</div><div><b>Signature:</b> ${sigPrint(signatureStore.bolSignature,'')}</div><div><b>Shipper / Loader:</b> ${esc(val('bolShipper'))}</div><div><b>Signature:</b> ${sigPrint(signatureStore.bolShipperSig,'')}</div><div><b>Receiver:</b> ${esc(val('bolReceiver'))}</div><div><b>Signature:</b> ${sigPrint(signatureStore.bolReceiverSig,'')}</div></div></div>`;
-  document.title=`Bill of Lading - ${dateToDisplay(val('bolDate'))} - ${cleanFilePart(projectValue('bolProject'))}`; setPrint(html);
+  const data=bolData();
+  const rows=data.items.length ? data.items.map(r=>`<tr><td>${esc(r.quantity)}</td><td>${esc(r.product)}</td><td>${esc(r.unit)}</td></tr>`).join('') : `<tr><td colspan="3">No materials listed.</td></tr>`;
+  const html=`<div class="extraPrintSheet bolPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>JAGD - BILL OF LADING</h1></div><table class="extraPrintTable bolTop"><tr><th>BOL #</th><td>${esc(data.bolNumber)}</td><th>Date</th><td>${esc(dateToSlashYYYY(data.date))}</td></tr><tr><th>From Location</th><td>${esc(data.fromLocation)}</td><th>To Job</th><td>${esc(data.toJob)}</td></tr><tr><th>PO #</th><td>${esc(data.poNumber)}</td><th>Status</th><td>${esc(data.status)}</td></tr></table><table class="extraPrintTable bolItems"><tr><th>Quantity</th><th>Product / Material</th><th>Unit</th></tr>${rows}</table><div class="extraNotes"><b>Delivery Notes:</b><br>${esc(data.deliveryNotes)}</div><div class="extraSigGrid two"><div><b>Delivered By:</b> ${esc(data.deliveredBy)}<br><b>Signature:</b> ${sigPrint(data.deliveredBySignatureData,'')}</div><div><b>Received By:</b> ${esc(data.receivedBy)}<br><b>Signature:</b> ${sigPrint(data.receivedBySignatureData,'')}</div></div><div class="tiny"><b>Inventory rule:</b> Portal transfers inventory only after status is Received.</div></div>`;
+  document.title=`Bill of Lading - ${data.bolNumber} - ${cleanFilePart(data.toJob)}`; setPrint(html);
 }
 function incidentReportForm(){
   app.innerHTML=extraFormIntro('Incident Report','Short non-truck incident report. Use this when the full accident packet is not needed.')+`<div class="panel"><h2>Basic Info</h2><div class="grid three">${field('irReportDate','Report Date','date')} ${projectField('irProject','Project')} ${field('irProjectLocation','Project Location')} ${field('irIncidentDate','Incident Date','date')} ${field('irIncidentTime','Time of Incident','time')} ${field('irEmployee','Employee')} ${selectField('irAdditionalSheets','Additional Sheets Attached',['','Yes','No'])}</div></div><div class="panel"><h2>Incident Details</h2>${textarea('irDescription','Description of Incident')}${textarea('irInjuries','Injuries Sustained')}${textarea('irTreatment','Medical Review & Treatment')}${textarea('irCause','Cause of Incident')}${textarea('irCorrective','Corrective Action Taken to Prevent Recurrences')}${textarea('irComments','Supplemental Review / Comments')}<div class="grid two"><div><label>Post to OSHA 300 Log</label>${extraRadio('irOsha300')}</div><div><label>Police Report</label>${extraRadio('irPolice')}</div>${field('irAgency','Police Agency')} ${field('irReportNo','Report No.')}<div><label>Reported to OSHA</label>${extraRadio('irReportedOsha')}</div>${field('irToWhom','To Whom')} ${field('irOshaDate','OSHA Report Date','date')} ${field('irOshaTime','OSHA Report Time','time')} ${field('irByWhom','By Whom')}</div></div><div class="panel"><h2>Witness Statement</h2><p class="tiny">Optional. Use when a witness needs to explain what happened in their own words.</p><div class="grid three">${field('irWitnessName','Witness Print Name')} ${field('irWitnessCompany','Company / Trade')} ${field('irWitnessPhone','Phone')} ${field('irWitnessDate','Witness Date','date')} ${field('irWitnessTime','Witness Time','time')} ${field('irWitnessSupervisor','Supervisor Notified')}</div>${textarea('irWitnessStatement','This is what happened, in the witness’s own words')}${textarea('irWitnessPrevent','How could this be prevented in the future?')}<div class="grid two">${field('irWitnessPrint','Witness Print Name')} ${sigField('irWitnessSignature','Witness Signature')}</div></div><div class="panel"><h2>Completed By</h2><div class="grid two">${field('irCompletedBy','Print Name')} ${sigField('irSignature','Signature')}</div><div class="actions"><button class="btn" id="irPrintBtn">Save PDF / Print Incident Report</button></div>${printPdfHelp('ir')}<div id="irMsg"></div></div></div>`;
