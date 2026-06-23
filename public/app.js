@@ -339,28 +339,12 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
     if(!res.ok || !json.ok || !json.downloadUrl) throw new Error(json.error || 'Server PDF download was not ready.');
     const shareUrl = json.downloadUrl;
 
-    // Mobile: share the real server PDF file when the browser supports it.
-    // This keeps one button and avoids sharing the web page URL by mistake.
-    if(isMobile && navigator.share && typeof File !== 'undefined'){
-      try{
-        if(msg) msg.innerHTML = '<div class="notice">Opening phone share/save screen with the official DWL PDF...</div>';
-        const pdfRes = await fetch(shareUrl, { cache:'no-store' });
-        if(!pdfRes.ok) throw new Error('PDF was not ready for sharing.');
-        const pdfBlob = await pdfRes.blob();
-        const file = new File([pdfBlob], json.fileName || safeName, { type:'application/pdf' });
-        const shareData = { files:[file], title:(json.fileName || safeName).replace(/\.pdf$/i,'') };
-        if(!navigator.canShare || navigator.canShare(shareData)){
-          await navigator.share(shareData);
-          if(msg) msg.innerHTML = '<div class="success">Official DWL PDF opened in the phone share/save screen. The DWL was also sent to the office portal.</div>';
-          return true;
-        }
-      }catch(shareErr){
-        if(shareErr && (shareErr.name === 'AbortError' || /cancel/i.test(String(shareErr.message||'')))){
-          if(msg) msg.innerHTML = '<div class="notice">Share was cancelled. The DWL was still sent to the portal. Tap Save PDF / Print DWL again if you need to share/save it.</div>';
-          return true;
-        }
-        console.warn('Native PDF share failed, falling back to PDF screen:', shareErr);
-      }
+    // Mobile/iPhone: go directly to the real server PDF screen.
+    // This prevents the field from accidentally sharing the website URL or a blob page from Safari.
+    if(isMobile){
+      if(msg) msg.innerHTML = '<div class="notice">Opening the official DWL PDF. Use the Share button on the PDF screen to text/email/Dropbox it.</div>';
+      window.location.href = shareUrl;
+      return true;
     }
 
     if(isIOS){
@@ -1345,7 +1329,7 @@ function cleanDwlLocal(v){
 }
 
 function dwlRow(i){
-  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" list="dwlActivityList" inputmode="numeric"></td><td><input id="dwlClass${i}" list="dwlClassList" autocapitalize="characters"></td><td><input id="dwlLocal${i}" list="dwlLocalList" inputmode="numeric"></td><td><input id="dwlStraight${i}" class="dwlStraightBox" inputmode="decimal" title="Tap to set 8 hours; edit if needed"></td><td><input id="dwlOver${i}" list="dwlOverList" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" list="dwlSmallHourList" inputmode="decimal"></td><td><input id="dwlRT${i}" list="dwlSmallHourList" inputmode="decimal"></td></tr>`;
+  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" list="dwlActivityList" inputmode="numeric"></td><td><input id="dwlClass${i}" list="dwlClassList" autocapitalize="characters"></td><td><input id="dwlLocal${i}" list="dwlLocalList" inputmode="numeric"></td><td><input id="dwlStraight${i}" class="dwlStraightBox" inputmode="decimal" title="Tap to set 8 hours; edit if needed"></td><td><input id="dwlOver${i}" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" inputmode="decimal"></td><td><input id="dwlRT${i}" inputmode="decimal"></td></tr>`;
 }
 function applyWorkerToDwlRow(i,w){
   if(!w) return;
