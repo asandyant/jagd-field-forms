@@ -1711,61 +1711,84 @@ function dwlPdfBox(doc, x, y, w, h, label, value, bodySize=9){
 function dwlPhoneHeader(doc, data, pageW, m, y){
   const w = pageW - m*2;
   const dateSlash = dateToSlashYYYY(data.reportDate);
-  try{ doc.addImage('/assets/jagd-logo.png','PNG',m,y,22,16); }catch(e){}
-  dwlPdfText(doc,'JAGD Daily Work Log',m+30,y+13,{size:13,style:'bold',maxWidth:310});
-  dwlPdfText(doc,'DWL 4.0',pageW-m,y+13,{size:12,style:'bold',align:'right',maxWidth:90});
-  y += 28;
-  doc.setLineWidth(1.4); doc.line(m,y,pageW-m,y); y += 6;
-  dwlPdfText(doc,'Project:',m,y+16,{size:10,style:'bold'});
-  dwlPdfText(doc,data.project,m+48,y+17,{size:14,style:'bold',maxWidth:330});
-  dwlPdfText(doc,'Date:',pageW-m-150,y+10,{size:9,style:'bold'});
-  dwlPdfText(doc,dateSlash,pageW-m,y+24,{size:22,style:'bold',align:'right',maxWidth:135});
-  y += 34;
-  dwlPdfText(doc,'Weather:',m,y+13,{size:10,style:'bold'});
-  dwlPdfText(doc,data.weather,m+55,y+13,{size:12,style:'bold',maxWidth:245});
-  dwlPdfText(doc,'Day:',m+330,y+13,{size:10,style:'bold'});
-  dwlPdfText(doc,data.day,m+360,y+13,{size:12,style:'bold',maxWidth:80});
-  dwlPdfText(doc,'Crew:',m+455,y+13,{size:10,style:'bold'});
-  dwlPdfText(doc,data.crew,m+492,y+13,{size:12,style:'bold',maxWidth:70});
-  y += 22;
+  try{ doc.addImage('/assets/jagd-logo.png','PNG',m,y,16,12); }catch(e){}
+  dwlPdfText(doc,'JAGD Daily Work Log',m+22,y+10,{size:11,style:'bold',maxWidth:w-92});
+  dwlPdfText(doc,'DWL 4.0',pageW-m,y+10,{size:10,style:'bold',align:'right',maxWidth:70});
+  y += 20;
+  doc.setLineWidth(1.1); doc.line(m,y,pageW-m,y); y += 7;
+  dwlPdfText(doc,'Project:',m,y+11,{size:8.5,style:'bold'});
+  dwlPdfText(doc,data.project||'',m+38,y+12,{size:10.5,style:'bold',maxWidth:w-165});
+  dwlPdfText(doc,'Date:',pageW-m-92,y+9,{size:8.5,style:'bold'});
+  dwlPdfText(doc,dateSlash,pageW-m,y+18,{size:15,style:'bold',align:'right',maxWidth:88});
+  y += 27;
+  dwlPdfText(doc,'Weather:',m,y+10,{size:8.5,style:'bold'});
+  dwlPdfText(doc,data.weather||'',m+44,y+10,{size:9.5,style:'bold',maxWidth:w-52});
+  y += 18;
+  dwlPdfText(doc,'Day:',m,y+10,{size:8.5,style:'bold'});
+  dwlPdfText(doc,data.day||'',m+28,y+10,{size:9.5,style:'bold',maxWidth:95});
+  dwlPdfText(doc,'Crew:',m+150,y+10,{size:8.5,style:'bold'});
+  dwlPdfText(doc,data.crew||'',m+184,y+10,{size:9.5,style:'bold',maxWidth:w-184});
+  y += 18;
   return {y,w,dateSlash};
 }
 function dwlPhoneActivities(doc, y, m, w){
-  dwlPdfCell(doc,m,y,w,16,'Activities Performed',{fill:[217,217,217],size:8.5,style:'bold',align:'center'}); y += 16;
+  dwlPdfCell(doc,m,y,w,14,'Activities Performed',{fill:[217,217,217],size:8.5,style:'bold',align:'center'}); y += 14;
+  const half=w/2;
   for(let i=0;i<DWL_ACTIVITIES.length;i+=2){
-    dwlPdfCell(doc,m,y,w/2,16,DWL_ACTIVITIES[i]||'',{size:8.2,style:'bold'});
-    dwlPdfCell(doc,m+w/2,y,w/2,16,DWL_ACTIVITIES[i+1]||'',{size:8.2,style:'bold'});
-    y += 16;
+    dwlPdfCell(doc,m,y,half,14,DWL_ACTIVITIES[i]||'',{size:7.2,style:'bold'});
+    dwlPdfCell(doc,m+half,y,half,14,DWL_ACTIVITIES[i+1]||'',{size:7.2,style:'bold'});
+    y += 14;
   }
   return y;
 }
+function dwlPhoneEmployeeHeader(doc, y, m, w){
+  const cols = dwlPhoneCols(m,w);
+  doc.setFillColor(217,217,217); doc.rect(m,y,w,18,'F'); doc.rect(m,y,w,18);
+  dwlPdfText(doc,'Employees / Hours',m+5,y+12,{size:10.5,style:'bold',maxWidth:150});
+  const labels=[['ST',cols.st],['OT',cols.ot],['NL',cols.nl],['PT',cols.pt],['RT',cols.rt]];
+  for(const [label,x] of labels){
+    doc.rect(x,y,cols.hourW,18);
+    dwlPdfText(doc,label,x+cols.hourW/2,y+12,{size:8,style:'bold',align:'center',maxWidth:cols.hourW-2});
+  }
+  return y+18;
+}
+function dwlPhoneCols(m,w){
+  const numW=24;
+  const hourW=30;
+  const empW=w-numW-hourW*5;
+  const emp=m+numW;
+  const st=emp+empW;
+  return {numW,hourW,empW,emp,st,ot:st+hourW,nl:st+hourW*2,pt:st+hourW*3,rt:st+hourW*4};
+}
 function dwlPhoneRow(doc, y, row, rowNum, m, w){
-  const h=42;
+  const h=36;
+  const cols=dwlPhoneCols(m,w);
   const hasData = !!(row && (row.employee||row.location||row.activity||row.class||row.local||row.straight||row.over||row.noLunch||row.pt||row.rt));
-  doc.setDrawColor(0); doc.setLineWidth(1);
+  doc.setDrawColor(0); doc.setLineWidth(0.85);
+  // Full grid lines, including blank rows, so the phone PDF still looks like a real DWL table.
   doc.rect(m,y,w,h);
-  doc.setFillColor(217,217,217); doc.rect(m,y,28,h,'F'); doc.rect(m,y,28,h);
-  dwlPdfText(doc,String(rowNum),m+14,y+25,{size:11,style:'bold',align:'center',maxWidth:24});
-  if(!hasData) return h;
-  dwlPdfText(doc,row.employee||'',m+34,y+16,{size:15,style:'bold',maxWidth:270});
-  const line2=[];
-  if(row.class) line2.push('Class: '+row.class);
-  if(row.local) line2.push('Local: '+row.local);
-  if(row.location) line2.push('Loc: '+row.location);
-  if(row.activity) line2.push('Act: '+row.activity);
-  dwlPdfText(doc,line2.join('   '),m+34,y+33,{size:9.5,style:'bold',maxWidth:340});
-  const x=m+w-190;
-  dwlPdfText(doc,'ST',x,y+12,{size:8,style:'bold',align:'center',maxWidth:25});
-  dwlPdfText(doc,'OT',x+38,y+12,{size:8,style:'bold',align:'center',maxWidth:25});
-  dwlPdfText(doc,'NL',x+76,y+12,{size:8,style:'bold',align:'center',maxWidth:25});
-  dwlPdfText(doc,'PT',x+114,y+12,{size:8,style:'bold',align:'center',maxWidth:25});
-  dwlPdfText(doc,'RT',x+152,y+12,{size:8,style:'bold',align:'center',maxWidth:25});
-  dwlPdfText(doc,row.straight||'',x,y+33,{size:15,style:'bold',align:'center',maxWidth:35});
-  dwlPdfText(doc,row.over||'',x+38,y+33,{size:15,style:'bold',align:'center',maxWidth:35});
-  dwlPdfText(doc,row.noLunch||'',x+76,y+33,{size:15,style:'bold',align:'center',maxWidth:35});
-  dwlPdfText(doc,row.pt||'',x+114,y+33,{size:15,style:'bold',align:'center',maxWidth:35});
-  dwlPdfText(doc,row.rt||'',x+152,y+33,{size:15,style:'bold',align:'center',maxWidth:35});
+  doc.setFillColor(235,235,235); doc.rect(m,y,cols.numW,h,'F'); doc.rect(m,y,cols.numW,h);
+  doc.rect(cols.emp,y,cols.empW,h);
+  for(const x of [cols.st,cols.ot,cols.nl,cols.pt,cols.rt]) doc.rect(x,y,cols.hourW,h);
+  dwlPdfText(doc,String(rowNum),m+cols.numW/2,y+22,{size:9,style:'bold',align:'center',maxWidth:cols.numW-3});
+  if(hasData){
+    dwlPdfText(doc,row.employee||'',cols.emp+4,y+13,{size:11,style:'bold',maxWidth:cols.empW-8});
+    const line2=[];
+    if(row.class) line2.push('Class: '+row.class);
+    if(row.local) line2.push('Local: '+row.local);
+    if(row.location) line2.push('Loc: '+row.location);
+    if(row.activity) line2.push('Act: '+row.activity);
+    dwlPdfText(doc,line2.join('   '),cols.emp+4,y+27,{size:7.5,style:'bold',maxWidth:cols.empW-8});
+    const vals=[row.straight,row.over,row.noLunch,row.pt,row.rt];
+    const xs=[cols.st,cols.ot,cols.nl,cols.pt,cols.rt];
+    for(let i=0;i<vals.length;i++){
+      dwlPdfText(doc,vals[i]||'',xs[i]+cols.hourW/2,y+23,{size:12,style:'bold',align:'center',maxWidth:cols.hourW-3});
+    }
+  }
   return h;
+}
+function dwlPhoneSmallFooter(doc, pageNum, totalPages, pageW, pageH){
+  dwlPdfText(doc,`Page ${pageNum} of ${totalPages}`,pageW/2,pageH-10,{size:7,style:'bold',align:'center',maxWidth:160});
 }
 async function saveDwlPhoneViewPdf(data, msgId){
   if(!window.jspdf || !window.jspdf.jsPDF) return false;
@@ -1774,54 +1797,52 @@ async function saveDwlPhoneViewPdf(data, msgId){
   const { jsPDF } = window.jspdf;
   const filledRows=(data.rows||[]).filter(r=>r.employee||r.location||r.activity||r.class||r.local||r.straight||r.over||r.noLunch||r.pt||r.rt);
   const rows = filledRows.length ? filledRows : [];
-  const rowsPerPage=10;
+  const rowsPerPage=12;
   const employeePages=Math.max(1, Math.ceil(Math.max(rows.length,1)/rowsPerPage));
   const totalPages=1 + employeePages;
-  const doc=new jsPDF({orientation:'portrait',unit:'pt',format:'letter',compress:true});
-  const pageW=612, pageH=792, m=22;
+  // Narrower custom page = iPhone preview opens larger/readable instead of shrinking a full 8.5x11 sheet.
+  const pageW=390, pageH=760, m=12;
+  const doc=new jsPDF({orientation:'portrait',unit:'pt',format:[pageW,pageH],compress:true});
   let pageNum=1;
-
-  // Page 1 keeps the missing official DWL info: activities, description, notes, and safety topic.
-  let y=18;
+  let y=12;
   let hdr=dwlPhoneHeader(doc,data,pageW,m,y); y=hdr.y;
   y=dwlPhoneActivities(doc,y,m,hdr.w);
-  dwlPdfBox(doc,m,y,hdr.w,120,'Location/Description of work',data.description,14); y += 120;
-  dwlPdfBox(doc,m,y,hdr.w,56,'Additional Notes',data.notes,12); y += 56;
-  dwlPdfBox(doc,m,y,hdr.w,56,'Safety Huddle Topic',data.safetyTopic,12); y += 68;
-  dwlPdfText(doc,'Employees / hours continue on the next page.',m,y+16,{size:12,style:'bold',maxWidth:360});
-  dwlPdfText(doc,`Page ${pageNum} of ${totalPages}`,pageW/2,pageH-14,{size:8,style:'bold',align:'center',maxWidth:180});
+  dwlPdfBox(doc,m,y,hdr.w,86,'Location/Description of work',data.description,11); y += 86;
+  dwlPdfBox(doc,m,y,hdr.w,42,'Additional Notes',data.notes,10); y += 42;
+  dwlPdfBox(doc,m,y,hdr.w,42,'Safety Huddle Topic',data.safetyTopic,10); y += 48;
+  dwlPdfText(doc,'Employee hours continue on the next page.',m,y+13,{size:9.5,style:'bold',maxWidth:260});
+  dwlPhoneSmallFooter(doc,pageNum,totalPages,pageW,pageH);
 
-  // Employee pages use larger rows, but keep clean blank rows only where needed.
   for(let p=0;p<employeePages;p++){
-    doc.addPage('letter','portrait');
+    doc.addPage([pageW,pageH],'portrait');
     pageNum++;
-    y=18;
+    y=12;
     hdr=dwlPhoneHeader(doc,data,pageW,m,y); y=hdr.y;
     const start=p*rowsPerPage;
     const pageRows=rows.slice(start,start+rowsPerPage);
-    const rowCount=Math.max(pageRows.length, rows.length ? pageRows.length : 10);
-    doc.setFillColor(217,217,217); doc.rect(m,y,hdr.w,22,'F'); doc.rect(m,y,hdr.w,22);
-    dwlPdfText(doc,`Employees / Hours${employeePages>1?` - Rows ${start+1}-${Math.min(start+rowsPerPage, Math.max(rows.length,start+rowsPerPage))}`:''}`,m+6,y+15,{size:12,style:'bold',maxWidth:260});
-    dwlPdfText(doc,'ST  OT  NL  PT  RT',pageW-m-10,y+15,{size:10,style:'bold',align:'right',maxWidth:140});
-    y += 22;
-    const blankFill = rows.length ? 0 : 10;
-    const count = rows.length ? Math.max(pageRows.length, 1) : blankFill;
-    for(let i=0;i<count;i++){
+    y=dwlPhoneEmployeeHeader(doc,y,m,hdr.w);
+    const minRows = rows.length ? pageRows.length : rowsPerPage;
+    for(let i=0;i<minRows;i++){
       const idx=start+i;
       const row=pageRows[i] || {};
       y += dwlPhoneRow(doc,y,row,idx+1,m,hdr.w);
     }
-    y += 14;
+    y += 12;
     if(p===employeePages-1){
       const dateSlash=hdr.dateSlash;
-      dwlPdfText(doc,'Print Name:',m,y+12,{size:9,style:'bold'});
-      dwlPdfText(doc,data.printName||data.foreman||'',m+66,y+13,{size:11,style:'bold',maxWidth:190});
-      dwlPdfText(doc,'Sign:',m+285,y+12,{size:9,style:'bold'});
-      if(data.signatureData){ try{ doc.addImage(data.signatureData,'PNG',m+320,y-7,130,30); }catch(e){} }
-      dwlPdfText(doc,'Date:',pageW-m-85,y+12,{size:9,style:'bold'});
-      dwlPdfText(doc,dateSlash,pageW-m,y+12,{size:11,style:'bold',align:'right',maxWidth:85});
+      if(y > pageH-70){
+        doc.addPage([pageW,pageH],'portrait');
+        pageNum++;
+        y=18;
+      }
+      dwlPdfText(doc,'Print Name:',m,y+12,{size:8.5,style:'bold'});
+      dwlPdfText(doc,data.printName||data.foreman||'',m+56,y+13,{size:9.5,style:'bold',maxWidth:110});
+      dwlPdfText(doc,'Sign:',m+190,y+12,{size:8.5,style:'bold'});
+      if(data.signatureData){ try{ doc.addImage(data.signatureData,'PNG',m+220,y-8,82,28); }catch(e){} }
+      dwlPdfText(doc,'Date:',pageW-m-72,y+12,{size:8.5,style:'bold'});
+      dwlPdfText(doc,dateSlash,pageW-m,y+12,{size:9.5,style:'bold',align:'right',maxWidth:68});
     }
-    dwlPdfText(doc,`Page ${pageNum} of ${totalPages}`,pageW/2,pageH-14,{size:8,style:'bold',align:'center',maxWidth:180});
+    dwlPhoneSmallFooter(doc,pageNum,totalPages,pageW,pageH);
   }
   const filename = safePdfFileName();
   await downloadPdfDocThroughServer(doc, filename, msgId);
