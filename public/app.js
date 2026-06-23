@@ -318,31 +318,6 @@ function safePdfFileName(){
   const title = nextPdfFileTitle || document.title || 'JAGD Field Form';
   return (String(title).replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').trim() || 'JAGD Field Form') + '.pdf';
 }
-function isMobilePdfDevice(){
-  return /iPad|iPhone|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-let pendingDwlPdfWindow = null;
-function prepareDwlPdfWindowForMobile(){
-  if(!isMobilePdfDevice()) return null;
-  try{
-    const w = window.open('about:blank', '_blank');
-    if(w){
-      pendingDwlPdfWindow = w;
-      try{
-        w.document.open();
-        w.document.write('<!doctype html><html><head><title>Preparing DWL PDF...</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="font-family:Arial,sans-serif;padding:24px;font-size:18px;"><b>Preparing DWL PDF...</b><p>Please wait. The official PDF will open here.</p></body></html>');
-        w.document.close();
-      }catch(e){}
-      return w;
-    }
-  }catch(e){}
-  pendingDwlPdfWindow = null;
-  return null;
-}
-function closePendingDwlPdfWindow(){
-  try{ if(pendingDwlPdfWindow && !pendingDwlPdfWindow.closed) pendingDwlPdfWindow.close(); }catch(e){}
-  pendingDwlPdfWindow = null;
-}
 function base64FromDataUrl(dataUrl){
   return String(dataUrl||'').replace(/^data:application\/pdf;?base64,/i,'');
 }
@@ -368,21 +343,12 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
     // This prevents the field from accidentally sharing the website URL or a blob page from Safari.
     if(isMobile){
       if(msg) msg.innerHTML = '<div class="notice">Opening the official DWL PDF. Use the Share button on the PDF screen to text/email/Dropbox it.</div>';
-      const w = pendingDwlPdfWindow;
-      pendingDwlPdfWindow = null;
-      if(w && !w.closed){
-        try{ w.location.href = shareUrl; }catch(e){ window.location.assign(shareUrl); }
-      } else {
-        window.location.assign(shareUrl);
-      }
+      window.location.href = shareUrl;
       return true;
     }
 
     if(isIOS){
-      const w = pendingDwlPdfWindow;
-      pendingDwlPdfWindow = null;
-      if(w && !w.closed){ try{ w.location.href = shareUrl; }catch(e){ window.location.assign(shareUrl); } }
-      else window.location.assign(shareUrl);
+      window.location.href = shareUrl;
     } else {
       const a=document.createElement('a');
       a.href=shareUrl;
@@ -396,7 +362,6 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
     return true;
   }catch(err){
     console.warn('Server named PDF download failed, falling back to browser save:', err);
-    closePendingDwlPdfWindow();
     try{ pdfDoc.save(safeName); if(msg) msg.innerHTML='<div class="success">Official DWL PDF saved. If iPhone changes the file name, office can rename it from the PDF contents.</div>'; return true; }
     catch(e){ if(msg) msg.innerHTML=`<div class="notice">PDF save failed: ${esc(e.message || err.message || '')}</div>`; return false; }
   }
@@ -1646,7 +1611,7 @@ async function dwlForm(){
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
     <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved on this phone.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
-    <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the official DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the official PDF screen should open. Use the Share icon on that PDF screen to text it, email it, or save/send to Dropbox. Do not use the browser three-dot menu while still on the form screen.</p><div id="dwlMsg"></div></div>
+    <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the official DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the phone share/save screen should open with the PDF attached. Choose Messages, Mail, Files, or Dropbox from that screen.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
   const dateEl=document.getElementById('dwlReportDate'), dayEl=document.getElementById('dwlDay');
@@ -1665,8 +1630,7 @@ async function dwlForm(){
       const data=collectDwl();
       const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
       const dwlFileTitle=dwlFileTitleWithRevision(baseTitle, data.revision);
-      prepareDwlPdfWindowForMobile();
-      if(!confirmDwlSaveAndSend(data,dwlFileTitle)){ closePendingDwlPdfWindow(); return; }
+      if(!confirmDwlSaveAndSend(data,dwlFileTitle)) return;
       setNextPdfFileTitle(dwlFileTitle);
       markDwlSubmittedLocally(data,dwlFileTitle);
       logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle);
@@ -1676,7 +1640,6 @@ async function dwlForm(){
       if(!savedDirect){ buildDwlPrint(data); await openPrintNow('dwlMsg'); }
       portalSend.catch(()=>{});
     }catch(err){
-      closePendingDwlPdfWindow();
       document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`;
       console.error(err);
     }
