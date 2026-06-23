@@ -2,6 +2,8 @@ const app = document.getElementById('app');
 const logo = '/assets/jagd-logo.png';
 let currentPrint = '';
 let pirMixCount = 1;
+const PIR_MIX_MAX_BLOCKS = 8;
+const PIR_MIX_FIELD_SUFFIXES = ['MixLoc','MixTime','MixWitness','BatchA','MfgA','ShelfA','BatchB','MfgB','ShelfB','Dust','Thinner','Volume','Mfr','Prod','Color','Kit','Pot','Shelf','Induction','Temp','Qty','Start','Finish','Gallons','System','Method','GunTip','Elapsed','DFTPrev'];
 let pirAmbientCount = 1;
 let pirAdditionalNotesOpen = false;
 const signatureStore = {};
@@ -619,7 +621,36 @@ function setupPirMaterialLibrary(){
 }
 
 function mixBlockForm(i){
-  return `<div class="panel innerPanel mixBlock" data-mix="${i}"><h3>Mix / Application Block ${i}</h3><div class="notice pirMaterialNotice"><b>COA helper:</b> Pick a material/batch below to auto-fill Batch, Mfg Date, Shelf Life/Exp, Mfr, Product, and Color. All fields remain editable.</div><div class="grid two pirMaterialControls">${pirMaterialSelect(i,'A','COA Product / Part A','main')}${pirMaterialSelect(i,'B','COA Hardener / Dust / Component','component')}</div><div class="grid four">${field('pirMixLoc'+i,'Location')}${field('pirMixTime'+i,'Time','time')}${selectField('pirMixWitness'+i,'Mix Witnessed and Acceptable',['','YES','NO','N/A'])}${field('pirBatchA'+i,'Batch # A')}${field('pirMfgA'+i,'A Mfg Date')}${field('pirShelfA'+i,'A Shelf Life')}${field('pirBatchB'+i,'Batch # B')}${field('pirMfgB'+i,'B Mfg Date')}${field('pirShelfB'+i,'B Shelf Life')}${field('pirDust'+i,'Dust')}${field('pirThinner'+i,'Thinner Type')}${field('pirVolume'+i,'% By Volume')}${field('pirMfr'+i,'Mfr')}${field('pirProd'+i,'Prod. Name')}${field('pirColor'+i,'Color')}${field('pirKit'+i,'Kit Sz/Cond.')}${field('pirPot'+i,'Pot Life')}${field('pirShelf'+i,'Shelf Life')}${field('pirInduction'+i,'Induction Time')}${field('pirTemp'+i,'Temperature')}${field('pirQty'+i,'Quantity Mixed')}${field('pirStart'+i,'Start')}${field('pirFinish'+i,'Finish / Stop')}${field('pirGallons'+i,'Total Gallons')}${field('pirSystem'+i,'Coat / System')}${field('pirMethod'+i,'Application Method')}${field('pirGunTip'+i,'Gun/Tip Size')}${field('pirElapsed'+i,'Time elapsed between coats')}${field('pirDFTPrev'+i,'DFT Avg. Previous Coat')}</div></div>`;
+  const deleteBtn = i > 1 ? `<button type="button" class="btn danger small pirDeleteMixBlock" data-delete-pir-mix="${i}">Delete this block</button>` : '';
+  return `<div class="panel innerPanel mixBlock" data-mix="${i}"><div class="mixBlockTitleRow"><h3>Mix / Application Block ${i}</h3>${deleteBtn}</div><div class="notice pirMaterialNotice"><b>COA helper:</b> Pick a material/batch below to auto-fill Batch, Mfg Date, Shelf Life/Exp, Mfr, Product, and Color. All fields remain editable.</div><div class="grid two pirMaterialControls">${pirMaterialSelect(i,'A','COA Product / Part A','main')}${pirMaterialSelect(i,'B','COA Hardener / Dust / Component','component')}</div><div class="grid four">${field('pirMixLoc'+i,'Location')}${field('pirMixTime'+i,'Time','time')}${selectField('pirMixWitness'+i,'Mix Witnessed and Acceptable',['','YES','NO','N/A'])}${field('pirBatchA'+i,'Batch # A')}${field('pirMfgA'+i,'A Mfg Date')}${field('pirShelfA'+i,'A Shelf Life')}${field('pirBatchB'+i,'Batch # B')}${field('pirMfgB'+i,'B Mfg Date')}${field('pirShelfB'+i,'B Shelf Life')}${field('pirDust'+i,'Dust')}${field('pirThinner'+i,'Thinner Type')}${field('pirVolume'+i,'% By Volume')}${field('pirMfr'+i,'Mfr')}${field('pirProd'+i,'Prod. Name')}${field('pirColor'+i,'Color')}${field('pirKit'+i,'Kit Sz/Cond.')}${field('pirPot'+i,'Pot Life')}${field('pirShelf'+i,'Shelf Life')}${field('pirInduction'+i,'Induction Time')}${field('pirTemp'+i,'Temperature')}${field('pirQty'+i,'Quantity Mixed')}${field('pirStart'+i,'Start')}${field('pirFinish'+i,'Finish / Stop')}${field('pirGallons'+i,'Total Gallons')}${field('pirSystem'+i,'Coat / System')}${field('pirMethod'+i,'Application Method')}${field('pirGunTip'+i,'Gun/Tip Size')}${field('pirElapsed'+i,'Time elapsed between coats')}${field('pirDFTPrev'+i,'DFT Avg. Previous Coat')}</div></div>`;
+}
+function pirMixSnapshot(){
+  return Array.from({length:pirMixCount},(_,idx)=>{
+    const i=idx+1; const row={};
+    PIR_MIX_FIELD_SUFFIXES.forEach(suffix=>{
+      const id='pir'+suffix+i; const el=document.getElementById(id);
+      row[suffix]=el ? (el.type==='checkbox' ? el.checked : el.value) : '';
+    });
+    return row;
+  });
+}
+function restorePirMixSnapshot(rows){
+  (rows||[]).forEach((row,idx)=>{
+    const i=idx+1;
+    PIR_MIX_FIELD_SUFFIXES.forEach(suffix=>{
+      const el=document.getElementById('pir'+suffix+i);
+      if(!el) return;
+      const value=row?.[suffix] ?? '';
+      if(el.type==='checkbox') el.checked=!!value; else el.value=value;
+    });
+  });
+}
+function deletePirMixBlock(removeIndex){
+  const rows=pirMixSnapshot().filter((_,idx)=>idx+1!==Number(removeIndex));
+  pirMixCount=Math.max(1, rows.length);
+  renderPirMixBlocks();
+  restorePirMixSnapshot(rows);
+  updatePirMaterialVisibility();
 }
 function renderPirMixBlocks(){
   const box=document.getElementById('pirMixBlocks');
@@ -645,7 +676,8 @@ function renderPirMixBlocks(){
   setupPirMaterialLibrary();
   updatePirMaterialVisibility();
   const btn=document.getElementById('addPirMixBlock');
-  if(btn) btn.style.display = pirMixCount >= 4 ? 'none' : 'inline-block';
+  document.querySelectorAll('[data-delete-pir-mix]').forEach(b=>{ b.onclick=()=>deletePirMixBlock(b.dataset.deletePirMix); });
+  if(btn) btn.style.display = pirMixCount >= PIR_MIX_MAX_BLOCKS ? 'none' : 'inline-block';
 }
 function sigField(id,label){
   return `<div class="signatureWrap"><label>${label}</label><div id="${id}Preview" class="signaturePreview signatureBtn" role="button" tabindex="0" data-sig="${id}" data-label="${esc(label)}">Tap here to sign</div></div>`;
@@ -811,7 +843,7 @@ function pirForm(){
   pirAdditionalNotesOpen=false;
   const pirNotesBtn=document.getElementById('pirAddNotesPageBtn');
   if(pirNotesBtn){pirNotesBtn.onclick=()=>{pirAdditionalNotesOpen=true; const panel=document.getElementById('pirAdditionalNotesPanel'); if(panel) panel.style.display='block'; pirNotesBtn.textContent='Additional QC Notes Page Added'; pirNotesBtn.disabled=true; const d=document.getElementById('pirNotesDate'); if(d && !d.value) d.value=val('pirReportDate'); const qc=document.getElementById('pirNotesQC'); if(qc && !qc.value) qc.value=val('pirQCPrint'); panel&&panel.scrollIntoView({behavior:'smooth',block:'start'});};}
-  document.getElementById('addPirMixBlock').onclick=()=>{pirMixCount=Math.min(4,pirMixCount+1); renderPirMixBlocks();};
+  document.getElementById('addPirMixBlock').onclick=()=>{pirMixCount=Math.min(PIR_MIX_MAX_BLOCKS,pirMixCount+1); renderPirMixBlocks();};
   document.getElementById('addPirAmbientBlock').onclick=()=>{pirAmbientCount=Math.min(4,pirAmbientCount+1); renderPirAmbientBlocks(); if(pirAmbientCount>=4) document.getElementById('addPirAmbientBlock').disabled=true;};
   initSignatureButtons();
   document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); document.title = formSaveTitle('pir', data.reportDate, data.project); logGeneratedForm('pir', data.project, data.reportDate, document.title); buildPirPrint(data); openPrintNow('pirMsg');}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
@@ -848,7 +880,9 @@ function buildPirPrint(data=collectPir(), files=[]){
  const ambHead=`<div class="pirCell tinyCell"></div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a.location)}</div>`).join('')}`;
  const ambRows=[['Time','time'],['Dry Bulb Temp','dry'],['Wet Bulb Temp','wet'],['% Relative Humidity','rh'],['Surface Temp.','surface'],['Dew Point','dew'],['Surface Temp. - Dew Point Spread','diff']].map(([label,key])=>`<div class="pirCell tinyCell">${label}</div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a[key])}</div>`).join('')}`).join('');
  const mixBlock=(m={})=>`<div class="mixPrintBlock"><div class="mixRow"><span><b>Location:</b> ${cell(m.location)}</span><span><b>Time:</b> ${cell(m.time)}</span></div><div class="mixHead">Batch #'s <span>Mix Witnessed and Acceptable ${cell(m.witness)}</span></div><div class="mixGrid"><span>(A) ${cell(m.batchA)}</span><span>Mfg Date ${cell(m.mfgA)}</span><span>Shelf Life ${cell(m.shelfA)}</span><span>(B) ${cell(m.batchB)}</span><span>Mfg Date ${cell(m.mfgB)}</span><span>Shelf Life ${cell(m.shelfB)}</span><span>Dust ${cell(m.dust)}</span><span>Thinner Type ${cell(m.thinner)}</span><span>% By Volume ${cell(m.volume)}</span><span>Mfr: ${cell(m.mfr)}</span><span>Prod. Name: ${cell(m.prod)}</span><span>Color: ${cell(m.color)}</span><span>Kit Sz/Cond.: ${cell(m.kit)}</span><span>Pot Life: ${cell(m.pot)}</span><span>Shelf Life: ${cell(m.shelf)}</span><span>Induction Time: ${cell(m.induction)}</span><span>Temperature: ${cell(m.temp)}</span><span>Quantity Mixed: ${cell(m.qty)}</span></div><div class="mixHead">Application</div><div class="mixGrid app"><span>Start: ${cell(m.start)}</span><span>Finish/Stop: ${cell(m.finish)}</span><span>Total Gallons: ${cell(m.gallons)}</span><span>Coat: ${cell(m.system)}</span><span>Method: ${cell(m.method)}</span><span>Gun/Tip Size: ${cell(m.gunTip)}</span><span>DFT Avg. Previous Coat: ${cell(m.dftPrev)}</span><span>Time elapsed between coats: ${cell(m.elapsed)}</span></div></div>`;
- const fourMix=[0,1,2,3].map(i=>mixBlock(mix[i]||{})).join('');
+ const firstMix=[0,1,2,3].map(i=>mixBlock(mix[i]||{})).join('');
+ const extraMixRows=mix.slice(4).filter(m=>Object.values(m||{}).some(v=>String(v||'').trim()));
+ const extraMixPage=extraMixRows.length?`<div class="pirMixExtraSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional Mix / Application Blocks</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><div class="pirExtraMixGrid">${extraMixRows.map(mixBlock).join('')}</div></div>`:'';
  const testex=[0,1,2].map(i=>`<div class="testexBox pirTestexPrint"><span>Insert Testex Tape Here</span></div><div class="testexMeta">${cell(data.testex?.[i]?.location)} ${cell(data.testex?.[i]?.reading)} ${cell(data.testex?.[i]?.notes)}</div>`).join('');
  const holdText=pirHoldPoints.map((q,i)=>`${cell(q)} ${cell(hp[i]?.status)}`).join('<br>');
  const html=`<div class="pirSheetV7">
@@ -872,7 +906,7 @@ function buildPirPrint(data=collectPir(), files=[]){
      <div class="pirAmbGrid">${ambHead}${ambRows}</div>
    </div>
    <div class="pirMixHeadV7">Mixing / Application</div>
-   <div class="pirMixGridV7">${fourMix}</div>
+   <div class="pirMixGridV7">${firstMix}</div>
    <div class="pirCaulkHeadV7">Caulking</div>
    <div class="pirCaulkGridV7"><div>Location: ${cell(data.caulking?.location)}</div><div>Name/Batch: ${cell(data.caulking?.nameBatch)}</div><div>Tube Size: ${cell(data.caulking?.tubeSize)}</div><div>Shelf Life: ${cell(data.caulking?.shelf)}</div><div>Total Amount Used: ${cell(data.caulking?.totalUsed)}</div></div>
    <div class="pirSigGridV7"><div>QC Print: ${cell(data.qcPrint)}</div><div>QC Signature: ${sigPrint(data.qcSignatureData,data.qcSignature)}</div><div>QCS Signature: ${sigPrint(data.qcsSignatureData,data.qcsSignature)}</div></div>
@@ -882,7 +916,7 @@ function buildPirPrint(data=collectPir(), files=[]){
  const hasNotes=data.additionalNotesOpen || (notes.summary||notes.location||notes.qc||notes.print||'').trim() || (notes.rows||[]).some(r=>r.time||r.location||r.activity||r.notes);
  const notesRows=(notes.rows||Array.from({length:8},()=>({}))).map(r=>`<tr><td>${cell(r.time)}</td><td>${cell(r.location)}</td><td>${cell(r.activity)}</td><td>${cell(r.notes)}</td></tr>`).join('');
  const notesPage=hasNotes?`<div class="pirNotesSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional QC Notes</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><table class="extraPrintTable"><tr><th>Date</th><td>${cell(notes.date||data.reportDate)}</td><th>Location / Area</th><td>${cell(notes.location)}</td><th>QC</th><td>${cell(notes.qc||data.qcPrint)}</td></tr></table><table class="extraPrintTable pirNotesTable"><tr><th>Time</th><th>Location / Area</th><th>Activity / What Happened</th><th>Notes</th></tr>${notesRows}</table>${extraPrintBox('Additional Summary / QC Comments',notes.summary||'',1.35)}<div class="extraSigGrid two"><div><b>QC Print:</b> ${cell(notes.print||notes.qc||data.qcPrint)}</div><div><b>QC Signature:</b> ${sigPrint(notes.signatureData,notes.signature||'')}</div></div></div>`:'';
- const finalHtml=html+notesPage;
+ const finalHtml=html+extraMixPage+notesPage;
  setPrint(finalHtml); return finalHtml;
 }
 
