@@ -1266,13 +1266,14 @@ function mergeWorkerSources(...sources){
   sources.flat().filter(Boolean).forEach(w=>{
     const key = normalizeWorkerNameKey(w);
     if(!key) return;
-    const existing = map.get(key) || {};
-    map.set(key, {...existing, ...w, fullName: workerDisplayName({...existing, ...w})});
+    if(map.has(key)) return; // first source wins: live portal rows stay authoritative over cached/static rows
+    const fullName = workerDisplayName(w);
+    map.set(key, {...w, fullName});
   });
   return Array.from(map.values()).sort((a,b)=>workerDisplayName(a).localeCompare(workerDisplayName(b)));
 }
-async function loadActiveWorkers(){
-  if(activeWorkers.length) return activeWorkers;
+async function loadActiveWorkers(force=false){
+  if(activeWorkers.length && !force) return activeWorkers;
   let apiRows = [];
   let staticRows = [];
   const embeddedRows = Array.isArray(EMBEDDED_ACTIVE_WORKERS) ? EMBEDDED_ACTIVE_WORKERS.slice() : [];
@@ -1608,7 +1609,7 @@ async function syncDwlToPortal(data, title, options = {}) {
 }
 
 async function dwlForm(){
-  await loadActiveWorkers();
+  await loadActiveWorkers(true);
   app.innerHTML=`<div class="container printOnly dwlContainer"><h1>Daily Work Log</h1><datalist id="dwlWorkerList"></datalist>${dwlDataList('dwlClassList',DWL_CLASS_OPTIONS)}${dwlDataList('dwlLocalList',DWL_LOCAL_OPTIONS)}${dwlDataList('dwlActivityList',DWL_ACTIVITY_NUMBERS)}${dwlDataList('dwlOverList',DWL_OVER_OPTIONS)}${dwlDataList('dwlSmallHourList',DWL_SMALL_HOUR_OPTIONS)}
     <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')}</div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
@@ -2146,53 +2147,26 @@ function workerFormHtml(w={}, mode='add'){
 function workerFullName(w){ return (w.fullName || `${w.firstName||''} ${w.lastName||''}`.trim() || '').trim(); }
 async function renderAdminWorkers(editWorker=null, showForm=false){
   const c=document.getElementById('adminContent'); if(!c)return;
-  c.innerHTML='<div class="panel"><div class="notice">Loading workers...</div></div>';
-  try{
-    let fallbackNotice='';
-    let rows=[];
+  c.innerHTML=`<div class="panel"><h2>DWL Names / Workers</h2>
+    <div class="notice"><b>Worker names are managed in the Portal now.</b><br>Go to <b>Portal → Employees</b> to edit worker names, class, local, trade, job, or status. Field Forms/DWL reads the active worker list from the portal.</div>
+    <p class="tiny">This old Forms Admin worker editor was removed to prevent office/field staff from editing the wrong worker list.</p>
+    <div class="actions"><button class="btn" id="adminRefreshPortalWorkersBtn" type="button">Refresh Portal Worker List</button></div>
+    <div id="adminWorkerPortalSyncMsg"></div>
+  </div>`;
+  const btn=document.getElementById('adminRefreshPortalWorkersBtn');
+  if(btn) btn.onclick=async()=>{
+    const msg=document.getElementById('adminWorkerPortalSyncMsg');
     try{
-      const json=await adminFetch('/api/admin/workers');
-      rows=(json.rows||[]).slice();
-    }catch(apiErr){
-      rows=builtInWorkerRows();
-      fallbackNotice=`<div class="notice">Live worker API is not responding, so this page is showing the built-in worker list. The field DWL autocomplete can still use these names.</div>`;
+      if(msg) msg.innerHTML='<div class="notice">Refreshing workers from portal...</div>';
+      activeWorkers=[];
+      const rows=await loadActiveWorkers(true);
+      if(msg) msg.innerHTML=`<div class="notice success">Loaded ${rows.length} active workers from the portal/cache. Open DWL and search the worker again.</div>`;
+    }catch(e){
+      if(msg) msg.innerHTML=`<div class="notice">Unable to refresh portal workers: ${esc(e.message||e)}</div>`;
     }
-    if(!rows.length){
-      rows=builtInWorkerRows();
-      fallbackNotice=`<div class="notice">Live worker list was empty, so this page is showing the built-in worker list.</div>`;
-      try{ await adminFetch('/api/admin/workers/restore-built-in',{method:'POST'}); }catch(e){}
-    }
-    rows=rows.sort((a,b)=>workerFullName(a).localeCompare(workerFullName(b)));
-    const activeCount=rows.filter(w=>!w.disabled && !String(w.status||'').toLowerCase().includes('term') && !String(w.status||'').toLowerCase().includes('inactive') && !String(w.status||'').toLowerCase().includes('disabled')).length;
-    c.innerHTML=`<div class="panel"><h2>DWL Names / Workers</h2>${fallbackNotice}<p class="tiny">This shows the full worker list used by DWL autocomplete. Start typing in search just like the DWL employee box, or click Edit next to any worker.</p><div class="adminToolbar"><button class="btn" id="adminAddWorkerBtn" type="button">+ Add Worker</button><button class="btn light" id="adminOpenWorkerImportBtn" type="button">Import New Excel / CSV</button><a class="btn light" id="adminWorkerExportBtn" href="/api/admin/workers/export.csv?pin=${encodeURIComponent(adminPin())}">Export Worker List</a><button class="btn light" id="adminRestoreBuiltInWorkersBtn" type="button">Reload Built-In Worker List</button><span><b>${activeCount}</b> active / <b>${rows.length}</b> total</span></div><div id="adminWorkerFormHolder">${showForm||editWorker?workerFormHtml(editWorker||{}):''}</div><details class="adminDetail" id="adminWorkerImportDetails"><summary>Import new Excel / CSV worker list</summary><p class="tiny">Best option: export/save Excel as CSV, then upload it here or paste it below. Import replaces the Forms worker list.</p><input id="adminWorkerCsvFile" type="file" accept=".csv,.txt,text/csv"><textarea id="adminWorkerCsv" class="adminBigText" placeholder="Or paste active workers CSV here"></textarea><div class="actions"><button class="btn" id="adminWorkerImportBtn" type="button">Import Worker List</button></div><div id="adminWorkerImportMsg"></div></details><div class="adminToolbar"><input id="adminWorkerSearch" placeholder="Start typing a name like the DWL autocomplete"><select id="adminWorkerStatusFilter"><option value="">All statuses</option><option value="active">Active only</option><option value="disabled">Disabled / inactive</option></select></div><div id="adminWorkerTable"></div></div>`;
-    const holder=document.getElementById('adminWorkerFormHolder');
-    const add=document.getElementById('adminAddWorkerBtn'); if(add) add.onclick=()=>{holder.innerHTML=workerFormHtml({}); setupAdminWorkerForm(); holder.scrollIntoView({behavior:'smooth',block:'start'});};
-    const restoreBuiltIn=document.getElementById('adminRestoreBuiltInWorkersBtn'); if(restoreBuiltIn) restoreBuiltIn.onclick=async()=>{if(!confirm('Reload the built-in active worker list? This replaces the current Forms worker list.'))return; try{const out=await adminFetch('/api/admin/workers/restore-built-in',{method:'POST'}); activeWorkers=[]; alert(`Reloaded ${out.count} workers (${out.activeCount} active).`); renderAdminWorkers();}catch(e){alert(e.message);}};
-    const openImport=document.getElementById('adminOpenWorkerImportBtn'); if(openImport) openImport.onclick=()=>{const d=document.getElementById('adminWorkerImportDetails'); if(d){d.open=true; d.scrollIntoView({behavior:'smooth',block:'start'});}};
-    if(showForm||editWorker) setupAdminWorkerForm();
-    const fileInput=document.getElementById('adminWorkerCsvFile'); if(fileInput) fileInput.onchange=()=>{const f=fileInput.files&&fileInput.files[0]; if(!f)return; const reader=new FileReader(); reader.onload=()=>{document.getElementById('adminWorkerCsv').value=String(reader.result||'');}; reader.readAsText(f);};
-    document.getElementById('adminWorkerImportBtn').onclick=async()=>{
-      const csvText=val('adminWorkerCsv');
-      if(!csvText){document.getElementById('adminWorkerImportMsg').innerHTML='<div class="notice">Upload a CSV file or paste CSV text first.</div>'; return;}
-      try{const out=await adminFetch('/api/admin/workers/import-csv',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csvText})}); activeWorkers=[]; document.getElementById('adminWorkerImportMsg').innerHTML=`<div class="notice success">Imported ${out.count} workers (${out.activeCount} active).</div>`; setTimeout(()=>renderAdminWorkers(),700);}catch(e){document.getElementById('adminWorkerImportMsg').innerHTML=`<div class="notice">${esc(e.message)}</div>`;}
-    };
-    const renderTable=()=>{
-      const q=val('adminWorkerSearch').toLowerCase(), statusFilter=val('adminWorkerStatusFilter');
-      const filtered=rows.filter(w=>{
-        const active=!w.disabled && !String(w.status||'').toLowerCase().includes('term') && !String(w.status||'').toLowerCase().includes('inactive') && !String(w.status||'').toLowerCase().includes('disabled');
-        if(statusFilter==='active' && !active) return false;
-        if(statusFilter==='disabled' && active) return false;
-        return `${workerFullName(w)} ${w.firstName||''} ${w.lastName||''} ${w.class||''} ${w.local||''} ${w.currentJob||''} ${w.employeeId||''}`.toLowerCase().includes(q);
-      }).slice(0,500);
-      document.getElementById('adminWorkerTable').innerHTML=`<div class="adminTableWrap"><table class="adminTable"><tr><th>Name</th><th>Class</th><th>Local</th><th>Job</th><th>Status</th><th>Action</th></tr>${filtered.map(w=>`<tr class="${w.disabled?'mutedRow':''}"><td><b>${esc(workerFullName(w))}</b><br><small>${esc(w.employeeId||'')}</small></td><td>${esc(w.class||'')}</td><td>${esc(cleanLocalValue(w.local))}</td><td>${esc(w.currentJob||'')}</td><td>${esc(w.disabled?'Disabled':(w.status||'Active'))}</td><td><button class="btn small light" data-edit-worker="${esc(w.id)}" type="button">Edit</button> <button class="btn small danger" data-disable-worker="${esc(w.id)}" type="button">Disable</button></td></tr>`).join('')}</table></div><p class="tiny">Showing ${filtered.length} of ${rows.length} workers.</p>`;
-      document.querySelectorAll('[data-edit-worker]').forEach(b=>b.onclick=()=>{const worker=rows.find(w=>String(w.id)===b.dataset.editWorker); holder.innerHTML=workerFormHtml(worker||{}); setupAdminWorkerForm(); holder.scrollIntoView({behavior:'smooth',block:'start'});});
-      document.querySelectorAll('[data-disable-worker]').forEach(b=>b.onclick=async()=>{if(!confirm('Disable this worker from DWL autocomplete?'))return; await adminFetch('/api/admin/workers/'+encodeURIComponent(b.dataset.disableWorker),{method:'DELETE'}); activeWorkers=[]; renderAdminWorkers();});
-    };
-    document.getElementById('adminWorkerSearch').oninput=renderTable;
-    document.getElementById('adminWorkerStatusFilter').onchange=renderTable;
-    renderTable();
-  }catch(e){c.innerHTML=`<div class="panel"><div class="notice">${esc(e.message)}</div></div>`;}
+  };
 }
+
 function setupAdminWorkerForm(){
   const save=document.getElementById('adminWorkerSaveBtn'); if(!save)return;
   const cancel=document.getElementById('adminWorkerCancelBtn'); if(cancel) cancel.onclick=()=>{const holder=document.getElementById('adminWorkerFormHolder'); if(holder) holder.innerHTML='';};
