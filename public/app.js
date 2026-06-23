@@ -1854,11 +1854,11 @@ function showBolInventoryPicker(input){
   if(!picker) return;
   const items=Array.isArray(bolInventoryItems)?bolInventoryItems:[];
   if(!bolInventoryLoaded){ picker.style.display='block'; picker.innerHTML='<div class="notice">Loading portal inventory...</div>'; return; }
-  if(!items.length){ picker.style.display='block'; picker.innerHTML='<div class="notice">No inventory items loaded yet. You can still type manually.</div>'; return; }
+  if(!items.length){ picker.style.display='block'; picker.innerHTML='<div class="notice">No current stock items loaded yet. You can still type manually.</div>'; return; }
   const render=(term='')=>{
     const q=String(term||'').toLowerCase().trim();
     const filtered=items.filter(i=>!q || [i.item,i.sku,i.location,i.unit].some(v=>String(v||'').toLowerCase().includes(q))).slice(0,80);
-    picker.innerHTML=`<div class="bolInventoryPickerBox"><div class="bolInventoryPickerHead"><b>Choose inventory item</b><button type="button" class="btn small light" id="closeBolInventoryPicker">Close</button></div><input id="bolInventorySearch" class="full" placeholder="Search inventory / SKU / location" value="${esc(term)}"><div class="bolInventoryPickerList">${filtered.map((i,idx)=>`<button type="button" class="bolInventoryPickBtn" data-idx="${items.indexOf(i)}"><b>${esc(i.item||'')}</b><span>${esc([i.sku?`SKU ${i.sku}`:'', i.location||'', i.quantity!==undefined?`Qty ${i.quantity}`:'', i.unit||''].filter(Boolean).join(' • '))}</span></button>`).join('') || '<div class="notice">No matching inventory items.</div>'}</div></div>`;
+    picker.innerHTML=`<div class="bolInventoryPickerBox"><div class="bolInventoryPickerHead"><b>Choose inventory item</b><button type="button" class="btn small light" id="closeBolInventoryPicker">Close</button></div><input id="bolInventorySearch" class="full" placeholder="Search current stock / SKU / location" value="${esc(term)}"><div class="bolInventoryPickerList">${filtered.map((i,idx)=>`<button type="button" class="bolInventoryPickBtn" data-idx="${items.indexOf(i)}"><b>${esc(i.item||'')}</b><span>${esc([i.sku?`SKU ${i.sku}`:'', i.location||'', i.quantity!==undefined?`Qty ${i.quantity}`:'', i.unit||''].filter(Boolean).join(' • '))}</span></button>`).join('') || '<div class="notice">No matching inventory items.</div>'}</div></div>`;
     const search=document.getElementById('bolInventorySearch');
     if(search){ search.focus({preventScroll:true}); search.oninput=()=>render(search.value); }
     const close=document.getElementById('closeBolInventoryPicker');
@@ -1889,7 +1889,7 @@ function setupBolInventoryAutocomplete(){
     });
   };
   apply();
-  if(bolInventoryLoaded){ if(msg) msg.textContent=bolInventoryItems.length ? `Inventory list loaded (${bolInventoryItems.length} items).` : 'No portal inventory items yet.'; return; }
+  if(bolInventoryLoaded){ if(msg) msg.textContent=bolInventoryItems.length ? `Current stock list loaded (${bolInventoryItems.length} items).` : 'No portal inventory items yet.'; return; }
   fetch('/api/bol/inventory-items').then(r=>r.json()).then(json=>{
     bolInventoryLoaded=true;
     bolInventoryItems=Array.isArray(json.items)?json.items:[];
@@ -1897,8 +1897,8 @@ function setupBolInventoryAutocomplete(){
     if(dl) dl.innerHTML=(bolInventoryItems||[]).map(i=>`<option value="${esc(i.item||'')}">${esc([i.sku,i.location,i.quantity,i.unit].filter(Boolean).join(' - '))}</option>`).join('');
     apply();
     if(activeBolProductInput) showBolInventoryPicker(activeBolProductInput);
-    if(msg) msg.textContent=bolInventoryItems.length ? `Inventory list loaded from portal (${bolInventoryItems.length} items). Tap Product / Material to choose from stock.` : 'No portal inventory items yet. You can still type manually.';
-  }).catch(()=>{ bolInventoryLoaded=true; if(msg) msg.textContent='Portal inventory list did not load. You can still type materials manually.'; });
+    if(msg) msg.textContent=bolInventoryItems.length ? `Current stock list loaded from portal (${bolInventoryItems.length} items). Tap Product / Material to choose from stock.` : 'No current portal stock items yet. You can still type manually.';
+  }).catch(()=>{ bolInventoryLoaded=true; if(msg) msg.textContent='Portal current stock list did not load. You can still type materials manually.'; });
 }
 function bolItemRows(){
   return Array.from({length:EXTRA_FORM_ROWS},(_,idx)=>{

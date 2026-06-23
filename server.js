@@ -691,7 +691,12 @@ app.get('/api/bol/inventory-items', async (req, res) => {
     clearTimeout(timer);
     const json = await r.json().catch(() => ({}));
     if (!r.ok || !json.ok) throw new Error(json.error || 'Portal inventory unavailable');
-    if (Array.isArray(json.items)) return res.json({ ok: true, items: json.items });
+    const isCompanyStockLocation = (location = '') => ['warehouse', 'main yard', 'shop', 'other'].includes(String(location || 'Warehouse').trim().toLowerCase());
+    const isPositiveStock = (row = {}) => Number(row.quantity || 0) > 0;
+    if (Array.isArray(json.items)) {
+      const items = json.items.filter(row => isCompanyStockLocation(row.location) && isPositiveStock(row));
+      return res.json({ ok: true, items });
+    }
     const seen = new Map();
     const add = (row) => {
       const item = bolCleanText(row.item || row.product || '', 180);
@@ -701,9 +706,8 @@ app.get('/api/bol/inventory-items', async (req, res) => {
       const key = `${item.toLowerCase()}|${unit.toLowerCase()}|${location.toLowerCase()}`;
       if (!seen.has(key)) seen.set(key, { item, unit, location, quantity: row.quantity || 0 });
     };
-    (Array.isArray(json.warehouse) ? json.warehouse : []).forEach(add);
-    (Array.isArray(json.jobs) ? json.jobs : []).forEach(add);
-    res.json({ ok: true, items: Array.from(seen.values()).sort((a,b)=>String(a.item).localeCompare(String(b.item)) || String(a.location).localeCompare(String(b.location))) });
+    (Array.isArray(json.warehouse) ? json.warehouse : []).filter(isPositiveStock).forEach(add);
+    res.json({ ok: true, items: Array.from(seen.values()).filter(row => isCompanyStockLocation(row.location) && isPositiveStock(row)).sort((a,b)=>String(a.item).localeCompare(String(b.item)) || String(a.location).localeCompare(String(b.location))) });
   } catch (err) {
     res.json({ ok: false, items: [], error: err.message || 'Could not load inventory items' });
   }
