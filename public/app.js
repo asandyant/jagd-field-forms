@@ -645,12 +645,24 @@ function restorePirMixSnapshot(rows){
     });
   });
 }
+function showPirMixDeleteNotice(message){
+  const box=document.getElementById('pirMixDeleteNotice');
+  if(!box) return;
+  box.textContent=message;
+  box.style.display='block';
+  box.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
 function deletePirMixBlock(removeIndex){
-  const rows=pirMixSnapshot().filter((_,idx)=>idx+1!==Number(removeIndex));
+  const blockNo=Number(removeIndex);
+  if(!Number.isFinite(blockNo) || blockNo < 2) return;
+  const ok=window.confirm(`Delete Mix / Application Block ${blockNo}?\n\nAfter deleting, the blocks below it will move up one number. Example: Block ${blockNo+1} becomes Block ${blockNo}.`);
+  if(!ok) return;
+  const rows=pirMixSnapshot().filter((_,idx)=>idx+1!==blockNo);
   pirMixCount=Math.max(1, rows.length);
   renderPirMixBlocks();
   restorePirMixSnapshot(rows);
   updatePirMaterialVisibility();
+  showPirMixDeleteNotice(`Mix / Application Block ${blockNo} was deleted. Remaining blocks were renumbered. Please review the block numbers before saving.`);
 }
 function renderPirMixBlocks(){
   const box=document.getElementById('pirMixBlocks');
@@ -664,7 +676,8 @@ function renderPirMixBlocks(){
     previousValues[el.id] = el.type === 'checkbox' ? el.checked : el.value;
   });
 
-  box.innerHTML=Array.from({length:pirMixCount},(_,idx)=>mixBlockForm(idx+1)).join('');
+  const deleteNoticeHtml='<div id="pirMixDeleteNotice" class="notice" style="display:none;margin-bottom:12px;font-weight:700;"></div>';
+  box.innerHTML=deleteNoticeHtml + Array.from({length:pirMixCount},(_,idx)=>mixBlockForm(idx+1)).join('');
 
   Object.entries(previousValues).forEach(([id, value])=>{
     const el=document.getElementById(id);
