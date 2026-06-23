@@ -1278,18 +1278,25 @@ async function loadActiveWorkers(force=false){
   let staticRows = [];
   const embeddedRows = Array.isArray(EMBEDDED_ACTIVE_WORKERS) ? EMBEDDED_ACTIVE_WORKERS.slice() : [];
   try{
-    const res = await fetch('/api/workers?v=20260618v150', {cache:'no-store', headers:{Accept:'application/json'}});
+    const res = await fetch('/api/workers?fresh=1&t=' + Date.now(), {cache:'no-store', headers:{Accept:'application/json'}});
     const text = await res.text();
     const json = text ? JSON.parse(text) : {};
     if(res.ok && Array.isArray(json.rows)) apiRows = json.rows;
-  }catch(e){ console.warn('Worker API unavailable or returned non-JSON, merging static worker file instead', e); }
+  }catch(e){ console.warn('Worker API unavailable or returned non-JSON, using static worker file instead', e); }
+
+  // Portal/API rows are the authority. Only use static/embedded backup if the API returns no workers.
+  if(apiRows.length){
+    activeWorkers = mergeWorkerSources(apiRows).filter(isWorkerActive);
+    return activeWorkers;
+  }
+
   try{
-    const res = await fetch('/data/active-workers.json?v=20260618v150', {cache:'no-store', headers:{Accept:'application/json'}});
+    const res = await fetch('/data/active-workers.json?v=20260618v150&t=' + Date.now(), {cache:'no-store', headers:{Accept:'application/json'}});
     const text = await res.text();
     const json = text ? JSON.parse(text) : [];
     if(res.ok && Array.isArray(json)) staticRows = json;
   }catch(e){ console.warn('Static worker file unavailable, using embedded worker list fallback', e); }
-  activeWorkers = mergeWorkerSources(apiRows, staticRows, embeddedRows).filter(isWorkerActive);
+  activeWorkers = mergeWorkerSources(staticRows, embeddedRows).filter(isWorkerActive);
   return activeWorkers;
 }
 

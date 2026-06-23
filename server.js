@@ -192,9 +192,11 @@ async function readWorkersWithPortalSync() {
   try {
     const portalRows = await fetchPortalActiveWorkers();
     if (portalRows.length) {
-      const merged = mergeWorkersByName(portalRows, localRows).filter(isWorkerActive);
-      writeWorkers(merged);
-      return { rows: merged, source: 'portal+forms-cache', portalCount: portalRows.length };
+      // Portal is now the source of truth for DWL names/class/local/job.
+      // Do not merge cached/static rows over portal rows or old class/local values can show in Forms.
+      const freshPortalRows = normalizeWorkerRows(portalRows).filter(isWorkerActive);
+      writeWorkers(freshPortalRows);
+      return { rows: freshPortalRows, source: 'portal-live', portalCount: freshPortalRows.length };
     }
   } catch (err) {
     console.warn('Portal worker sync unavailable; using Field Forms cached worker list:', err.message || err);
@@ -813,8 +815,9 @@ app.delete('/api/admin/form-logs/:id', requireAdmin, (req, res) => {
 
 
 app.get('/api/workers', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const result = await readWorkersWithPortalSync();
-  res.json({ ok: true, rows: result.rows, source: result.source, portalCount: result.portalCount });
+  res.json({ ok: true, rows: result.rows, source: result.source, portalCount: result.portalCount, generatedAt: new Date().toISOString() });
 });
 
 app.get('/api/admin/workers/export.csv', requireAdmin, (req, res) => {
