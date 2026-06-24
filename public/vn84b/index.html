@@ -38,13 +38,17 @@
       <div class="panel-head">
         <div>
           <h2>Update Production</h2>
-          <p>Enter total completed to date for the selected stage.</p>
+          <p>Enter total completed to date for the selected stage and location.</p>
         </div>
       </div>
       <form id="progressForm" class="entry-form">
         <label>
           Work Area
           <select id="areaSelect" required></select>
+        </label>
+        <label id="subAreaLabel" style="display:none;">
+          Location / Pier
+          <select id="subAreaSelect"></select>
         </label>
         <label>
           Stage

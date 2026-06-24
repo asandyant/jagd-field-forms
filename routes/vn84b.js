@@ -7,6 +7,22 @@ const router = express.Router();
 const dataDir = path.join(__dirname, '..', 'data');
 const dataFile = path.join(dataDir, 'vn84b-tracker.json');
 
+const bearingSubAreas = [
+  { id: 'abutment', name: 'Abutment', total: 10 },
+  { id: 'sp1', name: 'SP1', total: 20 },
+  { id: 'sp2', name: 'SP2', total: 20 },
+  { id: 'sp3', name: 'SP3', total: 18 },
+  { id: 'sp4', name: 'SP4', total: 18 },
+  { id: 'sp5', name: 'SP5', total: 18 },
+  { id: 'sp6', name: 'SP6', total: 18 },
+  { id: 'sp7', name: 'SP7', total: 18 },
+  { id: 'sp8', name: 'SP8', total: 18 },
+  { id: 'sp9', name: 'SP9', total: 18 },
+  { id: 'sp10', name: 'SP10', total: 18 },
+  { id: 'sp11', name: 'SP11', total: 18 },
+  { id: 'sp12', name: 'SP12', total: 18 }
+];
+
 const defaultData = {
   contract: 'VN84-B',
   bridge: 'Verrazzano-Narrows Bridge',
@@ -24,9 +40,10 @@ const defaultData = {
     {
       id: 'belt-parkway-bearings',
       name: 'Belt Parkway Bearings',
-      description: '190 bearings: power tool prep, zinc, midcoat, finish coat',
+      description: '230 bearings broken out by Abutment and SP1–SP12: power tool prep, zinc, midcoat, finish coat',
       unitLabel: 'bearings',
-      total: 190,
+      total: 230,
+      subAreas: bearingSubAreas,
       stages: ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'],
       items: []
     },
@@ -70,16 +87,26 @@ function ensureDataFile() {
   }
 }
 
+function migrateData(data) {
+  const bearings = data.areas && data.areas.find(a => a.id === 'belt-parkway-bearings');
+  if (bearings) {
+    bearings.total = 230;
+    bearings.description = '230 bearings broken out by Abutment and SP1–SP12: power tool prep, zinc, midcoat, finish coat';
+    bearings.subAreas = bearingSubAreas;
+  }
+  return data;
+}
+
 function readData() {
   ensureDataFile();
   const raw = fs.readFileSync(dataFile, 'utf8');
-  return JSON.parse(raw);
+  return migrateData(JSON.parse(raw));
 }
 
 function writeData(data) {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   data.updatedAt = new Date().toISOString();
-  fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+  fs.writeFileSync(dataFile, JSON.stringify(migrateData(data), null, 2));
 }
 
 function clampNumber(value, min, max) {
@@ -99,30 +126,46 @@ router.get('/api/vn84b', (req, res) => {
 
 router.post('/api/vn84b/progress', express.json({ limit: '2mb' }), (req, res) => {
   try {
-    const { areaId, stage, completed, note, enteredBy } = req.body || {};
+    const { areaId, subAreaId, stage, completed, note, enteredBy } = req.body || {};
     const data = readData();
     const area = data.areas.find(a => a.id === areaId);
     if (!area) return res.status(404).json({ error: 'Area not found.' });
     if (!area.stages.includes(stage)) return res.status(400).json({ error: 'Stage not found for this area.' });
 
-    const safeCompleted = clampNumber(completed, 0, area.total);
-    const existing = area.items.find(i => i.stage === stage);
+    const subArea = area.subAreas && subAreaId ? area.subAreas.find(s => s.id === subAreaId) : null;
+    if (area.subAreas && area.subAreas.length && !subArea) return res.status(400).json({ error: 'Location / pier is required for this area.' });
+
+    const totalForEntry = subArea ? subArea.total : area.total;
+    const safeCompleted = clampNumber(completed, 0, totalForEntry);
+    const existing = (area.items || []).find(i => i.stage === stage && (i.subAreaId || '') === (subAreaId || ''));
     if (existing) {
       existing.completed = safeCompleted;
       existing.updatedAt = new Date().toISOString();
       existing.enteredBy = enteredBy || existing.enteredBy || '';
+      existing.subAreaId = subArea ? subArea.id : '';
+      existing.subAreaName = subArea ? subArea.name : '';
     } else {
-      area.items.push({ stage, completed: safeCompleted, enteredBy: enteredBy || '', updatedAt: new Date().toISOString() });
+      if (!area.items) area.items = [];
+      area.items.push({
+        stage,
+        subAreaId: subArea ? subArea.id : '',
+        subAreaName: subArea ? subArea.name : '',
+        completed: safeCompleted,
+        enteredBy: enteredBy || '',
+        updatedAt: new Date().toISOString()
+      });
     }
 
+    const areaLogName = subArea ? `${area.name} — ${subArea.name}` : area.name;
     data.dailyLog.unshift({
       id: Date.now().toString(36),
       timestamp: new Date().toISOString(),
       areaId,
-      areaName: area.name,
+      subAreaId: subArea ? subArea.id : '',
+      areaName: areaLogName,
       stage,
       completed: safeCompleted,
-      total: area.total,
+      total: totalForEntry,
       note: note || '',
       enteredBy: enteredBy || ''
     });

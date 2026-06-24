@@ -1,8 +1,6 @@
 let trackerData = null;
 let areaChart = null;
 
-const stageOrder = ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'];
-
 function pct(done, total) {
   if (!total) return 0;
   return Math.round((done / total) * 1000) / 10;
@@ -13,14 +11,26 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleString();
 }
 
-function getStageCompleted(area, stage) {
-  const row = (area.items || []).find(i => i.stage === stage);
-  return row ? Number(row.completed || 0) : 0;
+function getStageCompleted(area, stage, subAreaId = null) {
+  const rows = area.items || [];
+  if (subAreaId) {
+    const row = rows.find(i => i.stage === stage && i.subAreaId === subAreaId);
+    return row ? Number(row.completed || 0) : 0;
+  }
+  return rows
+    .filter(i => i.stage === stage)
+    .reduce((sum, i) => sum + Number(i.completed || 0), 0);
 }
 
 function areaPercent(area) {
   const totalSteps = area.total * area.stages.length;
   const completedSteps = area.stages.reduce((sum, stage) => sum + getStageCompleted(area, stage), 0);
+  return pct(completedSteps, totalSteps);
+}
+
+function subAreaPercent(area, sub) {
+  const totalSteps = sub.total * area.stages.length;
+  const completedSteps = area.stages.reduce((sum, stage) => sum + getStageCompleted(area, stage, sub.id), 0);
   return pct(completedSteps, totalSteps);
 }
 
@@ -74,8 +84,30 @@ function renderAreaSelects() {
 function renderStageSelect() {
   const area = trackerData.areas.find(a => a.id === document.getElementById('areaSelect').value) || trackerData.areas[0];
   document.getElementById('stageSelect').innerHTML = area.stages.map(s => `<option value="${s}">${s}</option>`).join('');
-  document.getElementById('completedInput').max = area.total;
-  document.getElementById('completedInput').placeholder = `0 to ${area.total}`;
+
+  const subAreaLabel = document.getElementById('subAreaLabel');
+  const subAreaSelect = document.getElementById('subAreaSelect');
+  if (area.subAreas && area.subAreas.length) {
+    subAreaLabel.style.display = '';
+    subAreaSelect.required = true;
+    subAreaSelect.innerHTML = area.subAreas.map(s => `<option value="${s.id}">${s.name} — ${s.total} ${area.unitLabel}</option>`).join('');
+    renderCompletedLimit();
+  } else {
+    subAreaLabel.style.display = 'none';
+    subAreaSelect.required = false;
+    subAreaSelect.innerHTML = '';
+    document.getElementById('completedInput').max = area.total;
+    document.getElementById('completedInput').placeholder = `0 to ${area.total}`;
+  }
+}
+
+function renderCompletedLimit() {
+  const area = trackerData.areas.find(a => a.id === document.getElementById('areaSelect').value) || trackerData.areas[0];
+  const subAreaId = document.getElementById('subAreaSelect').value;
+  const sub = area.subAreas ? area.subAreas.find(s => s.id === subAreaId) : null;
+  const max = sub ? sub.total : area.total;
+  document.getElementById('completedInput').max = max;
+  document.getElementById('completedInput').placeholder = `0 to ${max}`;
 }
 
 function renderChart() {
@@ -85,16 +117,23 @@ function renderChart() {
   if (areaChart) areaChart.destroy();
   areaChart = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [{ label: '% Complete', data: values }]
-    },
-    options: {
-      responsive: true,
-      scales: { y: { beginAtZero: true, max: 100 } },
-      plugins: { legend: { display: false } }
-    }
+    data: { labels, datasets: [{ label: '% Complete', data: values }] },
+    options: { responsive: true, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } }
   });
+}
+
+function renderSubAreas(area) {
+  if (!area.subAreas || !area.subAreas.length) return '';
+  return `
+    <div class="log-list">
+      ${area.subAreas.map(sub => `
+        <div class="log-item">
+          <strong>${sub.name}</strong>
+          <span>${sub.total} ${area.unitLabel} · ${subAreaPercent(area, sub)}% complete</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 function renderAreas() {
@@ -108,6 +147,7 @@ function renderAreas() {
         </div>
         <span class="badge">${areaPercent(area)}%</span>
       </div>
+      ${renderSubAreas(area)}
       ${area.stages.map(stage => {
         const done = getStageCompleted(area, stage);
         const percentage = pct(done, area.total);
@@ -144,8 +184,10 @@ function renderLogs() {
 
 async function saveProgress(event) {
   event.preventDefault();
+  const area = trackerData.areas.find(a => a.id === document.getElementById('areaSelect').value);
   const payload = {
     areaId: document.getElementById('areaSelect').value,
+    subAreaId: area && area.subAreas && area.subAreas.length ? document.getElementById('subAreaSelect').value : '',
     stage: document.getElementById('stageSelect').value,
     completed: document.getElementById('completedInput').value,
     enteredBy: document.getElementById('enteredByInput').value,
@@ -184,6 +226,7 @@ async function saveNote(event) {
 }
 
 document.getElementById('areaSelect').addEventListener('change', renderStageSelect);
+document.getElementById('subAreaSelect').addEventListener('change', renderCompletedLimit);
 document.getElementById('progressForm').addEventListener('submit', saveProgress);
 document.getElementById('noteForm').addEventListener('submit', saveNote);
 document.getElementById('refreshBtn').addEventListener('click', loadData);
