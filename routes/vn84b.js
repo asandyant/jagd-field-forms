@@ -4,8 +4,9 @@ const path = require('path');
 
 const router = express.Router();
 
-const dataDir = path.join(__dirname, '..', 'data');
-const dataFile = path.join(dataDir, 'vn84b-tracker.json');
+const configuredDataFile = process.env.VN84B_DATA_PATH || '';
+const dataFile = configuredDataFile || path.join(__dirname, '..', 'data', 'vn84b-tracker.json');
+const dataDir = path.dirname(dataFile);
 
 const bearingSubAreas = [
   { id: 'abutment', name: 'Abutment', total: 10 },
@@ -122,6 +123,15 @@ function clampNumber(value, min, max) {
   if (Number.isNaN(n)) return min;
   return Math.max(min, Math.min(max, n));
 }
+
+
+router.get('/api/vn84b/storage', (req, res) => {
+  res.json({
+    dataFile,
+    usingPersistentPath: Boolean(process.env.VN84B_DATA_PATH),
+    updatedAt: fs.existsSync(dataFile) ? fs.statSync(dataFile).mtime.toISOString() : null
+  });
+});
 
 router.get('/api/vn84b', (req, res) => {
   try {
