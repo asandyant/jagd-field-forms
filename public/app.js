@@ -43,6 +43,15 @@ const PROJECT_OPTIONS = [
   'Warehouse',
   'Other'
 ];
+let portalProjectOptions = [];
+let portalProjectOptionsLoaded = false;
+try {
+  const cachedJobs = JSON.parse(localStorage.getItem('jagdPortalJobOptions') || '[]');
+  if (Array.isArray(cachedJobs) && cachedJobs.length) {
+    portalProjectOptions = cachedJobs.filter(Boolean);
+    portalProjectOptionsLoaded = true;
+  }
+} catch (e) {}
 const DAILY_EQUIPMENT_URL = 'https://jagdconstruction.github.io/daily_equipment_inspection/';
 let activeWorkers = [];
 let serverMaterials = [];
@@ -223,9 +232,45 @@ function textarea(id,label){return `<div><label for="${id}">${label}</label><tex
 function selectField(id,label,opts){return `<div><label for="${id}">${label}</label><select id="${id}">${opts.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></div>`;}
 function checkboxField(id,label){return `<label class="checkPill"><input id="${id}" type="checkbox"> <span>${label}</span></label>`;}
 function isChecked(id){return !!document.getElementById(id)?.checked;}
-function projectField(id,label='Project / Job'){return `<div><label for="${id}">${label}</label><select id="${id}" class="projectSelect">${PROJECT_OPTIONS.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select><input id="${id}Other" class="projectOther" type="text" placeholder="Enter project name" style="display:none;margin-top:8px"></div>`;}
-function setupOtherProject(id){const sel=document.getElementById(id), other=document.getElementById(id+'Other'); if(!sel||!other)return; const sync=()=>{other.style.display = sel.value==='Other' ? 'block' : 'none'; if(sel.value==='Other') other.focus();}; sel.addEventListener('change',sync); sync();}
+function uniqueList(vals){ const out=[]; const seen=new Set(); (vals||[]).forEach(v=>{ const s=String(v||'').trim(); if(!s) return; const k=s.toLowerCase(); if(seen.has(k)) return; seen.add(k); out.push(s); }); return out; }
+function portalJobBaseOptions(){
+  const portal = uniqueList(portalProjectOptions);
+  if (portalProjectOptionsLoaded && portal.length) return portal;
+  return uniqueList(PROJECT_OPTIONS.filter(o=>o && o !== 'Other' && o !== 'Warehouse'));
+}
+function projectOptions(){ return ['', ...portalJobBaseOptions(), 'Other']; }
+function optionTags(opts, selected=''){ return (opts||[]).map(o=>`<option value="${esc(o)}" ${o===selected?'selected':''}>${esc(o)}</option>`).join(''); }
+function projectField(id,label='Project / Job'){return `<div><label for="${id}">${label}</label><select id="${id}" class="projectSelect">${optionTags(projectOptions())}</select><input id="${id}Other" class="projectOther" type="text" placeholder="Enter project name" style="display:none;margin-top:8px"></div>`;}
+function setupOtherProject(id){const sel=document.getElementById(id), other=document.getElementById(id+'Other'); if(!sel||!other)return; refreshProjectSelectOptions(sel); const sync=()=>{other.style.display = sel.value==='Other' ? 'block' : 'none'; if(sel.value==='Other') other.focus();}; sel.addEventListener('change',sync); sync();}
 function projectValue(id){const sel=document.getElementById(id); if(!sel)return ''; return sel.value==='Other' ? val(id+'Other') : sel.value;}
+function refreshProjectSelectOptions(sel){
+  if(!sel || !sel.classList || !sel.classList.contains('projectSelect')) return;
+  const current = sel.value;
+  const id = sel.id || '';
+  let opts = (id === 'bolFromLocation' || id === 'bolToJob') ? bolLocationOptions() : projectOptions();
+  if(current && !opts.includes(current)) {
+    const otherIdx = opts.indexOf('Other');
+    if(otherIdx >= 0) opts = [...opts.slice(0, otherIdx), current, ...opts.slice(otherIdx)];
+    else opts = [...opts, current];
+  }
+  sel.innerHTML = optionTags(opts, current);
+}
+function applyPortalJobOptionsToSelects(){ document.querySelectorAll('select.projectSelect').forEach(refreshProjectSelectOptions); }
+async function loadPortalJobOptions(force=false){
+  if(portalProjectOptionsLoaded && !force) { applyPortalJobOptionsToSelects(); }
+  try{
+    const r = await fetch('/api/jobs?t=' + Date.now(), { cache:'no-store' });
+    const json = await r.json();
+    const rows = Array.isArray(json.rows) ? json.rows : [];
+    const names = uniqueList(rows.map(j=>typeof j === 'string' ? j : (j.name || j.jobName || j.project || '')));
+    if(names.length){
+      portalProjectOptions = names;
+      portalProjectOptionsLoaded = true;
+      try { localStorage.setItem('jagdPortalJobOptions', JSON.stringify(names)); } catch(e) {}
+      applyPortalJobOptionsToSelects();
+    }
+  }catch(e){ console.warn('Portal job list unavailable; using cached/static job list.', e.message || e); }
+}
 function crewField(id,label='Crew'){return `<div><label for="${id}">${label}</label><select id="${id}" class="crewSelect">${CREW_OPTIONS.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select><input id="${id}Other" class="projectOther" type="text" placeholder="Enter crew" style="display:none;margin-top:8px"></div>`;}
 function setupOtherCrew(id){const sel=document.getElementById(id), other=document.getElementById(id+'Other'); if(!sel||!other)return; const sync=()=>{other.style.display = sel.value==='Other' ? 'block' : 'none'; if(sel.value==='Other') other.focus();}; sel.addEventListener('change',sync); sync();}
 function crewValue(id){const sel=document.getElementById(id); if(!sel)return ''; return sel.value==='Other' ? val(id+'Other') : sel.value;}
@@ -1830,9 +1875,8 @@ function extraRadio(name, opts=['Yes','No']){return `<div class="choiceBtns extr
 function radioVal(name){const el=document.querySelector(`[name="${name}"]:checked`); return el?el.value:'';}
 
 function bolLocationOptions(){
-  const base=['','Warehouse','Main Yard','Shop'];
-  const merged=[...base, ...PROJECT_OPTIONS.filter(x=>x && !['Warehouse'].includes(x)), 'Other'];
-  return [...new Set(merged)];
+  const vals = uniqueList(['Warehouse','Main Yard','Shop', ...portalJobBaseOptions(), 'Other']);
+  return ['', ...vals];
 }
 function bolLocationField(id,label){
   return `<div><label for="${id}">${label}</label><select id="${id}" class="projectSelect">${bolLocationOptions().map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select><input id="${id}Other" class="projectOther" type="text" placeholder="Enter location / job" style="display:none;margin-top:8px"></div>`;
@@ -2144,7 +2188,7 @@ function adminDailyWeekChecklist(dailyRows){
 
 function adminWeekBlock(label, rows){return `<details class="adminDetail"><summary>${esc(label)} — ${rows.length} weekly form(s)</summary><ul>${rows.map(r=>`<li>${r.test?'<b class="testBadge">TEST</b> ':''}${esc(formLabel(r.type))} — ${esc(r.title||'Weekly Safety')} <small>${dateToDisplay(r.date)}</small>${adminLogActions(r)}</li>`).join('')}</ul></details>`;}
 function adminProjectOptions(selected=''){
-  const vals=[...PROJECT_OPTIONS.filter(Boolean)];
+  let vals=[...portalJobBaseOptions()];
   if(selected && !vals.includes(selected)) vals.unshift(selected);
   return vals.map(p=>`<option value="${esc(p)}" ${p===selected?'selected':''}>${esc(p)}</option>`).join('');
 }
@@ -2274,4 +2318,4 @@ window.addEventListener('beforeprint',()=>{
   if(h.startsWith('#/heavy-accident-report') && document.getElementById('harProject')) buildHeavyAccidentPrint();
   if(h.startsWith('#/disciplinary-report') && document.getElementById('drProject')) buildDisciplinaryPrint();
 });
-window.addEventListener('hashchange',router); router();
+window.addEventListener('hashchange',()=>{ router(); loadPortalJobOptions(); }); router(); loadPortalJobOptions();

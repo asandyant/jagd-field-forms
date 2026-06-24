@@ -1,4 +1,3 @@
-const vn84bRoutes = require('./routes/vn84b');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -14,10 +13,12 @@ const WEEKLY_MEETINGS_FILE = path.join(DATA_DIR, 'weekly-meetings.json');
 const FORM_LOGS_FILE = path.join(DATA_DIR, 'form-logs.json');
 const WORKERS_FILE = path.join(DATA_DIR, 'workers.json');
 const WORKERS_VERSION_FILE = path.join(DATA_DIR, 'workers-source-version.json');
+const JOBS_FILE = path.join(DATA_DIR, 'portal-jobs.json');
 const BUILT_IN_WORKERS_VERSION_FILE = path.join(__dirname, 'public', 'data', 'active-workers-version.json');
 const MATERIALS_FILE = path.join(DATA_DIR, 'materials.json');
 const ADMIN_PIN = process.env.ADMIN_PIN || process.env.ADMIN_PASSWORD || 'JadgForms123!!!';
 const PORTAL_ACTIVE_WORKERS_URL = process.env.PORTAL_ACTIVE_WORKERS_URL || 'https://portal.jagdapps.com/api/forms/active-workers';
+const PORTAL_JOBS_URL = process.env.PORTAL_JOBS_URL || 'https://portal.jagdapps.com/api/forms/jobs';
 const PORTAL_SYNC_TOKEN = process.env.PORTAL_SYNC_TOKEN || process.env.FORMS_SYNC_TOKEN || '';
 const PORTAL_WORKER_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_WORKER_SYNC_TIMEOUT_MS || 4000);
 const PORTAL_DWL_SUBMIT_URL = process.env.PORTAL_DWL_SUBMIT_URL || 'https://portal.jagdapps.com/api/forms/dwl/submit';
@@ -42,6 +43,7 @@ if (!fs.existsSync(WORKERS_FILE)) {
   const seed = path.join(__dirname, 'public', 'data', 'active-workers.json');
   fs.writeFileSync(WORKERS_FILE, fs.existsSync(seed) ? fs.readFileSync(seed, 'utf8') : '[]');
 }
+if (!fs.existsSync(JOBS_FILE)) fs.writeFileSync(JOBS_FILE, '[]');
 if (!fs.existsSync(MATERIALS_FILE)) {
   const seeds = ['gwb-materials.json', 'dyre-materials.json'];
   let mats = [];
@@ -71,7 +73,6 @@ app.use(express.static(path.join(__dirname, 'public'), {
     if (/\.(html|js|css)$/i.test(filePath)) res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   }
 }));
-app.use(vn84bRoutes);
 app.use('/uploads', express.static(UPLOAD_DIR));
 
 function readSubmissions() {
@@ -187,6 +188,62 @@ async function fetchPortalActiveWorkers() {
   } finally {
     clearTimeout(timer);
   }
+}
+
+
+function normalizeJobRows(rows = []) {
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : [])
+    .map(row => cleanText(typeof row === 'string' ? row : (row.name || row.jobName || row.project || '')))
+    .filter(name => name && !['Other'].includes(name))
+    .filter(name => {
+      const key = name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.localeCompare(b));
+}
+function readCachedJobs() {
+  try {
+    const rows = JSON.parse(fs.readFileSync(JOBS_FILE, 'utf8'));
+    return normalizeJobRows(rows);
+  } catch (e) {
+    return [];
+  }
+}
+function writeCachedJobs(rows = []) {
+  fs.writeFileSync(JOBS_FILE, JSON.stringify(normalizeJobRows(rows), null, 2));
+}
+async function fetchPortalJobs() {
+  if (!PORTAL_JOBS_URL) return [];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PORTAL_WORKER_SYNC_TIMEOUT_MS);
+  try {
+    const headers = { Accept: 'application/json' };
+    if (PORTAL_SYNC_TOKEN) headers['X-Forms-Sync-Token'] = PORTAL_SYNC_TOKEN;
+    const res = await fetch(PORTAL_JOBS_URL, { headers, signal: controller.signal });
+    const text = await res.text();
+    const json = text ? JSON.parse(text) : {};
+    if (!res.ok) throw new Error(json.error || `Portal jobs returned HTTP ${res.status}`);
+    const rows = Array.isArray(json.rows) ? json.rows : (Array.isArray(json) ? json : []);
+    return normalizeJobRows(rows);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function readJobsWithPortalSync() {
+  try {
+    const portalRows = await fetchPortalJobs();
+    if (portalRows.length) {
+      writeCachedJobs(portalRows);
+      return { rows: portalRows, source: 'portal-live', portalCount: portalRows.length };
+    }
+  } catch (err) {
+    console.warn('Portal job sync unavailable; using Field Forms cached job list:', err.message || err);
+  }
+  const cached = readCachedJobs();
+  return { rows: cached, source: cached.length ? 'forms-cache' : 'forms-static', portalCount: 0 };
 }
 
 async function readWorkersWithPortalSync() {
@@ -674,6 +731,16 @@ app.post('/api/dwl/portal-sync', async (req, res) => {
     logRow.updatedAt = new Date().toISOString();
     writeDwlPortalSyncLog(rows);
     res.status(202).json({ ok: false, status: 'failed', id: syncId, error: logRow.error, manualUploadNeeded: true, message: `${dateToDisplay(reportDate)} DWL failed to import to portal. Office may need manual upload.` });
+  }
+});
+
+
+app.get('/api/jobs', async (req, res) => {
+  try {
+    const result = await readJobsWithPortalSync();
+    res.json({ ok: true, generatedAt: new Date().toISOString(), ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || 'Job list unavailable', rows: [] });
   }
 });
 
