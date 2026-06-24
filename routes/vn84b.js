@@ -70,10 +70,10 @@ const defaultData = {
     {
       id: 'belt-parkway-jacking',
       name: 'Belt Parkway Jacking Locations',
-      description: '13 piers / jacking locations: power tool prep, zinc, midcoat, finish coat',
+      description: '13 piers / jacking locations: power tool prep only',
       unitLabel: 'piers',
       total: 13,
-      stages: ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'],
+      stages: ['Power Tool Prep'],
       items: []
     }
   ],
@@ -94,6 +94,15 @@ function migrateData(data) {
     bearings.total = 230;
     bearings.description = '230 bearings broken out by Abutment and SP1–SP12. Each stage counts as its own 100% billing item: power tool, zinc, midcoat, finish.';
     bearings.subAreas = bearingSubAreas;
+    bearings.stages = ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'];
+  }
+  const jacking = data.areas && data.areas.find(a => a.id === 'belt-parkway-jacking');
+  if (jacking) {
+    jacking.description = '13 piers / jacking locations: power tool prep only';
+    jacking.unitLabel = 'piers';
+    jacking.total = 13;
+    jacking.stages = ['Power Tool Prep'];
+    if (!Array.isArray(jacking.items)) jacking.items = [];
   }
   return data;
 }
