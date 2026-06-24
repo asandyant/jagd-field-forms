@@ -1,6 +1,22 @@
 let trackerData = null;
 let areaChart = null;
 
+const AREA_COLORS = {
+  'blue-bridge-87': { name: 'Blue Bridge 87', color: '#2563eb', soft: '#eff6ff' },
+  'belt-parkway-bearings': { name: 'Belt Parkway Bearings', color: '#ca8a04', soft: '#fefce8' },
+  'blue-bridge-237-crosses': { name: 'Blue Bridge 237 New Crosses', color: '#16a34a', soft: '#f0fdf4' },
+  'orange-bridge-piers': { name: 'Orange Bridge Piers', color: '#f97316', soft: '#fff7ed' },
+  'belt-parkway-jacking': { name: 'Belt Parkway Jacking Locations', color: '#dc2626', soft: '#fef2f2' }
+};
+
+function areaColor(area) {
+  return AREA_COLORS[area.id] || { color: '#334155', soft: '#f8fafc' };
+}
+
+function storeBrowserBackup(data) {
+  try { localStorage.setItem('vn84bLastGoodBackup', JSON.stringify(data)); } catch (e) {}
+}
+
 function pct(done, total) {
   if (!total) return 0;
   return Math.round((done / total) * 1000) / 10;
@@ -74,6 +90,7 @@ async function loadData() {
   const res = await fetch('/api/vn84b', { cache: 'no-store' });
   if (!res.ok) throw new Error('Could not load tracker data');
   trackerData = await res.json();
+  storeBrowserBackup(trackerData);
   render();
 }
 
@@ -90,14 +107,17 @@ function render() {
 
 function renderSummary() {
   const grid = document.getElementById('summaryGrid');
-  grid.innerHTML = trackerData.areas.map((area, index) => `
-    <article class="summary-card card-color-${(index % 5) + 1}">
-      <h3>${area.name}</h3>
-      <strong>${billingPercent(area)}%</strong>
-      <p>Billing earned · ${areaPercent(area)}% physical complete</p>
-      <small>${area.total.toLocaleString()} ${area.unitLabel}</small>
-    </article>
-  `).join('');
+  grid.innerHTML = trackerData.areas.map((area) => {
+    const c = areaColor(area);
+    return `
+      <article class="summary-card" style="--area-color:${c.color}; --area-soft:${c.soft};">
+        <h3>${area.name}</h3>
+        <strong>${billingPercent(area)}%</strong>
+        <p>Billing earned · ${areaPercent(area)}% physical complete</p>
+        <small>${area.total.toLocaleString()} ${area.unitLabel}</small>
+      </article>
+    `;
+  }).join('');
 }
 
 function renderAreaSelects() {
@@ -152,8 +172,8 @@ function renderChart() {
       datasets: [{
         label: 'Billing earned %',
         data: values,
-        backgroundColor: ['#2563eb', '#f97316', '#16a34a', '#9333ea', '#dc2626'],
-        borderColor: ['#1d4ed8', '#ea580c', '#15803d', '#7e22ce', '#b91c1c'],
+        backgroundColor: trackerData.areas.map(a => areaColor(a).color),
+        borderColor: trackerData.areas.map(a => areaColor(a).color),
         borderWidth: 1
       }]
     },
@@ -182,7 +202,7 @@ function renderSubAreas(area) {
 function renderAreas() {
   const list = document.getElementById('areaList');
   list.innerHTML = trackerData.areas.map(area => `
-    <article class="area-card">
+    <article class="area-card" style="--area-color:${areaColor(area).color}; --area-soft:${areaColor(area).soft};">
       <div class="area-head">
         <div>
           <h3>${area.name}</h3>
@@ -243,6 +263,7 @@ async function saveProgress(event) {
   });
   if (!res.ok) throw new Error('Could not save progress');
   trackerData = await res.json();
+  storeBrowserBackup(trackerData);
   document.getElementById('saveMessage').textContent = 'Progress saved.';
   document.getElementById('completedInput').value = '';
   document.getElementById('noteInput').value = '';
@@ -264,8 +285,57 @@ async function saveNote(event) {
   });
   if (!res.ok) throw new Error('Could not save note');
   trackerData = await res.json();
+  storeBrowserBackup(trackerData);
   document.getElementById('fieldNoteInput').value = '';
   render();
+}
+
+
+function exportBackup() {
+  if (!trackerData) return;
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const blob = new Blob([JSON.stringify(trackerData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `vn84b-tracker-backup-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function restoreBackupFile(file) {
+  const text = await file.text();
+  const data = JSON.parse(text);
+  if (!data || !Array.isArray(data.areas)) throw new Error('That backup file does not look like VN84-B tracker data.');
+  if (!confirm('Restore this VN84-B backup? This will replace the current tracker data.')) return;
+  const res = await fetch('/api/vn84b/restore', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Could not restore backup');
+  trackerData = await res.json();
+  storeBrowserBackup(trackerData);
+  render();
+  alert('VN84-B backup restored.');
+}
+
+async function restoreBrowserBackup() {
+  const raw = localStorage.getItem('vn84bLastGoodBackup');
+  if (!raw) return alert('No browser backup found on this device yet.');
+  const data = JSON.parse(raw);
+  if (!confirm('Restore the last VN84-B backup saved in this browser?')) return;
+  const res = await fetch('/api/vn84b/restore', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Could not restore browser backup');
+  trackerData = await res.json();
+  render();
+  alert('Browser backup restored.');
 }
 
 document.getElementById('areaSelect').addEventListener('change', renderStageSelect);
@@ -273,4 +343,12 @@ document.getElementById('subAreaSelect').addEventListener('change', renderComple
 document.getElementById('progressForm').addEventListener('submit', saveProgress);
 document.getElementById('noteForm').addEventListener('submit', saveNote);
 document.getElementById('refreshBtn').addEventListener('click', loadData);
+document.getElementById('backupBtn').addEventListener('click', exportBackup);
+document.getElementById('restoreBtn').addEventListener('click', () => document.getElementById('restoreFile').click());
+document.getElementById('restoreFile').addEventListener('change', event => {
+  const file = event.target.files && event.target.files[0];
+  if (file) restoreBackupFile(file).catch(err => alert(err.message));
+  event.target.value = '';
+});
+window.vn84bRestoreBrowserBackup = restoreBrowserBackup;
 loadData().catch(err => alert(err.message));

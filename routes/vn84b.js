@@ -105,6 +105,14 @@ function readData() {
 
 function writeData(data) {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  if (fs.existsSync(dataFile)) {
+    try {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      fs.copyFileSync(dataFile, path.join(dataDir, `vn84b-tracker-backup-${stamp}.json`));
+    } catch (backupErr) {
+      console.warn('VN84-B backup warning:', backupErr.message);
+    }
+  }
   data.updatedAt = new Date().toISOString();
   fs.writeFileSync(dataFile, JSON.stringify(migrateData(data), null, 2));
 }
@@ -175,6 +183,31 @@ router.post('/api/vn84b/progress', express.json({ limit: '2mb' }), (req, res) =>
   } catch (err) {
     console.error('VN84-B progress save error:', err);
     res.status(500).json({ error: 'Could not save VN84-B progress.' });
+  }
+});
+
+
+router.post('/api/vn84b/restore', express.json({ limit: '10mb' }), (req, res) => {
+  try {
+    const data = req.body;
+    if (!data || !Array.isArray(data.areas)) return res.status(400).json({ error: 'Invalid VN84-B backup file.' });
+    writeData(data);
+    res.json(readData());
+  } catch (err) {
+    console.error('VN84-B restore error:', err);
+    res.status(500).json({ error: 'Could not restore VN84-B backup.' });
+  }
+});
+
+router.get('/api/vn84b/backup', (req, res) => {
+  try {
+    const data = readData();
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="vn84b-tracker-backup.json"');
+    res.send(JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error('VN84-B backup download error:', err);
+    res.status(500).json({ error: 'Could not download VN84-B backup.' });
   }
 });
 

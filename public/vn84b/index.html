@@ -30,7 +30,12 @@
           <h2>Progress by Work Area</h2>
           <p>Billing view: each stage is its own 100% item. Power Tool 100%, Zinc 100%, Midcoat 100%, Finish 100% = 400% billing earned per area.</p>
         </div>
-        <button id="refreshBtn" type="button">Refresh</button>
+        <div class="panel-actions">
+          <button id="refreshBtn" type="button">Refresh</button>
+          <button id="backupBtn" type="button">Export Backup</button>
+          <button id="restoreBtn" type="button">Import Backup</button>
+          <input id="restoreFile" type="file" accept="application/json" hidden />
+        </div>
       </div>
       <canvas id="areaChart" height="130"></canvas>
     </section>
