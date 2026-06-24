@@ -28,6 +28,27 @@ function areaPercent(area) {
   return pct(completedSteps, totalSteps);
 }
 
+function stagePercent(area, stage, subAreaId = null) {
+  const total = subAreaId && area.subAreas ? (area.subAreas.find(s => s.id === subAreaId) || {}).total : area.total;
+  return pct(getStageCompleted(area, stage, subAreaId), total || 0);
+}
+
+function billingPercent(area) {
+  return Math.round(area.stages.reduce((sum, stage) => sum + stagePercent(area, stage), 0) * 10) / 10;
+}
+
+function subAreaBillingPercent(area, sub) {
+  return Math.round(area.stages.reduce((sum, stage) => sum + stagePercent(area, stage, sub.id), 0) * 10) / 10;
+}
+
+function stageClass(stage) {
+  if (/power/i.test(stage)) return 'stage-power';
+  if (/zinc/i.test(stage)) return 'stage-zinc';
+  if (/mid/i.test(stage)) return 'stage-mid';
+  if (/finish/i.test(stage)) return 'stage-finish';
+  return 'stage-default';
+}
+
 function subAreaPercent(area, sub) {
   const totalSteps = sub.total * area.stages.length;
   const completedSteps = area.stages.reduce((sum, stage) => sum + getStageCompleted(area, stage, sub.id), 0);
@@ -43,6 +64,12 @@ function overallPercent(data) {
   return pct(totals.done, totals.total);
 }
 
+function overallBillingPercent(data) {
+  const perArea = data.areas.map(area => billingPercent(area));
+  if (!perArea.length) return 0;
+  return Math.round((perArea.reduce((a,b)=>a+b,0) / perArea.length) * 10) / 10;
+}
+
 async function loadData() {
   const res = await fetch('/api/vn84b', { cache: 'no-store' });
   if (!res.ok) throw new Error('Could not load tracker data');
@@ -52,6 +79,8 @@ async function loadData() {
 
 function render() {
   document.getElementById('overallPercent').textContent = `${overallPercent(trackerData)}%`;
+  const billingEl = document.getElementById('overallBillingPercent');
+  if (billingEl) billingEl.textContent = `${overallBillingPercent(trackerData)}%`;
   renderSummary();
   renderAreaSelects();
   renderChart();
@@ -61,11 +90,12 @@ function render() {
 
 function renderSummary() {
   const grid = document.getElementById('summaryGrid');
-  grid.innerHTML = trackerData.areas.map(area => `
-    <article class="summary-card">
+  grid.innerHTML = trackerData.areas.map((area, index) => `
+    <article class="summary-card card-color-${(index % 5) + 1}">
       <h3>${area.name}</h3>
-      <strong>${areaPercent(area)}%</strong>
-      <p>${area.total.toLocaleString()} ${area.unitLabel}</p>
+      <strong>${billingPercent(area)}%</strong>
+      <p>Billing earned · ${areaPercent(area)}% physical complete</p>
+      <small>${area.total.toLocaleString()} ${area.unitLabel}</small>
     </article>
   `).join('');
 }
@@ -113,12 +143,25 @@ function renderCompletedLimit() {
 function renderChart() {
   const ctx = document.getElementById('areaChart');
   const labels = trackerData.areas.map(a => a.name);
-  const values = trackerData.areas.map(a => areaPercent(a));
+  const values = trackerData.areas.map(a => billingPercent(a));
   if (areaChart) areaChart.destroy();
   areaChart = new Chart(ctx, {
     type: 'bar',
-    data: { labels, datasets: [{ label: '% Complete', data: values }] },
-    options: { responsive: true, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } }
+    data: {
+      labels,
+      datasets: [{
+        label: 'Billing earned %',
+        data: values,
+        backgroundColor: ['#2563eb', '#f97316', '#16a34a', '#9333ea', '#dc2626'],
+        borderColor: ['#1d4ed8', '#ea580c', '#15803d', '#7e22ce', '#b91c1c'],
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: { y: { beginAtZero: true, max: 400, ticks: { callback: value => value + '%' } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.raw}% billing earned` } } }
+    }
   });
 }
 
@@ -129,7 +172,7 @@ function renderSubAreas(area) {
       ${area.subAreas.map(sub => `
         <div class="log-item">
           <strong>${sub.name}</strong>
-          <span>${sub.total} ${area.unitLabel} · ${subAreaPercent(area, sub)}% complete</span>
+          <span>${sub.total} ${area.unitLabel} · ${subAreaBillingPercent(area, sub)}% billing earned · ${subAreaPercent(area, sub)}% physical</span>
         </div>
       `).join('')}
     </div>
@@ -145,15 +188,15 @@ function renderAreas() {
           <h3>${area.name}</h3>
           <p>${area.description}</p>
         </div>
-        <span class="badge">${areaPercent(area)}%</span>
+        <span class="badge">${billingPercent(area)}% billing</span>
       </div>
       ${renderSubAreas(area)}
       ${area.stages.map(stage => {
         const done = getStageCompleted(area, stage);
         const percentage = pct(done, area.total);
         return `
-          <div class="stage-row">
-            <div class="stage-top"><strong>${stage}</strong><span>${done.toLocaleString()} / ${area.total.toLocaleString()} ${area.unitLabel} · ${percentage}%</span></div>
+          <div class="stage-row ${stageClass(stage)}">
+            <div class="stage-top"><strong>${stage}</strong><span>${done.toLocaleString()} / ${area.total.toLocaleString()} ${area.unitLabel} · ${percentage}% of this billing step</span></div>
             <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, percentage)}%"></div></div>
           </div>
         `;
@@ -168,7 +211,7 @@ function renderLogs() {
     <div class="log-item">
       <strong>${row.areaName} — ${row.stage}</strong>
       <span>${fmtDate(row.timestamp)}${row.enteredBy ? ` · ${row.enteredBy}` : ''}</span>
-      <p>${Number(row.completed).toLocaleString()} / ${Number(row.total).toLocaleString()} complete${row.note ? ` — ${row.note}` : ''}</p>
+      <p>${Number(row.completed).toLocaleString()} / ${Number(row.total).toLocaleString()} complete for this billing step${row.note ? ` — ${row.note}` : ''}</p>
     </div>
   `).join('') || '<p>No production entries yet.</p>';
 

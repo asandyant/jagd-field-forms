@@ -40,7 +40,7 @@ const defaultData = {
     {
       id: 'belt-parkway-bearings',
       name: 'Belt Parkway Bearings',
-      description: '230 bearings broken out by Abutment and SP1–SP12: power tool prep, zinc, midcoat, finish coat',
+      description: '230 bearings broken out by Abutment and SP1–SP12. Each stage counts as its own 100% billing item: power tool, zinc, midcoat, finish.',
       unitLabel: 'bearings',
       total: 230,
       subAreas: bearingSubAreas,
@@ -91,7 +91,7 @@ function migrateData(data) {
   const bearings = data.areas && data.areas.find(a => a.id === 'belt-parkway-bearings');
   if (bearings) {
     bearings.total = 230;
-    bearings.description = '230 bearings broken out by Abutment and SP1–SP12: power tool prep, zinc, midcoat, finish coat';
+    bearings.description = '230 bearings broken out by Abutment and SP1–SP12. Each stage counts as its own 100% billing item: power tool, zinc, midcoat, finish.';
     bearings.subAreas = bearingSubAreas;
   }
   return data;

@@ -114,3 +114,31 @@ input, select, textarea {
   .topbar { color: #000; background: #fff; border-bottom: 2px solid #000; }
   .panel, .area-card, .summary-card { box-shadow: none; break-inside: avoid; }
 }
+
+
+/* VN84-B billing/color update */
+.summary-card { position: relative; overflow: hidden; }
+.summary-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 7px; }
+.summary-card small { display: block; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.card-color-1::before { background: #2563eb; }
+.card-color-2::before { background: #f97316; }
+.card-color-3::before { background: #16a34a; }
+.card-color-4::before { background: #9333ea; }
+.card-color-5::before { background: #dc2626; }
+.card-color-1 strong { color: #2563eb; }
+.card-color-2 strong { color: #f97316; }
+.card-color-3 strong { color: #16a34a; }
+.card-color-4 strong { color: #9333ea; }
+.card-color-5 strong { color: #dc2626; }
+.status-card em { display: block; margin-top: 8px; font-style: normal; opacity: .95; }
+.stage-row { border-left: 5px solid transparent; padding-left: 10px; }
+.stage-power { border-left-color: #2563eb; }
+.stage-zinc { border-left-color: #f97316; }
+.stage-mid { border-left-color: #16a34a; }
+.stage-finish { border-left-color: #9333ea; }
+.stage-power .progress-fill { background: linear-gradient(90deg, #93c5fd, #2563eb); }
+.stage-zinc .progress-fill { background: linear-gradient(90deg, #fed7aa, #f97316); }
+.stage-mid .progress-fill { background: linear-gradient(90deg, #86efac, #16a34a); }
+.stage-finish .progress-fill { background: linear-gradient(90deg, #d8b4fe, #9333ea); }
+.stage-default .progress-fill { background: linear-gradient(90deg, var(--blue), var(--orange)); }
+.badge { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
