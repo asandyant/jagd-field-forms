@@ -65,6 +65,15 @@ function stageClass(stage) {
   return 'stage-default';
 }
 
+
+function stageColor(stage) {
+  if (/power/i.test(stage)) return '#2563eb';
+  if (/zinc/i.test(stage)) return '#f97316';
+  if (/mid/i.test(stage)) return '#16a34a';
+  if (/finish/i.test(stage)) return '#9333ea';
+  return '#334155';
+}
+
 function subAreaPercent(area, sub) {
   const totalSteps = sub.total * area.stages.length;
   const completedSteps = area.stages.reduce((sum, stage) => sum + getStageCompleted(area, stage, sub.id), 0);
@@ -113,7 +122,7 @@ function renderSummary() {
       <article class="summary-card" style="--area-color:${c.color}; --area-soft:${c.soft};">
         <h3>${area.name}</h3>
         <strong>${billingPercent(area)}%</strong>
-        <p>Billing earned · ${areaPercent(area)}% physical complete</p>
+        <p>Stage average · ${areaPercent(area)}% physical complete</p>
         <small>${area.total.toLocaleString()} ${area.unitLabel}</small>
       </article>
     `;
@@ -133,54 +142,77 @@ function renderAreaSelects() {
 
 function renderStageSelect() {
   const area = trackerData.areas.find(a => a.id === document.getElementById('areaSelect').value) || trackerData.areas[0];
-  document.getElementById('stageSelect').innerHTML = area.stages.map(s => `<option value="${s}">${s}</option>`).join('');
+  const stageSelect = document.getElementById('stageSelect');
+  const previousStage = stageSelect.value;
+  stageSelect.innerHTML = area.stages.map(s => `<option value="${s}">${s}</option>`).join('');
+  if (previousStage && area.stages.includes(previousStage)) stageSelect.value = previousStage;
 
   const subAreaLabel = document.getElementById('subAreaLabel');
   const subAreaSelect = document.getElementById('subAreaSelect');
+  const previousSubArea = subAreaSelect.value;
   if (area.subAreas && area.subAreas.length) {
     subAreaLabel.style.display = '';
     subAreaSelect.required = true;
     subAreaSelect.innerHTML = area.subAreas.map(s => `<option value="${s.id}">${s.name} — ${s.total} ${area.unitLabel}</option>`).join('');
-    renderCompletedLimit();
+    if (previousSubArea && area.subAreas.some(s => s.id === previousSubArea)) subAreaSelect.value = previousSubArea;
   } else {
     subAreaLabel.style.display = 'none';
     subAreaSelect.required = false;
     subAreaSelect.innerHTML = '';
-    document.getElementById('completedInput').max = area.total;
-    document.getElementById('completedInput').placeholder = `0 to ${area.total}`;
   }
+  renderCompletedLimit();
 }
 
 function renderCompletedLimit() {
   const area = trackerData.areas.find(a => a.id === document.getElementById('areaSelect').value) || trackerData.areas[0];
   const subAreaId = document.getElementById('subAreaSelect').value;
+  const stage = document.getElementById('stageSelect').value;
   const sub = area.subAreas ? area.subAreas.find(s => s.id === subAreaId) : null;
   const max = sub ? sub.total : area.total;
-  document.getElementById('completedInput').max = max;
-  document.getElementById('completedInput').placeholder = `0 to ${max}`;
+  const current = getStageCompleted(area, stage, sub ? sub.id : null);
+  const completedInput = document.getElementById('completedInput');
+  const help = document.getElementById('completedHelp');
+  completedInput.max = max;
+  completedInput.placeholder = `${current} of ${max} already entered`;
+  completedInput.value = current;
+  completedInput.classList.toggle('prefilled-progress', current > 0);
+  if (help) {
+    const locationText = sub ? `${sub.name} — ` : '';
+    help.textContent = `${locationText}${stage}: ${current} of ${max} ${area.unitLabel} already entered. Change the box only if the total to date is different.`;
+  }
 }
 
 function renderChart() {
   const ctx = document.getElementById('areaChart');
   const labels = trackerData.areas.map(a => a.name);
-  const values = trackerData.areas.map(a => billingPercent(a));
+  const stageNames = ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'];
+  const datasets = stageNames.map(stage => ({
+    label: stage,
+    data: trackerData.areas.map(area => area.stages.includes(stage) ? stagePercent(area, stage) : 0),
+    backgroundColor: stageColor(stage),
+    borderColor: stageColor(stage),
+    borderWidth: 1
+  }));
+
   if (areaChart) areaChart.destroy();
   areaChart = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Billing earned %',
-        data: values,
-        backgroundColor: trackerData.areas.map(a => areaColor(a).color),
-        borderColor: trackerData.areas.map(a => areaColor(a).color),
-        borderWidth: 1
-      }]
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
-      scales: { y: { beginAtZero: true, max: 400, ticks: { callback: value => value + '%' } } },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.raw}% billing earned` } } }
+      scales: {
+        y: {
+          beginAtZero: true,
+          max: 100,
+          ticks: { callback: value => value + '%' },
+          title: { display: true, text: 'Percent complete per stage' }
+        },
+        x: { stacked: false }
+      },
+      plugins: {
+        legend: { display: true, position: 'bottom' },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}% complete` } }
+      }
     }
   });
 }
@@ -192,7 +224,7 @@ function renderSubAreas(area) {
       ${area.subAreas.map(sub => `
         <div class="log-item">
           <strong>${sub.name}</strong>
-          <span>${sub.total} ${area.unitLabel} · ${subAreaBillingPercent(area, sub)}% billing earned · ${subAreaPercent(area, sub)}% physical</span>
+          <span>${sub.total} ${area.unitLabel} · ${subAreaBillingPercent(area, sub)}% stage avg · ${subAreaPercent(area, sub)}% physical</span>
         </div>
       `).join('')}
     </div>
@@ -208,7 +240,7 @@ function renderAreas() {
           <h3>${area.name}</h3>
           <p>${area.description}</p>
         </div>
-        <span class="badge">${billingPercent(area)}% billing</span>
+        <span class="badge">${billingPercent(area)}% stage avg</span>
       </div>
       ${renderSubAreas(area)}
       ${area.stages.map(stage => {
@@ -216,7 +248,7 @@ function renderAreas() {
         const percentage = pct(done, area.total);
         return `
           <div class="stage-row ${stageClass(stage)}">
-            <div class="stage-top"><strong>${stage}</strong><span>${done.toLocaleString()} / ${area.total.toLocaleString()} ${area.unitLabel} · ${percentage}% of this billing step</span></div>
+            <div class="stage-top"><strong>${stage}</strong><span>${done.toLocaleString()} / ${area.total.toLocaleString()} ${area.unitLabel} · ${percentage}% of this stage</span></div>
             <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, percentage)}%"></div></div>
           </div>
         `;
@@ -231,7 +263,7 @@ function renderLogs() {
     <div class="log-item">
       <strong>${row.areaName} — ${row.stage}</strong>
       <span>${fmtDate(row.timestamp)}${row.enteredBy ? ` · ${row.enteredBy}` : ''}</span>
-      <p>${Number(row.completed).toLocaleString()} / ${Number(row.total).toLocaleString()} complete for this billing step${row.note ? ` — ${row.note}` : ''}</p>
+      <p>${Number(row.completed).toLocaleString()} / ${Number(row.total).toLocaleString()} complete for this stage${row.note ? ` — ${row.note}` : ''}</p>
     </div>
   `).join('') || '<p>No production entries yet.</p>';
 
@@ -264,8 +296,7 @@ async function saveProgress(event) {
   if (!res.ok) throw new Error('Could not save progress');
   trackerData = await res.json();
   storeBrowserBackup(trackerData);
-  document.getElementById('saveMessage').textContent = 'Progress saved.';
-  document.getElementById('completedInput').value = '';
+  document.getElementById('saveMessage').textContent = 'Progress saved. Current total updated.';
   document.getElementById('noteInput').value = '';
   render();
   setTimeout(() => document.getElementById('saveMessage').textContent = '', 2500);
@@ -340,6 +371,7 @@ async function restoreBrowserBackup() {
 
 document.getElementById('areaSelect').addEventListener('change', renderStageSelect);
 document.getElementById('subAreaSelect').addEventListener('change', renderCompletedLimit);
+document.getElementById('stageSelect').addEventListener('change', renderCompletedLimit);
 document.getElementById('progressForm').addEventListener('submit', saveProgress);
 document.getElementById('noteForm').addEventListener('submit', saveNote);
 document.getElementById('refreshBtn').addEventListener('click', loadData);
