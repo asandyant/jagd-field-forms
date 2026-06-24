@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VN84-B Verrazzano Field Tracker</title>
+  <link rel="stylesheet" href="/vn84b/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">JAGD Construction</p>
+      <h1>VN84-B Verrazzano Field Tracker</h1>
+      <p class="subhead">Power Tool Prep → Zinc Coat → Midcoat → Finish Coat</p>
+    </div>
+    <div class="status-card">
+      <span>Overall Complete</span>
+      <strong id="overallPercent">0%</strong>
+    </div>
+  </header>
+
+  <main>
+    <section class="summary-grid" id="summaryGrid"></section>
+
+    <section class="panel chart-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Progress by Work Area</h2>
+          <p>Each power tool and paint item is split into 4 tracked steps.</p>
+        </div>
+        <button id="refreshBtn" type="button">Refresh</button>
+      </div>
+      <canvas id="areaChart" height="130"></canvas>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Update Production</h2>
+          <p>Enter total completed to date for the selected stage.</p>
+        </div>
+      </div>
+      <form id="progressForm" class="entry-form">
+        <label>
+          Work Area
+          <select id="areaSelect" required></select>
+        </label>
+        <label>
+          Stage
+          <select id="stageSelect" required></select>
+        </label>
+        <label>
+          Completed to Date
+          <input id="completedInput" type="number" min="0" step="1" required />
+        </label>
+        <label>
+          Entered By
+          <input id="enteredByInput" type="text" placeholder="Foreman / office name" />
+        </label>
+        <label class="wide">
+          Note / Issue
+          <input id="noteInput" type="text" placeholder="Optional note, issue, lane closure, access problem, etc." />
+        </label>
+        <button type="submit">Save Progress</button>
+      </form>
+      <p id="saveMessage" class="save-message"></p>
+    </section>
+
+    <section class="area-list" id="areaList"></section>
+
+    <section class="panel two-col">
+      <div>
+        <h2>Add Field Note</h2>
+        <form id="noteForm" class="note-form">
+          <label>
+            Area
+            <select id="noteAreaSelect"></select>
+          </label>
+          <label>
+            Entered By
+            <input id="noteEnteredByInput" type="text" />
+          </label>
+          <label>
+            Note
+            <textarea id="fieldNoteInput" rows="4" required placeholder="Add issue, access note, weather note, inspection note, etc."></textarea>
+          </label>
+          <button type="submit">Save Note</button>
+        </form>
+      </div>
+      <div>
+        <h2>Recent Notes</h2>
+        <div id="notesList" class="log-list"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Recent Production Log</h2>
+      <div id="dailyLog" class="log-list"></div>
+    </section>
+  </main>
+
+  <script src="/vn84b/app.js"></script>
+</body>
+</html>

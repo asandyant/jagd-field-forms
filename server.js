@@ -1,3 +1,4 @@
+const vn84bRoutes = require('./routes/vn84b');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -63,7 +64,8 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024, files: 24 } });
 
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public'), {
+app.use(express.static(path.join(__dirname, 'public')
+app.use(vn84bRoutes);, {
   etag: false,
   lastModified: false,
   setHeaders: (res, filePath) => {
