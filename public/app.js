@@ -1528,10 +1528,30 @@ function getDwlCrewNamesFromRows(){
   }
   return names;
 }
+function normalizeDwlCrewKeyPart(v){
+  return String(v||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+}
+function getDwlSelectedProjectCrew(){
+  const project=projectValue('dwlProject');
+  const crew=crewValue('dwlCrew');
+  return {project:normalizeCrewName(project), crew:normalizeCrewName(crew)};
+}
+function getDwlLastCrewStorageKey(project, crew){
+  const p=normalizeDwlCrewKeyPart(project);
+  const c=normalizeDwlCrewKeyPart(crew);
+  if(!p || !c) return '';
+  return `jagdDwlLastCrewNames:${p}:${c}`;
+}
 function saveDwlLastCrewFromRows(){
   try{
     const names=getDwlCrewNamesFromRows();
-    if(names.length) localStorage.setItem('jagdDwlLastCrewNames', JSON.stringify(names));
+    if(!names.length) return;
+    const selected=getDwlSelectedProjectCrew();
+    const key=getDwlLastCrewStorageKey(selected.project, selected.crew);
+    if(!key) return;
+    const cleanNames=names.map(normalizeCrewName).filter(Boolean).slice(0,40);
+    localStorage.setItem(key, JSON.stringify(cleanNames));
+    localStorage.setItem('jagdDwlLastCrewLastKey', key);
   }catch(e){}
 }
 function ensureDwlRows(count){
@@ -1557,7 +1577,7 @@ function applyDwlCrewNames(names){
       if(emp) emp.value=name;
     }
   });
-  try{ localStorage.setItem('jagdDwlLastCrewNames', JSON.stringify(cleanNames.slice(0,40))); }catch(e){}
+  saveDwlLastCrewFromRows();
   const msg=document.getElementById('dwlMsg');
   if(msg) msg.innerHTML=`<div class="notice success">Loaded ${Math.min(cleanNames.length,40)} crew member${cleanNames.length===1?'':'s'}.${cleanNames.length>40?' Only the first 40 fit right now.':''}</div>`;
 }
@@ -1578,14 +1598,21 @@ function showDwlCrewUpload(){
   };
 }
 function loadDwlLastCrew(){
+  const msg=document.getElementById('dwlMsg');
+  const selected=getDwlSelectedProjectCrew();
+  const key=getDwlLastCrewStorageKey(selected.project, selected.crew);
+  if(!key){
+    if(msg) msg.innerHTML='<div class="notice">Choose the Project and Crew first, then tap Load Last Crew. Crews are saved separately by Project + Crew so the wrong job crew is not loaded.</div>';
+    return;
+  }
   let names=[];
-  try{ names=JSON.parse(localStorage.getItem('jagdDwlLastCrewNames')||'[]'); }catch(e){ names=[]; }
+  try{ names=JSON.parse(localStorage.getItem(key)||'[]'); }catch(e){ names=[]; }
   if(!Array.isArray(names) || !names.length){
-    const msg=document.getElementById('dwlMsg');
-    if(msg) msg.innerHTML='<div class="notice">No last crew saved on this phone/browser yet. Use Upload Crew first.</div>';
+    if(msg) msg.innerHTML=`<div class="notice">No saved crew found for <b>${esc(selected.project)}</b> / <b>${esc(selected.crew)}</b> on this phone/browser yet. Use Upload Crew once for this job/crew, then it can be reloaded later.</div>`;
     return;
   }
   applyDwlCrewNames(names);
+  if(msg) msg.innerHTML=`<div class="notice success">Loaded ${Math.min(names.length,40)} saved crew member${names.length===1?'':'s'} for <b>${esc(selected.project)}</b> / <b>${esc(selected.crew)}</b>.</div>`;
 }
 function resetDwlForm(){
   if(!confirm('Reset this Daily Work Log? This clears the form on this screen.')) return;
@@ -1666,7 +1693,7 @@ async function dwlForm(){
     <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')}</div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
-    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved on this phone.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
+    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project + Crew on this phone.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew for This Job/Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
     <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the official DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the phone share/save screen should open with the PDF attached. Choose Messages, Mail, Files, or Dropbox from that screen.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
