@@ -5,8 +5,43 @@ const path = require('path');
 const router = express.Router();
 
 const configuredDataFile = process.env.VN84B_DATA_PATH || '';
-const dataFile = configuredDataFile || path.join(__dirname, '..', 'data', 'vn84b-tracker.json');
-const dataDir = path.dirname(dataFile);
+const fallbackDataFile = path.join(__dirname, '..', 'data', 'vn84b-tracker.json');
+let dataFile = configuredDataFile || fallbackDataFile;
+let dataDir = path.dirname(dataFile);
+let lastStorageWarning = '';
+
+function refreshDataPath() {
+  dataFile = process.env.VN84B_DATA_PATH || fallbackDataFile;
+  dataDir = path.dirname(dataFile);
+}
+
+function safeClone(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function backupBadFile(reason) {
+  try {
+    if (!fs.existsSync(dataFile)) return;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const badName = path.join(dataDir, `vn84b-tracker-bad-${stamp}.json`);
+    fs.copyFileSync(dataFile, badName);
+    lastStorageWarning = `Recovered from bad tracker file (${reason}). Bad copy saved as ${path.basename(badName)}.`;
+  } catch (err) {
+    lastStorageWarning = `Could not backup bad tracker file: ${err.message}`;
+  }
+}
+
+function tryUseFallback(reason) {
+  if (dataFile !== fallbackDataFile) {
+    lastStorageWarning = `${reason}. Falling back to local tracker path.`;
+    dataFile = fallbackDataFile;
+    dataDir = path.dirname(dataFile);
+    return true;
+  }
+  lastStorageWarning = reason;
+  return false;
+}
+
 
 const bearingSubAreas = [
   { id: 'abutment', name: 'Abutment', total: 10 },
@@ -82,38 +117,74 @@ const defaultData = {
 };
 
 function ensureDataFile() {
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-  if (!fs.existsSync(dataFile)) {
-    fs.writeFileSync(dataFile, JSON.stringify(defaultData, null, 2));
+  refreshDataPath();
+  try {
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    if (!fs.existsSync(dataFile)) {
+      fs.writeFileSync(dataFile, JSON.stringify(defaultData, null, 2));
+    }
+  } catch (err) {
+    if (tryUseFallback(`Persistent VN84-B data path failed: ${err.message}`)) {
+      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+      if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, JSON.stringify(defaultData, null, 2));
+    } else {
+      throw err;
+    }
   }
 }
 
 function migrateData(data) {
-  const bearings = data.areas && data.areas.find(a => a.id === 'belt-parkway-bearings');
-  if (bearings) {
-    bearings.total = 230;
-    bearings.description = '230 bearings broken out by Abutment and SP1–SP12. Each stage counts as its own 100% billing item: power tool, zinc, midcoat, finish.';
-    bearings.subAreas = bearingSubAreas;
-    bearings.stages = ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'];
-  }
-  const jacking = data.areas && data.areas.find(a => a.id === 'belt-parkway-jacking');
-  if (jacking) {
-    jacking.description = '13 piers / jacking locations: power tool prep only';
-    jacking.unitLabel = 'piers';
-    jacking.total = 13;
-    jacking.stages = ['Power Tool Prep'];
-    if (!Array.isArray(jacking.items)) jacking.items = [];
+  if (!data || typeof data !== 'object') data = safeClone(defaultData);
+  if (!Array.isArray(data.areas)) data.areas = safeClone(defaultData.areas);
+  if (!Array.isArray(data.dailyLog)) data.dailyLog = [];
+  if (!Array.isArray(data.notes)) data.notes = [];
+
+  const defaultsById = Object.fromEntries(defaultData.areas.map(a => [a.id, a]));
+  for (const defaultArea of defaultData.areas) {
+    let area = data.areas.find(a => a.id === defaultArea.id);
+    if (!area) {
+      data.areas.push(safeClone(defaultArea));
+      area = data.areas.find(a => a.id === defaultArea.id);
+    }
+    area.name = defaultArea.name;
+    area.description = defaultArea.description;
+    area.unitLabel = defaultArea.unitLabel;
+    area.total = defaultArea.total;
+    area.stages = safeClone(defaultArea.stages);
+    if (defaultArea.subAreas) area.subAreas = safeClone(defaultArea.subAreas);
+    if (defaultArea.pierCount) area.pierCount = defaultArea.pierCount;
+    if (!Array.isArray(area.items)) area.items = [];
   }
   return data;
 }
 
 function readData() {
   ensureDataFile();
-  const raw = fs.readFileSync(dataFile, 'utf8');
-  return migrateData(JSON.parse(raw));
+  let raw = '';
+  try {
+    raw = fs.readFileSync(dataFile, 'utf8');
+  } catch (err) {
+    if (tryUseFallback(`Could not read VN84-B tracker file: ${err.message}`)) {
+      ensureDataFile();
+      raw = fs.readFileSync(dataFile, 'utf8');
+    } else {
+      throw err;
+    }
+  }
+
+  try {
+    if (!raw || !raw.trim()) throw new Error('file is empty');
+    return migrateData(JSON.parse(raw));
+  } catch (err) {
+    backupBadFile(err.message);
+    const clean = migrateData(safeClone(defaultData));
+    fs.writeFileSync(dataFile, JSON.stringify(clean, null, 2));
+    return clean;
+  }
 }
 
 function writeData(data) {
+  ensureDataFile();
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   if (fs.existsSync(dataFile)) {
     try {
@@ -127,6 +198,7 @@ function writeData(data) {
   fs.writeFileSync(dataFile, JSON.stringify(migrateData(data), null, 2));
 }
 
+
 function clampNumber(value, min, max) {
   const n = Number(value);
   if (Number.isNaN(n)) return min;
@@ -135,19 +207,48 @@ function clampNumber(value, min, max) {
 
 
 router.get('/api/vn84b/storage', (req, res) => {
-  res.json({
-    dataFile,
-    usingPersistentPath: Boolean(process.env.VN84B_DATA_PATH),
-    updatedAt: fs.existsSync(dataFile) ? fs.statSync(dataFile).mtime.toISOString() : null
-  });
+  try {
+    refreshDataPath();
+    const exists = fs.existsSync(dataFile);
+    let readable = false;
+    let bytes = null;
+    let updatedAt = null;
+    try {
+      if (exists) {
+        const stat = fs.statSync(dataFile);
+        bytes = stat.size;
+        updatedAt = stat.mtime.toISOString();
+        fs.accessSync(dataFile, fs.constants.R_OK | fs.constants.W_OK);
+        readable = true;
+      }
+    } catch (err) {
+      lastStorageWarning = err.message;
+    }
+    res.json({
+      ok: true,
+      dataFile,
+      fallbackDataFile,
+      usingPersistentPath: Boolean(process.env.VN84B_DATA_PATH),
+      exists,
+      readable,
+      bytes,
+      updatedAt,
+      warning: lastStorageWarning || null
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
+
 
 router.get('/api/vn84b', (req, res) => {
   try {
     res.json(readData());
   } catch (err) {
     console.error('VN84-B read error:', err);
-    res.status(500).json({ error: 'Could not load VN84-B tracker data.' });
+    const safeData = migrateData(safeClone(defaultData));
+    safeData.warning = `Storage problem: ${err.message}`;
+    res.json(safeData);
   }
 });
 
