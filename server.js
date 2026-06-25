@@ -1,3 +1,4 @@
+const vn84bRoutes = require('./routes/vn84b');
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -1104,6 +1105,8 @@ app.post('/api/submissions', upload.array('photos', 24), (req, res) => {
   writeSubmissions(rows);
   res.json({ ok: true, id, title, record });
 });
+
+app.use(vn84bRoutes);
 
 app.use('/api', (req, res) => {
   res.status(404).json({ ok: false, error: 'API route not found on this deployed server.', path: req.originalUrl });
