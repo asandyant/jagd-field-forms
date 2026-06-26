@@ -997,8 +997,8 @@ function buildPirPrint(data=collectPir(), files=[]){
  const ambHead=`<div class="pirCell tinyCell"></div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a.location)}</div>`).join('')}`;
  const ambRows=[['Time','time'],['Dry Bulb Temp','dry'],['Wet Bulb Temp','wet'],['% Relative Humidity','rh'],['Surface Temp.','surface'],['Dew Point','dew'],['Surface Temp. - Dew Point Spread','diff']].map(([label,key])=>`<div class="pirCell tinyCell">${label}</div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a[key])}</div>`).join('')}`).join('');
  const mixBlock=(m={})=>`<div class="mixPrintBlock"><div class="mixRow"><span><b>Location:</b> ${cell(m.location)}</span><span><b>Time:</b> ${cell(m.time)}</span></div><div class="mixHead">Batch #'s <span>Mix Witnessed and Acceptable ${cell(m.witness)}</span></div><div class="mixGrid">${m.customCoaA?`<span><b>Custom COA A:</b> ${cell(m.customCoaA)}</span>`:''}${m.customCoaB?`<span><b>Custom COA B:</b> ${cell(m.customCoaB)}</span>`:''}<span>(A) ${cell(m.batchA)}</span><span>Mfg Date ${cell(m.mfgA)}</span><span>Shelf Life ${cell(m.shelfA)}</span><span>(B) ${cell(m.batchB)}</span><span>Mfg Date ${cell(m.mfgB)}</span><span>Shelf Life ${cell(m.shelfB)}</span><span>Dust ${cell(m.dust)}</span><span>Thinner Type ${cell(m.thinner)}</span><span>% By Volume ${cell(m.volume)}</span><span>Mfr: ${cell(m.mfr)}</span><span>Prod. Name: ${cell(m.prod)}</span><span>Color: ${cell(m.color)}</span><span>Kit Sz/Cond.: ${cell(m.kit)}</span><span>Pot Life: ${cell(m.pot)}</span><span>Shelf Life: ${cell(m.shelf)}</span><span>Induction Time: ${cell(m.induction)}</span><span>Temperature: ${cell(m.temp)}</span><span>Quantity Mixed: ${cell(m.qty)}</span></div><div class="mixHead">Application</div><div class="mixGrid app"><span>Start: ${cell(m.start)}</span><span>Finish/Stop: ${cell(m.finish)}</span><span>Total Gallons: ${cell(m.gallons)}</span><span>Coat: ${cell(m.system)}</span><span>Method: ${cell(m.method)}</span><span>Gun/Tip Size: ${cell(m.gunTip)}</span><span>DFT Avg. Previous Coat: ${cell(m.dftPrev)}</span><span>Time elapsed between coats: ${cell(m.elapsed)}</span></div></div>`;
- const firstMix=[0,1,2,3].map(i=>mixBlock(mix[i]||{})).join('');
- const extraMixRows=mix.slice(4).filter(m=>Object.values(m||{}).some(v=>String(v||'').trim()));
+ const firstMix=[0,1].map(i=>mixBlock(mix[i]||{})).join('');
+ const extraMixRows=mix.slice(2).filter(m=>Object.values(m||{}).some(v=>String(v||'').trim()));
  const extraMixPage=extraMixRows.length?`<div class="pirMixExtraSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional Mix / Application Blocks</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><div class="pirExtraMixGrid">${extraMixRows.map(mixBlock).join('')}</div></div>`:'';
  const testex=[0,1,2].map(i=>`<div class="testexBox pirTestexPrint"><span>Insert Testex Tape Here</span></div><div class="testexMeta">${cell(data.testex?.[i]?.location)} ${cell(data.testex?.[i]?.reading)} ${cell(data.testex?.[i]?.notes)}</div>`).join('');
  const holdText=pirHoldPoints.map((q,i)=>`${cell(q)} ${cell(hp[i]?.status)}`).join('<br>');
@@ -1879,7 +1879,7 @@ async function saveDwlDirectPdf(data, msgId){
   const { jsPDF } = window.jspdf;
   const filledRows=(data.rows||[]).filter(r=>r.employee||r.location||r.activity||r.class||r.local||r.straight||r.over||r.noLunch||r.pt||r.rt);
   data = normalizeDwlDataForSave(data);
-  const rowsPerPage = 16;
+  const rowsPerPage = 12;
   const needed=Math.max(1, Math.ceil(Math.max(filledRows.length,rowsPerPage)/rowsPerPage));
   const rowsForPrint=(data.rows||[]).slice(0, needed*rowsPerPage);
   while(rowsForPrint.length < needed*rowsPerPage) rowsForPrint.push({num:rowsForPrint.length+1});
@@ -1929,16 +1929,16 @@ async function saveDwlDirectPdf(data, msgId){
     dwlPdfBox(doc,m,y,w,34,'Safety Huddle Topic',data.safetyTopic || data.safetyHuddleTopic,11); y += 34;
     // Worker table
     let x=m; const headerH=14;
-    for(let c=0;c<headers.length;c++){dwlPdfCell(doc,x,y,cols[c],headerH,headers[c],{fill:[217,217,217],size:6.8,style:'bold',align:'center'}); x+=cols[c];}
+    for(let c=0;c<headers.length;c++){dwlPdfCell(doc,x,y,cols[c],headerH,headers[c],{fill:[217,217,217],size:7.6,style:'bold',align:'center'}); x+=cols[c];}
     y += headerH;
-    const rowH=23;
+    const rowH=30;
     for(let r=0;r<rowsPerPage;r++){
       const row=rowsForPrint[p*rowsPerPage+r]||{num:p*rowsPerPage+r+1};
       const vals=[p*rowsPerPage+r+1,row.employee,row.location,row.activity,row.class,row.local,row.straight,row.over,row.noLunch,row.pt,row.rt];
       x=m;
       for(let c=0;c<vals.length;c++){
         const isName=c===1; const isNum=c!==0 && c!==2;
-        dwlPdfCell(doc,x,y,cols[c],rowH,vals[c]||'',{size:isName?14.8:(isNum?13:9),style:(isName||isNum)?'bold':'normal',align:c===1?'left':'center',lineWidth:0.85});
+        dwlPdfCell(doc,x,y,cols[c],rowH,vals[c]||'',{size:isName?16.8:(isNum?15.2:11),style:(isName||isNum)?'bold':'normal',align:c===1?'left':'center',lineWidth:0.9});
         x += cols[c];
       }
       y += rowH;
@@ -1976,13 +1976,13 @@ function dwlWorkerRowsPrint(rows, start, count){
 function buildDwlSheet(data, pageIndex, totalPages){
   data = normalizeDwlDataForSave(data);
   const dateSlash=dateToSlashYYYY(data.reportDate); const dateDot=dateToDotMMDDYY(data.reportDate);
-  const rowsPerPage=16; const start=(pageIndex-1)*rowsPerPage;
+  const rowsPerPage=12; const start=(pageIndex-1)*rowsPerPage;
   return `<div class="dwlPrintSheet ${totalPages===1?'dwlSinglePage':''}"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 4.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Crew:</b> ${esc(data.crew)}</div><div><b>Revision:</b> ${esc(cleanDwlRevision(data.revision||'0')||'0')}</div></div><table class="dwlActivitiesPrint"><tr><th colspan="2">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.notes || data.additionalNotes)}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic || data.safetyHuddleTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b> <span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
 }
 function buildDwlPrint(data){
   data = normalizeDwlDataForSave(data);
   const filledRows=data.rows.filter(r=>r.employee || r.location || r.activity || r.class || r.local || r.straight || r.over || r.noLunch || r.pt || r.rt);
-  const rowsPerPage=16;
+  const rowsPerPage=12;
   const needed=Math.max(1, Math.ceil(Math.max(filledRows.length,rowsPerPage)/rowsPerPage));
   const rowsForPrint = data.rows.slice(0, needed*rowsPerPage);
   const d={...data, rows:rowsForPrint};
