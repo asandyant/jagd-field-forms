@@ -501,14 +501,18 @@ async function saveCleanPdfFromPrintPage(msgId){
     await waitForImagesIn(docEl.body);
     const pages = Array.from(docEl.querySelectorAll('.printPage'));
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({orientation:'portrait', unit:'pt', format:'letter', compress:true});
-    const pageW = 612, pageH = 792;
+    let pdf = null;
     for(let i=0;i<pages.length;i++){
       const page = pages[i];
       page.style.display='block';
       page.style.background='#fff';
-      const canvas = await window.html2canvas(page, {scale:2, backgroundColor:'#ffffff', useCORS:true, allowTaint:true, logging:false, windowWidth:900, windowHeight:1200});
-      if(i>0) pdf.addPage('letter','portrait');
+      const canvas = await window.html2canvas(page, {scale:2, backgroundColor:'#ffffff', useCORS:true, allowTaint:true, logging:false, windowWidth:1200, windowHeight:1200});
+      const landscape = canvas.width > canvas.height * 1.08;
+      const orientation = landscape ? 'landscape' : 'portrait';
+      const pageW = landscape ? 792 : 612;
+      const pageH = landscape ? 612 : 792;
+      if(!pdf) pdf = new jsPDF({orientation, unit:'pt', format:'letter', compress:true});
+      else pdf.addPage('letter', orientation);
       const imgData = canvas.toDataURL('image/jpeg', 0.94);
       let imgW = pageW;
       let imgH = canvas.height * imgW / canvas.width;
@@ -517,6 +521,7 @@ async function saveCleanPdfFromPrintPage(msgId){
       const y = 0;
       pdf.addImage(imgData, 'JPEG', x, y, imgW, imgH);
     }
+    if(!pdf) return false;
     pdf.save(safePdfFileName());
     if(msg) msg.innerHTML = '<div class="success">Clean PDF created. Use Share/Files/Dropbox to send it.</div>';
     return true;
@@ -1740,9 +1745,22 @@ function makeDwlSyncId(data, title){
   const parts=[data?.reportDate||'', data?.project||'', data?.crew||'', cleanDwlRevision(data?.revision||'0')||'0', title||'', Date.now(), Math.random().toString(36).slice(2,8)];
   return 'forms-dwl-' + parts.join('|').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80);
 }
+function normalizeDwlDataForSave(data={}){
+  const notes = String(data.notes ?? data.additionalNotes ?? data.dwlNotes ?? '').trim();
+  const safetyTopic = String(data.safetyTopic ?? data.safetyHuddleTopic ?? data.safetyHuddle ?? data.dwlSafetyTopic ?? '').trim();
+  return {
+    ...data,
+    notes,
+    additionalNotes: notes,
+    safetyTopic,
+    safetyHuddleTopic: safetyTopic,
+    safetyHuddle: safetyTopic
+  };
+}
 function dwlPortalPayload(data, title, syncId){
-  const rows = dwlVisibleRows(data);
-  const leanData = { ...data, rows, signatureData:'' };
+  const normalized = normalizeDwlDataForSave(data);
+  const rows = dwlVisibleRows(normalized);
+  const leanData = { ...normalized, rows, signatureData:'' };
   return { syncId, title, sourceFileName: title ? `${String(title).replace(/\.pdf$/i, '')}.pdf` : '', data: leanData };
 }
 async function syncDwlToPortal(data, title, options = {}) {
@@ -1860,9 +1878,11 @@ async function saveDwlDirectPdf(data, msgId){
   if(msg) msg.innerHTML='<div class="notice">Building clean DWL PDF...</div>';
   const { jsPDF } = window.jspdf;
   const filledRows=(data.rows||[]).filter(r=>r.employee||r.location||r.activity||r.class||r.local||r.straight||r.over||r.noLunch||r.pt||r.rt);
-  const needed=Math.max(1, Math.ceil(Math.max(filledRows.length,20)/20));
-  const rowsForPrint=(data.rows||[]).slice(0, needed*20);
-  while(rowsForPrint.length < needed*20) rowsForPrint.push({num:rowsForPrint.length+1});
+  data = normalizeDwlDataForSave(data);
+  const rowsPerPage = 16;
+  const needed=Math.max(1, Math.ceil(Math.max(filledRows.length,rowsPerPage)/rowsPerPage));
+  const rowsForPrint=(data.rows||[]).slice(0, needed*rowsPerPage);
+  while(rowsForPrint.length < needed*rowsPerPage) rowsForPrint.push({num:rowsForPrint.length+1});
   const doc=new jsPDF({orientation:'portrait',unit:'pt',format:'letter',compress:true});
   const pageW=612, pageH=792;
   const dateSlash=dateToSlashYYYY(data.reportDate);
@@ -1873,52 +1893,52 @@ async function saveDwlDirectPdf(data, msgId){
     if(p>0) doc.addPage('letter','portrait');
     let y=14;
     // Header
-    doc.setFont('helvetica','bold'); doc.setFontSize(9);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11);
     try{ doc.addImage('/assets/jagd-logo.png','PNG',m,y,18,13); }catch(e){}
-    dwlPdfText(doc,'JAGD Daily Work Log',m+24,y+10,{size:9,style:'bold',maxWidth:180});
-    dwlPdfText(doc,'DWL 4.0',pageW-m,y+10,{size:9,style:'bold',align:'right',maxWidth:70});
+    dwlPdfText(doc,'JAGD Daily Work Log',m+24,y+11,{size:11,style:'bold',maxWidth:220});
+    dwlPdfText(doc,'DWL 4.0',pageW-m,y+11,{size:10,style:'bold',align:'right',maxWidth:80});
     y += 26;
     doc.setLineWidth(1.2); doc.line(m,y+w*0,w+m,y+w*0); // harmless reset line?
     // Project / date line
-    dwlPdfText(doc,'Project:',m,y+14,{size:8,style:'bold'});
-    dwlPdfText(doc,data.project,m+36,y+15,{size:10,style:'bold',maxWidth:340});
-    dwlPdfText(doc,'Report Date:',pageW-m-120,y+8,{size:7,style:'bold',align:'left'});
+    dwlPdfText(doc,'Project:',m,y+14,{size:9.5,style:'bold'});
+    dwlPdfText(doc,data.project,m+42,y+15,{size:12,style:'bold',maxWidth:334});
+    dwlPdfText(doc,'Report Date:',pageW-m-120,y+8,{size:8,style:'bold',align:'left'});
     dwlPdfText(doc,dateSlash,pageW-m,y+23,{size:18,style:'bold',align:'right',maxWidth:120});
     dwlPdfText(doc,'Revision:',pageW-m-120,y+28,{size:7,style:'bold',align:'left'});
     dwlPdfText(doc,cleanDwlRevision(data.revision || '0') || '0',pageW-m,y+28,{size:9,style:'bold',align:'right',maxWidth:120});
     doc.setLineWidth(1.1); doc.line(m,y+31,pageW-m,y+31);
     y += 33;
     // Weather line
-    dwlPdfText(doc,'Weather:',m,y+12,{size:8,style:'bold'});
-    dwlPdfText(doc,data.weather,m+42,y+12,{size:9,style:'bold',maxWidth:230});
+    dwlPdfText(doc,'Weather:',m,y+12,{size:9,style:'bold'});
+    dwlPdfText(doc,data.weather,m+48,y+12,{size:10.5,style:'bold',maxWidth:224});
     dwlPdfText(doc,'Day:',m+365,y+12,{size:8,style:'bold'});
     dwlPdfText(doc,data.day,m+390,y+12,{size:9,style:'bold',maxWidth:85});
     dwlPdfText(doc,'Crew:',m+485,y+12,{size:8,style:'bold'});
     dwlPdfText(doc,data.crew,m+515,y+12,{size:9,style:'bold',maxWidth:70});
     doc.line(m,y+17,pageW-m,y+17); y += 18;
     // Activities table
-    dwlPdfCell(doc,m,y,w,12,'Activities Performed',{fill:[217,217,217],size:7.5,style:'bold',align:'center'}); y += 12;
+    dwlPdfCell(doc,m,y,w,13,'Activities Performed',{fill:[217,217,217],size:8.5,style:'bold',align:'center'}); y += 13;
     for(let i=0;i<DWL_ACTIVITIES.length;i+=2){
-      dwlPdfCell(doc,m,y,w/2,12,DWL_ACTIVITIES[i]||'',{size:7.3,style:'bold'});
-      dwlPdfCell(doc,m+w/2,y,w/2,12,DWL_ACTIVITIES[i+1]||'',{size:7.3,style:'bold'});
-      y += 12;
+      dwlPdfCell(doc,m,y,w/2,13,DWL_ACTIVITIES[i]||'',{size:8.2,style:'bold'});
+      dwlPdfCell(doc,m+w/2,y,w/2,13,DWL_ACTIVITIES[i+1]||'',{size:8.2,style:'bold'});
+      y += 13;
     }
     // Description / notes
-    dwlPdfBox(doc,m,y,w,74,'Location/Description of work',data.description,10); y += 74;
-    dwlPdfBox(doc,m,y,w,26,'Additional Notes',data.notes,9); y += 26;
-    dwlPdfBox(doc,m,y,w,26,'Safety Huddle Topic',data.safetyTopic,9); y += 26;
+    dwlPdfBox(doc,m,y,w,78,'Location/Description of work',data.description,12); y += 78;
+    dwlPdfBox(doc,m,y,w,34,'Additional Notes',data.notes || data.additionalNotes,11); y += 34;
+    dwlPdfBox(doc,m,y,w,34,'Safety Huddle Topic',data.safetyTopic || data.safetyHuddleTopic,11); y += 34;
     // Worker table
     let x=m; const headerH=14;
     for(let c=0;c<headers.length;c++){dwlPdfCell(doc,x,y,cols[c],headerH,headers[c],{fill:[217,217,217],size:6.8,style:'bold',align:'center'}); x+=cols[c];}
     y += headerH;
-    const rowH=20;
-    for(let r=0;r<20;r++){
-      const row=rowsForPrint[p*20+r]||{num:p*20+r+1};
-      const vals=[p*20+r+1,row.employee,row.location,row.activity,row.class,row.local,row.straight,row.over,row.noLunch,row.pt,row.rt];
+    const rowH=23;
+    for(let r=0;r<rowsPerPage;r++){
+      const row=rowsForPrint[p*rowsPerPage+r]||{num:p*rowsPerPage+r+1};
+      const vals=[p*rowsPerPage+r+1,row.employee,row.location,row.activity,row.class,row.local,row.straight,row.over,row.noLunch,row.pt,row.rt];
       x=m;
       for(let c=0;c<vals.length;c++){
         const isName=c===1; const isNum=c!==0 && c!==2;
-        dwlPdfCell(doc,x,y,cols[c],rowH,vals[c]||'',{size:isName?13.7:(isNum?11.5:7.5),style:(isName||isNum)?'bold':'normal',align:c===1?'left':'center',lineWidth:0.75});
+        dwlPdfCell(doc,x,y,cols[c],rowH,vals[c]||'',{size:isName?14.8:(isNum?13:9),style:(isName||isNum)?'bold':'normal',align:c===1?'left':'center',lineWidth:0.85});
         x += cols[c];
       }
       y += rowH;
@@ -1946,7 +1966,7 @@ function collectDwl(){
     const row={num:i, employee:val('dwlEmp'+i), location:val('dwlLoc'+i), activity:val('dwlAct'+i), class:val('dwlClass'+i), local:val('dwlLocal'+i), straight:val('dwlStraight'+i), over:val('dwlOver'+i), noLunch:val('dwlNoLunch'+i), pt:val('dwlPT'+i), rt:val('dwlRT'+i)};
     rows.push(row);
   }
-  return {project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),revision:cleanDwlRevision(val('dwlRevision')||'0')||'0',weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:[],description:val('dwlDescription'),notes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows};
+  return normalizeDwlDataForSave({project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),revision:cleanDwlRevision(val('dwlRevision')||'0')||'0',weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:[],description:val('dwlDescription'),notes:val('dwlNotes'),additionalNotes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),safetyHuddleTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows});
 }
 function dwlWorkerRowsPrint(rows, start, count){
   const slice=rows.slice(start,start+count);
@@ -1954,14 +1974,17 @@ function dwlWorkerRowsPrint(rows, start, count){
   return slice.map(r=>`<tr><td>${esc(r.num||'')}</td><td>${esc(r.employee||'')}</td><td>${esc(r.location||'')}</td><td>${esc(r.activity||'')}</td><td>${esc(r.class||'')}</td><td>${esc(r.local||'')}</td><td>${esc(r.straight||'')}</td><td>${esc(r.over||'')}</td><td class="dwlNoLunchPrint">${esc(r.noLunch||'')}</td><td>${esc(r.pt||'')}</td><td>${esc(r.rt||'')}</td></tr>`).join('');
 }
 function buildDwlSheet(data, pageIndex, totalPages){
+  data = normalizeDwlDataForSave(data);
   const dateSlash=dateToSlashYYYY(data.reportDate); const dateDot=dateToDotMMDDYY(data.reportDate);
-  const rowsPerPage=20; const start=(pageIndex-1)*rowsPerPage;
-  return `<div class="dwlPrintSheet ${totalPages===1?'dwlSinglePage':''}"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 4.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Crew:</b> ${esc(data.crew)}</div><div><b>Revision:</b> ${esc(cleanDwlRevision(data.revision||'0')||'0')}</div></div><table class="dwlActivitiesPrint"><tr><th colspan="2">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.notes)}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b> <span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
+  const rowsPerPage=16; const start=(pageIndex-1)*rowsPerPage;
+  return `<div class="dwlPrintSheet ${totalPages===1?'dwlSinglePage':''}"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 4.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Crew:</b> ${esc(data.crew)}</div><div><b>Revision:</b> ${esc(cleanDwlRevision(data.revision||'0')||'0')}</div></div><table class="dwlActivitiesPrint"><tr><th colspan="2">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.notes || data.additionalNotes)}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic || data.safetyHuddleTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b> <span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
 }
 function buildDwlPrint(data){
+  data = normalizeDwlDataForSave(data);
   const filledRows=data.rows.filter(r=>r.employee || r.location || r.activity || r.class || r.local || r.straight || r.over || r.noLunch || r.pt || r.rt);
-  const needed=Math.max(1, Math.ceil(Math.max(filledRows.length,20)/20));
-  const rowsForPrint = data.rows.slice(0, needed*20);
+  const rowsPerPage=16;
+  const needed=Math.max(1, Math.ceil(Math.max(filledRows.length,rowsPerPage)/rowsPerPage));
+  const rowsForPrint = data.rows.slice(0, needed*rowsPerPage);
   const d={...data, rows:rowsForPrint};
   const html=Array.from({length:needed},(_,i)=>buildDwlSheet(d,i+1,needed)).join('');
   setPrint(html); return html;
