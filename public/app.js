@@ -1344,8 +1344,19 @@ async function weeklySignForm(id){
     const res=await fetch(`/api/weekly-meetings/${encodeURIComponent(id)}/sign`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,company,signatureData})});
     const json=await res.json();
     if(!res.ok){document.getElementById('workerSignMsg').innerHTML=`<div class="notice">${esc(json.error||'Could not sign in.')}</div>`;return;}
-    document.getElementById('workerSignMsg').innerHTML='<div class="notice success">You are signed in. You can close this page.</div>';
-    document.getElementById('workerSignBtn').disabled=true;
+    const signBtn = document.getElementById('workerSignBtn');
+    const msg = document.getElementById('workerSignMsg');
+    msg.innerHTML='<div class="notice success bigSuccess">✅ You are signed in. You can close this page.</div>';
+    signBtn.disabled=true;
+    signBtn.textContent='Signed In ✓';
+    signBtn.classList.add('signedInBtn');
+    const nameInput=document.getElementById('workerName');
+    const companyInput=document.getElementById('workerCompany');
+    if(nameInput) nameInput.readOnly=true;
+    if(companyInput) companyInput.readOnly=true;
+    const sigBox=document.querySelector('.workerSign .signaturePreview');
+    if(sigBox){ sigBox.classList.add('signatureLocked'); sigBox.setAttribute('aria-label','Signature saved'); }
+    document.querySelector('.workerSign .panel')?.classList.add('signedInPanel');
   };
 }
 

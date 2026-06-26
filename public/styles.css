@@ -875,3 +875,32 @@
   .bolInventoryPickBtn{font-size:18px;padding:14px;}
   .bolInventoryPickBtn b{font-size:19px;}
 }
+
+
+/* Weekly Safety worker sign-in visual lock after successful sign-in */
+.workerSign .signedInBtn,
+.workerSign .signedInBtn:disabled{
+  background:#177a34!important;
+  color:#fff!important;
+  border-color:#177a34!important;
+  opacity:1!important;
+  cursor:not-allowed!important;
+}
+.workerSign .signedInPanel{
+  border:2px solid #96d7a8;
+  box-shadow:0 0 0 4px rgba(150,215,168,.18);
+}
+.workerSign .signatureLocked{
+  border-color:#96d7a8!important;
+  background:#f3fff6!important;
+  cursor:not-allowed!important;
+}
+.workerSign input[readonly]{
+  background:#f3fff6;
+  border-color:#96d7a8;
+}
+.bigSuccess{
+  font-size:18px;
+  font-weight:700;
+  text-align:center;
+}
