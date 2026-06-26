@@ -4,11 +4,18 @@ const path = require('path');
 
 const router = express.Router();
 
+// VN84-B data storage order:
+// 1) PostgreSQL when VN84B_DATABASE_URL is set (recommended for live field use)
+// 2) JSON file fallback for local testing / emergency use only
+const TRACKER_KEY = 'vn84b';
+const DATABASE_URL = process.env.VN84B_DATABASE_URL || '';
 const configuredDataFile = process.env.VN84B_DATA_PATH || '';
 const fallbackDataFile = path.join(__dirname, '..', 'data', 'vn84b-tracker.json');
 let dataFile = configuredDataFile || fallbackDataFile;
 let dataDir = path.dirname(dataFile);
 let lastStorageWarning = '';
+let pool = null;
+let dbReady = false;
 
 function refreshDataPath() {
   dataFile = process.env.VN84B_DATA_PATH || fallbackDataFile;
@@ -18,30 +25,6 @@ function refreshDataPath() {
 function safeClone(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
-
-function backupBadFile(reason) {
-  try {
-    if (!fs.existsSync(dataFile)) return;
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const badName = path.join(dataDir, `vn84b-tracker-bad-${stamp}.json`);
-    fs.copyFileSync(dataFile, badName);
-    lastStorageWarning = `Recovered from bad tracker file (${reason}). Bad copy saved as ${path.basename(badName)}.`;
-  } catch (err) {
-    lastStorageWarning = `Could not backup bad tracker file: ${err.message}`;
-  }
-}
-
-function tryUseFallback(reason) {
-  if (dataFile !== fallbackDataFile) {
-    lastStorageWarning = `${reason}. Falling back to local tracker path.`;
-    dataFile = fallbackDataFile;
-    dataDir = path.dirname(dataFile);
-    return true;
-  }
-  lastStorageWarning = reason;
-  return false;
-}
-
 
 const bearingSubAreas = [
   { id: 'abutment', name: 'Abutment', total: 10 },
@@ -116,30 +99,12 @@ const defaultData = {
   notes: []
 };
 
-function ensureDataFile() {
-  refreshDataPath();
-  try {
-    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-    if (!fs.existsSync(dataFile)) {
-      fs.writeFileSync(dataFile, JSON.stringify(defaultData, null, 2));
-    }
-  } catch (err) {
-    if (tryUseFallback(`Persistent VN84-B data path failed: ${err.message}`)) {
-      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-      if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, JSON.stringify(defaultData, null, 2));
-    } else {
-      throw err;
-    }
-  }
-}
-
 function migrateData(data) {
   if (!data || typeof data !== 'object') data = safeClone(defaultData);
   if (!Array.isArray(data.areas)) data.areas = safeClone(defaultData.areas);
   if (!Array.isArray(data.dailyLog)) data.dailyLog = [];
   if (!Array.isArray(data.notes)) data.notes = [];
 
-  const defaultsById = Object.fromEntries(defaultData.areas.map(a => [a.id, a]));
   for (const defaultArea of defaultData.areas) {
     let area = data.areas.find(a => a.id === defaultArea.id);
     if (!area) {
@@ -152,26 +117,96 @@ function migrateData(data) {
     area.total = defaultArea.total;
     area.stages = safeClone(defaultArea.stages);
     if (defaultArea.subAreas) area.subAreas = safeClone(defaultArea.subAreas);
+    else delete area.subAreas;
     if (defaultArea.pierCount) area.pierCount = defaultArea.pierCount;
+    else delete area.pierCount;
     if (!Array.isArray(area.items)) area.items = [];
   }
   return data;
 }
 
-function readData() {
-  ensureDataFile();
-  let raw = '';
+function getPool() {
+  if (!DATABASE_URL) return null;
+  if (pool) return pool;
   try {
-    raw = fs.readFileSync(dataFile, 'utf8');
+    const { Pool } = require('pg');
+    pool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: DATABASE_URL.includes('render.com') ? { rejectUnauthorized: false } : undefined,
+      max: 5,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000
+    });
+    return pool;
   } catch (err) {
-    if (tryUseFallback(`Could not read VN84-B tracker file: ${err.message}`)) {
-      ensureDataFile();
-      raw = fs.readFileSync(dataFile, 'utf8');
-    } else {
-      throw err;
-    }
+    lastStorageWarning = `Postgres package/connection setup failed: ${err.message}`;
+    return null;
   }
+}
 
+async function ensureDb() {
+  const p = getPool();
+  if (!p) return false;
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS jagd_tracker_store (
+      tracker_key TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  dbReady = true;
+  return true;
+}
+
+function ensureDataFile() {
+  refreshDataPath();
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, JSON.stringify(defaultData, null, 2));
+}
+
+function backupBadFile(reason) {
+  try {
+    if (!fs.existsSync(dataFile)) return;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const badName = path.join(dataDir, `vn84b-tracker-bad-${stamp}.json`);
+    fs.copyFileSync(dataFile, badName);
+    lastStorageWarning = `Recovered from bad tracker file (${reason}). Bad copy saved as ${path.basename(badName)}.`;
+  } catch (err) {
+    lastStorageWarning = `Could not backup bad tracker file: ${err.message}`;
+  }
+}
+
+async function readDataFromDb() {
+  await ensureDb();
+  const result = await pool.query('SELECT data FROM jagd_tracker_store WHERE tracker_key = $1', [TRACKER_KEY]);
+  if (!result.rows.length) {
+    const clean = migrateData(safeClone(defaultData));
+    await pool.query(
+      'INSERT INTO jagd_tracker_store (tracker_key, data, updated_at) VALUES ($1, $2::jsonb, NOW()) ON CONFLICT (tracker_key) DO NOTHING',
+      [TRACKER_KEY, JSON.stringify(clean)]
+    );
+    return clean;
+  }
+  return migrateData(result.rows[0].data);
+}
+
+async function writeDataToDb(data) {
+  await ensureDb();
+  data.updatedAt = new Date().toISOString();
+  const clean = migrateData(data);
+  await pool.query(
+    `INSERT INTO jagd_tracker_store (tracker_key, data, updated_at)
+     VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (tracker_key)
+     DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+    [TRACKER_KEY, JSON.stringify(clean)]
+  );
+  return clean;
+}
+
+function readDataFromFile() {
+  ensureDataFile();
+  let raw = fs.readFileSync(dataFile, 'utf8');
   try {
     if (!raw || !raw.trim()) throw new Error('file is empty');
     return migrateData(JSON.parse(raw));
@@ -183,9 +218,8 @@ function readData() {
   }
 }
 
-function writeData(data) {
+function writeDataToFile(data) {
   ensureDataFile();
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   if (fs.existsSync(dataFile)) {
     try {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -195,9 +229,42 @@ function writeData(data) {
     }
   }
   data.updatedAt = new Date().toISOString();
-  fs.writeFileSync(dataFile, JSON.stringify(migrateData(data), null, 2));
+  const clean = migrateData(data);
+  fs.writeFileSync(dataFile, JSON.stringify(clean, null, 2));
+  return clean;
 }
 
+async function readData() {
+  if (DATABASE_URL) {
+    try {
+      lastStorageWarning = '';
+      return await readDataFromDb();
+    } catch (err) {
+      console.error('VN84-B Postgres read error:', err);
+      lastStorageWarning = `DATABASE READ FAILED: ${err.message}`;
+      const fallback = readDataFromFile();
+      fallback.warning = lastStorageWarning;
+      return fallback;
+    }
+  }
+  const data = readDataFromFile();
+  data.warning = 'VN84-B is using file storage. Live field data can reset on Render redeploy. Configure VN84B_DATABASE_URL for permanent storage.';
+  return data;
+}
+
+async function writeData(data) {
+  if (DATABASE_URL) {
+    try {
+      lastStorageWarning = '';
+      return await writeDataToDb(data);
+    } catch (err) {
+      console.error('VN84-B Postgres write error:', err);
+      lastStorageWarning = `DATABASE WRITE FAILED: ${err.message}`;
+      throw err;
+    }
+  }
+  return writeDataToFile(data);
+}
 
 function clampNumber(value, min, max) {
   const n = Number(value);
@@ -205,9 +272,22 @@ function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-
-router.get('/api/vn84b/storage', (req, res) => {
+router.get('/api/vn84b/storage', async (req, res) => {
   try {
+    const p = getPool();
+    let databaseReachable = false;
+    let databaseRows = null;
+    if (p) {
+      try {
+        await ensureDb();
+        const r = await p.query('SELECT updated_at FROM jagd_tracker_store WHERE tracker_key = $1', [TRACKER_KEY]);
+        databaseReachable = true;
+        databaseRows = r.rowCount;
+      } catch (err) {
+        lastStorageWarning = err.message;
+      }
+    }
+
     refreshDataPath();
     const exists = fs.existsSync(dataFile);
     let readable = false;
@@ -224,15 +304,20 @@ router.get('/api/vn84b/storage', (req, res) => {
     } catch (err) {
       lastStorageWarning = err.message;
     }
+
     res.json({
       ok: true,
+      storageMode: DATABASE_URL && databaseReachable ? 'postgres' : 'file',
+      databaseConfigured: Boolean(DATABASE_URL),
+      databaseReachable,
+      databaseRows,
       dataFile,
       fallbackDataFile,
       usingPersistentPath: Boolean(process.env.VN84B_DATA_PATH),
-      exists,
-      readable,
-      bytes,
-      updatedAt,
+      fileExists: exists,
+      fileReadable: readable,
+      fileBytes: bytes,
+      fileUpdatedAt: updatedAt,
       warning: lastStorageWarning || null
     });
   } catch (err) {
@@ -240,10 +325,9 @@ router.get('/api/vn84b/storage', (req, res) => {
   }
 });
 
-
-router.get('/api/vn84b', (req, res) => {
+router.get('/api/vn84b', async (req, res) => {
   try {
-    res.json(readData());
+    res.json(await readData());
   } catch (err) {
     console.error('VN84-B read error:', err);
     const safeData = migrateData(safeClone(defaultData));
@@ -252,10 +336,10 @@ router.get('/api/vn84b', (req, res) => {
   }
 });
 
-router.post('/api/vn84b/progress', express.json({ limit: '2mb' }), (req, res) => {
+router.post('/api/vn84b/progress', express.json({ limit: '2mb' }), async (req, res) => {
   try {
     const { areaId, subAreaId, stage, completed, note, enteredBy } = req.body || {};
-    const data = readData();
+    const data = await readData();
     const area = data.areas.find(a => a.id === areaId);
     if (!area) return res.status(404).json({ error: 'Area not found.' });
     if (!area.stages.includes(stage)) return res.status(400).json({ error: 'Stage not found for this area.' });
@@ -298,30 +382,28 @@ router.post('/api/vn84b/progress', express.json({ limit: '2mb' }), (req, res) =>
       enteredBy: enteredBy || ''
     });
     data.dailyLog = data.dailyLog.slice(0, 500);
-    writeData(data);
-    res.json(data);
+    res.json(await writeData(data));
   } catch (err) {
     console.error('VN84-B progress save error:', err);
-    res.status(500).json({ error: 'Could not save VN84-B progress.' });
+    res.status(500).json({ error: `Could not save VN84-B progress: ${err.message}` });
   }
 });
 
-
-router.post('/api/vn84b/restore', express.json({ limit: '10mb' }), (req, res) => {
+router.post('/api/vn84b/restore', express.json({ limit: '10mb' }), async (req, res) => {
   try {
     const data = req.body;
     if (!data || !Array.isArray(data.areas)) return res.status(400).json({ error: 'Invalid VN84-B backup file.' });
-    writeData(data);
-    res.json(readData());
+    await writeData(data);
+    res.json(await readData());
   } catch (err) {
     console.error('VN84-B restore error:', err);
-    res.status(500).json({ error: 'Could not restore VN84-B backup.' });
+    res.status(500).json({ error: `Could not restore VN84-B backup: ${err.message}` });
   }
 });
 
-router.get('/api/vn84b/backup', (req, res) => {
+router.get('/api/vn84b/backup', async (req, res) => {
   try {
-    const data = readData();
+    const data = await readData();
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename="vn84b-tracker-backup.json"');
     res.send(JSON.stringify(data, null, 2));
@@ -331,11 +413,11 @@ router.get('/api/vn84b/backup', (req, res) => {
   }
 });
 
-router.post('/api/vn84b/note', express.json({ limit: '2mb' }), (req, res) => {
+router.post('/api/vn84b/note', express.json({ limit: '2mb' }), async (req, res) => {
   try {
     const { areaId, note, enteredBy } = req.body || {};
     if (!note || !note.trim()) return res.status(400).json({ error: 'Note is required.' });
-    const data = readData();
+    const data = await readData();
     const area = data.areas.find(a => a.id === areaId);
     data.notes.unshift({
       id: Date.now().toString(36),
@@ -346,11 +428,10 @@ router.post('/api/vn84b/note', express.json({ limit: '2mb' }), (req, res) => {
       enteredBy: enteredBy || ''
     });
     data.notes = data.notes.slice(0, 300);
-    writeData(data);
-    res.json(data);
+    res.json(await writeData(data));
   } catch (err) {
     console.error('VN84-B note save error:', err);
-    res.status(500).json({ error: 'Could not save VN84-B note.' });
+    res.status(500).json({ error: `Could not save VN84-B note: ${err.message}` });
   }
 });
 
