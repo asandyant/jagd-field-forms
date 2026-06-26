@@ -227,6 +227,12 @@ function renderPirAmbientBlocks(){
 
 function checked(name){const el=document.querySelector(`[name="${name}"]:checked`); return el ? el.value : '';}
 function setPrint(html){document.querySelectorAll('.printPage').forEach(x=>x.remove()); const div=document.createElement('div'); div.className='printPage'; div.innerHTML=html; document.body.appendChild(div); currentPrint=html;}
+function setPrintPages(pages){
+  document.querySelectorAll('.printPage').forEach(x=>x.remove());
+  const cleanPages = (pages||[]).filter(x=>String(x||'').trim());
+  cleanPages.forEach(html=>{ const div=document.createElement('div'); div.className='printPage'; div.innerHTML=html; document.body.appendChild(div); });
+  currentPrint = cleanPages.join('');
+}
 function field(id,label,type='text',extra=''){return `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" ${extra}></div>`;}
 function textarea(id,label){return `<div><label for="${id}">${label}</label><textarea id="${id}"></textarea></div>`;}
 function selectField(id,label,opts){return `<div><label for="${id}">${label}</label><select id="${id}">${opts.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></div>`;}
@@ -985,11 +991,13 @@ function buildPirPrint(data=collectPir(), files=[]){
    <div class="pirRevV7">PIR Revision 0</div>
  </div>`;
  const notes=data.additionalNotes||{};
- const hasNotes=data.additionalNotesOpen || (notes.summary||notes.location||notes.qc||notes.print||'').trim() || (notes.rows||[]).some(r=>r.time||r.location||r.activity||r.notes);
+ const hasGeneralNotes=String(data.generalNotes||'').trim();
+ const hasNotes=data.additionalNotesOpen || hasGeneralNotes || (notes.summary||notes.location||notes.qc||notes.print||'').trim() || (notes.rows||[]).some(r=>r.time||r.location||r.activity||r.notes);
  const notesRows=(notes.rows||Array.from({length:8},()=>({}))).map(r=>`<tr><td>${cell(r.time)}</td><td>${cell(r.location)}</td><td>${cell(r.activity)}</td><td>${cell(r.notes)}</td></tr>`).join('');
- const notesPage=hasNotes?`<div class="pirNotesSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional QC Notes</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><table class="extraPrintTable"><tr><th>Date</th><td>${cell(notes.date||data.reportDate)}</td><th>Location / Area</th><td>${cell(notes.location)}</td><th>QC</th><td>${cell(notes.qc||data.qcPrint)}</td></tr></table><table class="extraPrintTable pirNotesTable"><tr><th>Time</th><th>Location / Area</th><th>Activity / What Happened</th><th>Notes</th></tr>${notesRows}</table>${extraPrintBox('Additional Summary / QC Comments',notes.summary||'',1.35)}<div class="extraSigGrid two"><div><b>QC Print:</b> ${cell(notes.print||notes.qc||data.qcPrint)}</div><div><b>QC Signature:</b> ${sigPrint(notes.signatureData,notes.signature||'')}</div></div></div>`:'';
- const finalHtml=html+extraMixPage+notesPage;
- setPrint(finalHtml); return finalHtml;
+ const notesPage=hasNotes?`<div class="pirNotesSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional QC Notes</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><table class="extraPrintTable"><tr><th>Date</th><td>${cell(notes.date||data.reportDate)}</td><th>Location / Area</th><td>${cell(notes.location)}</td><th>QC</th><td>${cell(notes.qc||data.qcPrint)}</td></tr></table>${hasGeneralNotes?extraPrintBox('General Notes / Nonconformance / Corrective Actions',data.generalNotes,1.05):''}<table class="extraPrintTable pirNotesTable"><tr><th>Time</th><th>Location / Area</th><th>Activity / What Happened</th><th>Notes</th></tr>${notesRows}</table>${extraPrintBox('Additional Summary / QC Comments',notes.summary||'',1.35)}<div class="extraSigGrid two"><div><b>QC Print:</b> ${cell(notes.print||notes.qc||data.qcPrint)}</div><div><b>QC Signature:</b> ${sigPrint(notes.signatureData,notes.signature||'')}</div></div></div>`:'';
+ const pages=[html, extraMixPage, notesPage].filter(Boolean);
+ const finalHtml=pages.join('');
+ setPrintPages(pages); return finalHtml;
 }
 
 function mewpForm(){
@@ -1197,6 +1205,8 @@ const WEEKLY_TOPICS = [
   '51. Incident/near-miss reporting, investigation, and root cause (OSHA: 29 CFR 1904.39; 1926.20)'
 ];
 let weeklyPollTimer = null;
+let weeklyPollSeq = 0;
+let weeklyLastAttendees = [];
 
 function weeklySafetyTopicValue(){
   const topicEl = document.getElementById('weeklyTopic');
@@ -1266,14 +1276,33 @@ function renderWeeklyLive(meeting){
   const link=weeklySignUrl(meeting.id);
   live.style.display='block';
   live.innerHTML = `<h2>Live Sign-In</h2><div class="weeklyLiveGrid"><div><div class="qrCard"><img src="${weeklyQrUrl(meeting.id)}" alt="QR code for worker sign-in"><p class="tiny">Workers scan this QR code with their phones.</p></div><input class="copyLink" value="${esc(link)}" readonly><div class="actions"><button class="btn light" id="weeklyCopyBtn" type="button">Copy Sign-In Link</button><button class="btn" id="weeklyPrintBtn" type="button">Save PDF / Print Meeting</button></div></div><div><h3>Workers Signed In: <span id="weeklyCount">0</span></h3><div id="weeklyAttendees" class="attendeeList">Waiting for workers to sign in...</div></div></div>`;
+  weeklyLastAttendees = Array.isArray(meeting.attendees) ? meeting.attendees.slice() : [];
   document.getElementById('weeklyCopyBtn').onclick=()=>navigator.clipboard?.writeText(link);
-  document.getElementById('weeklyPrintBtn').onclick=async()=>{ const latest=await fetchWeeklyMeeting(meeting.id); document.title=weeklyTitle(latest); logGeneratedForm('weekly-safety', latest.project, latest.date, document.title); buildWeeklyPrint(latest); openPrintNow(); };
+  document.getElementById('weeklyPrintBtn').onclick=async()=>{
+    if(weeklyPollTimer) { clearInterval(weeklyPollTimer); weeklyPollTimer = null; }
+    const latest=await fetchWeeklyMeeting(meeting.id);
+    document.title=weeklyTitle(latest);
+    logGeneratedForm('weekly-safety', latest.project, latest.date, document.title);
+    buildWeeklyPrint(latest);
+    openPrintNow();
+  };
   pollWeekly(meeting.id);
   weeklyPollTimer = setInterval(()=>pollWeekly(meeting.id),3000);
 }
-async function fetchWeeklyMeeting(id){ const res=await fetch(`/api/weekly-meetings/${encodeURIComponent(id)}`); const json=await res.json(); if(!res.ok) throw new Error(json.error||'Meeting not found'); return json.meeting; }
+async function fetchWeeklyMeeting(id){ const res=await fetch(`/api/weekly-meetings/${encodeURIComponent(id)}?t=${Date.now()}`, {cache:'no-store'}); const json=await res.json(); if(!res.ok) throw new Error(json.error||'Meeting not found'); return json.meeting; }
 async function pollWeekly(id){
-  try{ const meeting=await fetchWeeklyMeeting(id); const box=document.getElementById('weeklyAttendees'), count=document.getElementById('weeklyCount'); if(!box) return; const rows=meeting.attendees||[]; if(count) count.textContent=rows.length; box.innerHTML = rows.length ? rows.map((a,i)=>`<div class="attendeeRow"><b>${i+1}. ${esc(a.name)}</b>${a.company?`<span>${esc(a.company)}</span>`:''}${a.signatureData?`<span class="signedBadge">Signature captured</span>`:''}<small>${new Date(a.signedAt).toLocaleTimeString()}</small></div>`).join('') : 'Waiting for workers to sign in...'; }catch(e){ console.error(e); }
+  const seq = ++weeklyPollSeq;
+  try{
+    const meeting=await fetchWeeklyMeeting(id);
+    if(seq !== weeklyPollSeq) return;
+    const box=document.getElementById('weeklyAttendees'), count=document.getElementById('weeklyCount');
+    if(!box) return;
+    let rows=Array.isArray(meeting.attendees)?meeting.attendees:[];
+    if(rows.length===0 && weeklyLastAttendees.length>0) rows=weeklyLastAttendees;
+    else if(rows.length>0) weeklyLastAttendees=rows.slice();
+    if(count) count.textContent=rows.length;
+    box.innerHTML = rows.length ? rows.map((a,i)=>`<div class="attendeeRow"><b>${i+1}. ${esc(a.name)}</b>${a.company?`<span>${esc(a.company)}</span>`:''}${a.signatureData?`<span class="signedBadge">Signature captured</span>`:''}<small>${new Date(a.signedAt).toLocaleTimeString()}</small></div>`).join('') : 'Waiting for workers to sign in...';
+  }catch(e){ console.error(e); }
 }
 
 async function weeklySignForm(id){
@@ -1296,12 +1325,21 @@ async function weeklySignForm(id){
 }
 
 function buildWeeklyPrint(meeting){
-  const rows=(meeting.attendees||[]).map((a,i)=>`<tr><td>${i+1}</td><td>${esc(a.name)}</td><td>${esc(a.company||'')}</td><td>${esc(new Date(a.signedAt).toLocaleString())}</td><td>${a.signatureData?`<img class="weeklySigPrint" src="${a.signatureData}">`:''}</td></tr>`).join('');
-  const blanks=Array.from({length:Math.max(8,18-(meeting.attendees||[]).length)},(_,i)=>`<tr><td>${(meeting.attendees||[]).length+i+1}</td><td></td><td></td><td></td><td></td></tr>`).join('');
-  const html=`<div class="weeklySheet"><div class="weeklyPrintHeader"><img src="${logo}"><div><h1>Weekly Safety Meeting</h1><p><b>Project:</b> ${esc(meeting.project)}</p><p><b>Meeting Date:</b> ${esc(dateToSlashYYYY(meeting.date))}</p><p><b>Foreman:</b> ${esc(meeting.foreman||'')}</p></div></div><div class="topicBox"><b>Safety Topic:</b><br>${esc(meeting.topic)}</div><table class="weeklyTable"><tr><th>#</th><th>Worker Name</th><th>Company</th><th>Signed In</th><th>Signature / Initials</th></tr>${rows}${blanks}</table><div class="weeklyFoot">Weekly Safety Meeting</div></div>`;
-  setPrint(html); return html;
+  const attendees = Array.isArray(meeting.attendees) ? meeting.attendees : [];
+  const perPage = 18;
+  const chunks = [];
+  for(let i=0;i<attendees.length;i+=perPage) chunks.push(attendees.slice(i,i+perPage));
+  if(!chunks.length) chunks.push([]);
+  const totalPages = chunks.length;
+  const pages = chunks.map((chunk,pageIdx)=>{
+    const startNum = pageIdx * perPage;
+    const rows = chunk.map((a,i)=>`<tr><td>${startNum+i+1}</td><td>${esc(a.name)}</td><td>${esc(a.company||'')}</td><td>${esc(new Date(a.signedAt).toLocaleString())}</td><td>${a.signatureData?`<img class="weeklySigPrint" src="${a.signatureData}">`:''}</td></tr>`).join('');
+    const blankCount = pageIdx === totalPages-1 ? Math.max(0, perPage - chunk.length) : 0;
+    const blanks = Array.from({length:blankCount},(_,i)=>`<tr><td>${startNum+chunk.length+i+1}</td><td></td><td></td><td></td><td></td></tr>`).join('');
+    return `<div class="weeklySheet"><div class="weeklyPrintHeader"><img src="${logo}"><div><h1>Weekly Safety Meeting</h1><p><b>Project:</b> ${esc(meeting.project)}</p><p><b>Meeting Date:</b> ${esc(dateToSlashYYYY(meeting.date))}</p><p><b>Foreman:</b> ${esc(meeting.foreman||'')}</p><p><b>Attendees:</b> ${attendees.length} &nbsp; <b>Page:</b> ${pageIdx+1} of ${totalPages}</p></div></div><div class="topicBox"><b>Safety Topic:</b><br>${esc(meeting.topic)}</div><table class="weeklyTable"><tr><th>#</th><th>Worker Name</th><th>Company</th><th>Signed In</th><th>Signature / Initials</th></tr>${rows}${blanks}</table><div class="weeklyFoot">Weekly Safety Meeting — Page ${pageIdx+1} of ${totalPages}</div></div>`;
+  });
+  setPrintPages(pages); return pages.join('');
 }
-
 
 function normalizeWorkerNameKey(w){
   return String(workerDisplayName(w) || `${w.firstName||''} ${w.lastName||''}`.trim()).trim().toLowerCase().replace(/[^a-z0-9]+/g,' ');

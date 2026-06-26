@@ -594,12 +594,14 @@ app.post('/api/weekly-meetings', (req, res) => {
 });
 
 app.get('/api/weekly-meetings/:id', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   const meeting = readWeeklyMeetings().find(x => x.id === req.params.id);
   if (!meeting) return res.status(404).json({ error: 'Meeting not found.' });
   res.json({ ok: true, meeting });
 });
 
 app.post('/api/weekly-meetings/:id/sign', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   const rows = readWeeklyMeetings();
   const meeting = rows.find(x => x.id === req.params.id);
   if (!meeting) return res.status(404).json({ error: 'Meeting not found.' });
@@ -619,6 +621,7 @@ app.post('/api/weekly-meetings/:id/sign', (req, res) => {
   } else {
     meeting.attendees.push({ id: nanoid(8), name, company, signatureData, signedAt: new Date().toISOString() });
   }
+  meeting.updatedAt = new Date().toISOString();
   writeWeeklyMeetings(rows);
   res.json({ ok: true, meeting });
 });
