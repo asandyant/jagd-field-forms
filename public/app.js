@@ -226,7 +226,32 @@ function renderPirAmbientBlocks(){
 }
 
 function checked(name){const el=document.querySelector(`[name="${name}"]:checked`); return el ? el.value : '';}
-function setPrint(html){document.querySelectorAll('.printPage').forEach(x=>x.remove()); const div=document.createElement('div'); div.className='printPage'; div.innerHTML=html; document.body.appendChild(div); currentPrint=html;}
+const PRINT_SHEET_SELECTOR = [
+  '.pirSheetV7',
+  '.pirMixExtraSheet',
+  '.pirNotesSheet',
+  '.dailyPrintSheet',
+  '.dsifSheet',
+  '.weeklySheet',
+  '.mewpSheet',
+  '.dwlPrintSheet',
+  '.extraPrintSheet'
+].join(',');
+function normalizePrintPagesFromHtml(html){
+  const raw = String(html || '').trim();
+  if(!raw) return [];
+  const temp = document.createElement('div');
+  temp.innerHTML = raw;
+  const directSheets = Array.from(temp.children).filter(el=>el.matches && el.matches(PRINT_SHEET_SELECTOR));
+  if(directSheets.length >= 2) return directSheets.map(el=>el.outerHTML);
+  if(directSheets.length === 1 && temp.children.length === 1) return [directSheets[0].outerHTML];
+  const nestedSheets = Array.from(temp.querySelectorAll(PRINT_SHEET_SELECTOR));
+  if(nestedSheets.length >= 2) return nestedSheets.map(el=>el.outerHTML);
+  return [raw];
+}
+function setPrint(html){
+  setPrintPages(normalizePrintPagesFromHtml(html));
+}
 function setPrintPages(pages){
   document.querySelectorAll('.printPage').forEach(x=>x.remove());
   const cleanPages = (pages||[]).filter(x=>String(x||'').trim());
