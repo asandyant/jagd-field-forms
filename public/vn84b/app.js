@@ -105,20 +105,10 @@ async function loadData() {
 
 
 function renderStorageWarning() {
-  let banner = document.getElementById('storageWarningBanner');
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.id = 'storageWarningBanner';
-    banner.style.cssText = 'display:none;margin:12px 0;padding:12px 14px;border-radius:14px;background:#fff7ed;border:1px solid #fdba74;color:#7c2d12;font-weight:700;';
-    const main = document.querySelector('main') || document.body;
-    main.prepend(banner);
-  }
-  if (trackerData && trackerData.warning) {
-    banner.textContent = trackerData.warning;
-    banner.style.display = 'block';
-  } else {
-    banner.style.display = 'none';
-  }
+  // Field users should not see storage/admin warnings on the tracker page.
+  // Storage can still be checked from /api/vn84b/storage when needed.
+  const banner = document.getElementById('storageWarningBanner');
+  if (banner) banner.style.display = 'none';
 }
 
 function render() {
