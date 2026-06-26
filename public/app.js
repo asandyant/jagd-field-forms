@@ -3,7 +3,7 @@ const logo = '/assets/jagd-logo.png';
 let currentPrint = '';
 let pirMixCount = 1;
 const PIR_MIX_MAX_BLOCKS = 8;
-const PIR_MIX_FIELD_SUFFIXES = ['MixLoc','MixTime','MixWitness','BatchA','MfgA','ShelfA','BatchB','MfgB','ShelfB','Dust','Thinner','Volume','Mfr','Prod','Color','Kit','Pot','Shelf','Induction','Temp','Qty','Start','Finish','Gallons','System','Method','GunTip','Elapsed','DFTPrev'];
+const PIR_MIX_FIELD_SUFFIXES = ['MixLoc','MixTime','MixWitness','CustomCoaA','CustomCoaB','BatchA','MfgA','ShelfA','BatchB','MfgB','ShelfB','Dust','Thinner','Volume','Mfr','Prod','Color','Kit','Pot','Shelf','Induction','Temp','Qty','Start','Finish','Gallons','System','Method','GunTip','Elapsed','DFTPrev'];
 let pirAmbientCount = 1;
 let pirAdditionalNotesOpen = false;
 const signatureStore = {};
@@ -593,23 +593,32 @@ function photoInput(id,label='Photos / attached pages'){return `<div><label for=
 function setupPhotoPreview(inputId){const input=document.getElementById(inputId), preview=document.getElementById(inputId+'Preview'); if(!input||!preview)return; input.addEventListener('change',()=>{preview.innerHTML=''; [...input.files].forEach(f=>{ if(f.type.startsWith('image/')){ const img=document.createElement('img'); img.src=URL.createObjectURL(f); preview.appendChild(img);} else { const p=document.createElement('div'); p.className='notice'; p.textContent=f.name; preview.appendChild(p);} });});}
 
 
+function isGwbCablesProjectName(text){
+  const p=String(text||'').toUpperCase();
+  return p.includes('GWB CABLE') || p.includes('GWB-244.048') || p.includes('GWB 244.048') || p.includes('244.048');
+}
 function pirMaterialProjectKey(){
-  const p=projectValue('pirProject').toUpperCase();
-  if(p.includes('GWB') || p.includes('GEORGE WASHINGTON') || p.includes('GW ')) return 'GWB';
+  const raw=projectValue('pirProject');
+  const p=raw.toUpperCase();
+  // Only the actual GWB Cables job gets the GWB cable COAs. Do not let GW 244.289 Lemoine Ave pull GWB Cables COAs.
+  if(isGwbCablesProjectName(p)) return 'GWB';
+  if(p.includes('LEMOINE') || p.includes('244.289')) return raw;
   if(p.includes('DYRE') || p.includes('DYER') || p.includes('C35311') || p.includes('C-35311')) return 'DYRE';
   const match = PROJECT_OPTIONS.find(opt => opt && p && opt.toUpperCase() === p);
   return match || p;
 }
 function materialProjectMatches(m, key){
   const project=String(m.project||'').toUpperCase();
+  const keyText=String(key||'').toUpperCase();
   if(!key) return false;
-  if(key==='GWB') return project.includes('GWB') || project.includes('GEORGE WASHINGTON') || project.includes('GW ');
+  if(key==='GWB') return project === 'GWB' || isGwbCablesProjectName(project);
   if(key==='DYRE') return project.includes('DYRE') || project.includes('C35311') || project.includes('C-35311');
-  return project===String(key||'').toUpperCase();
+  return project===keyText;
 }
 function adminProjectKeyFromName(projectName){
   const p=String(projectName||'').toUpperCase();
-  if(p.includes('GWB') || p.includes('GEORGE WASHINGTON') || p.includes('GW ')) return 'GWB';
+  if(isGwbCablesProjectName(p)) return 'GWB';
+  if(p.includes('LEMOINE') || p.includes('244.289')) return projectName;
   if(p.includes('DYRE') || p.includes('DYER') || p.includes('C35311') || p.includes('C-35311')) return 'DYRE';
   return projectName;
 }
@@ -650,7 +659,7 @@ function pirMaterialOptions(componentFilter='', key=''){
   return '<option value=""></option>' + Object.keys(groups).sort().map(g=>`<optgroup label="${esc(g)}">${groups[g].map(m=>`<option value="${esc(m.id)}">${esc(m.label||m.prodName||m.description||m.batch||'Material')}</option>`).join('')}</optgroup>`).join('');
 }
 function pirMaterialSelect(i, slot, label, filter){
-  return `<div class="pirMaterialControl"><label for="pirMaterial${slot}${i}">${label}</label><select id="pirMaterial${slot}${i}" class="pirMaterialSelect" data-mix="${i}" data-slot="${slot}" data-filter="${filter}">${pirMaterialOptions(filter)}</select></div>`;
+  return `<div class="pirMaterialControl"><label for="pirMaterial${slot}${i}">${label}</label><select id="pirMaterial${slot}${i}" class="pirMaterialSelect" data-mix="${i}" data-slot="${slot}" data-filter="${filter}">${pirMaterialOptions(filter)}</select><input id="pirCustomCoa${slot}${i}" class="pirCustomCoaInput" placeholder="Can't find it? Type custom COA / product / batch here"></div>`;
 }
 function pirShelfText(mat){
   if(!mat) return '';
@@ -689,7 +698,7 @@ function updatePirMaterialVisibility(){
   const projectLabel=pirMaterialProjectLabel(key);
   document.querySelectorAll('.pirMaterialNotice').forEach(el=>{
     el.style.display=show?'block':'none';
-    if(show) el.innerHTML=`<b>${esc(projectLabel)} COA helper:</b> Pick a material/batch below to auto-fill Batch, Mfg Date, Shelf Life/Exp, Mfr, Product, and Color. All fields remain editable.`;
+    if(show) el.innerHTML=`<b>${esc(projectLabel)} COA helper:</b> Pick a material/batch below to auto-fill Batch, Mfg Date, Shelf Life/Exp, Mfr, Product, and Color. If the COA is not listed, type it in the custom COA box. All fields remain editable.`;
   });
   document.querySelectorAll('.pirMaterialControl').forEach(el=>{el.style.display=show?'block':'none';});
   document.querySelectorAll('.pirMaterialSelect').forEach(sel=>{
@@ -712,7 +721,7 @@ function setupPirMaterialLibrary(){
 
 function mixBlockForm(i){
   const deleteBtn = i > 1 ? `<button type="button" class="btn danger small pirDeleteMixBlock" data-delete-pir-mix="${i}">Delete this block</button>` : '';
-  return `<div class="panel innerPanel mixBlock" data-mix="${i}"><div class="mixBlockTitleRow"><h3>Mix / Application Block ${i}</h3>${deleteBtn}</div><div class="notice pirMaterialNotice"><b>COA helper:</b> Pick a material/batch below to auto-fill Batch, Mfg Date, Shelf Life/Exp, Mfr, Product, and Color. All fields remain editable.</div><div class="grid two pirMaterialControls">${pirMaterialSelect(i,'A','COA Product / Part A','main')}${pirMaterialSelect(i,'B','COA Hardener / Dust / Component','component')}</div><div class="grid four">${field('pirMixLoc'+i,'Location')}${field('pirMixTime'+i,'Time','time')}${selectField('pirMixWitness'+i,'Mix Witnessed and Acceptable',['','YES','NO','N/A'])}${field('pirBatchA'+i,'Batch # A')}${field('pirMfgA'+i,'A Mfg Date')}${field('pirShelfA'+i,'A Shelf Life')}${field('pirBatchB'+i,'Batch # B')}${field('pirMfgB'+i,'B Mfg Date')}${field('pirShelfB'+i,'B Shelf Life')}${field('pirDust'+i,'Dust')}${field('pirThinner'+i,'Thinner Type')}${field('pirVolume'+i,'% By Volume')}${field('pirMfr'+i,'Mfr')}${field('pirProd'+i,'Prod. Name')}${field('pirColor'+i,'Color')}${field('pirKit'+i,'Kit Sz/Cond.')}${field('pirPot'+i,'Pot Life')}${field('pirShelf'+i,'Shelf Life')}${field('pirInduction'+i,'Induction Time')}${field('pirTemp'+i,'Temperature')}${field('pirQty'+i,'Quantity Mixed')}${field('pirStart'+i,'Start')}${field('pirFinish'+i,'Finish / Stop')}${field('pirGallons'+i,'Total Gallons')}${field('pirSystem'+i,'Coat / System')}${field('pirMethod'+i,'Application Method')}${field('pirGunTip'+i,'Gun/Tip Size')}${field('pirElapsed'+i,'Time elapsed between coats')}${field('pirDFTPrev'+i,'DFT Avg. Previous Coat')}</div></div>`;
+  return `<div class="panel innerPanel mixBlock" data-mix="${i}"><div class="mixBlockTitleRow"><h3>Mix / Application Block ${i}</h3>${deleteBtn}</div><div class="notice pirMaterialNotice"><b>COA helper:</b> Pick a material/batch below to auto-fill Batch, Mfg Date, Shelf Life/Exp, Mfr, Product, and Color. If the COA is not listed, type it in the custom COA box. All fields remain editable.</div><div class="grid two pirMaterialControls">${pirMaterialSelect(i,'A','COA Product / Part A','main')}${pirMaterialSelect(i,'B','COA Hardener / Dust / Component','component')}</div><div class="grid four">${field('pirMixLoc'+i,'Location')}${field('pirMixTime'+i,'Time','time')}${selectField('pirMixWitness'+i,'Mix Witnessed and Acceptable',['','YES','NO','N/A'])}${field('pirBatchA'+i,'Batch # A')}${field('pirMfgA'+i,'A Mfg Date')}${field('pirShelfA'+i,'A Shelf Life')}${field('pirBatchB'+i,'Batch # B')}${field('pirMfgB'+i,'B Mfg Date')}${field('pirShelfB'+i,'B Shelf Life')}${field('pirDust'+i,'Dust')}${field('pirThinner'+i,'Thinner Type')}${field('pirVolume'+i,'% By Volume')}${field('pirMfr'+i,'Mfr')}${field('pirProd'+i,'Prod. Name')}${field('pirColor'+i,'Color')}${field('pirKit'+i,'Kit Sz/Cond.')}${field('pirPot'+i,'Pot Life')}${field('pirShelf'+i,'Shelf Life')}${field('pirInduction'+i,'Induction Time')}${field('pirTemp'+i,'Temperature')}${field('pirQty'+i,'Quantity Mixed')}${field('pirStart'+i,'Start')}${field('pirFinish'+i,'Finish / Stop')}${field('pirGallons'+i,'Total Gallons')}${field('pirSystem'+i,'Coat / System')}${field('pirMethod'+i,'Application Method')}${field('pirGunTip'+i,'Gun/Tip Size')}${field('pirElapsed'+i,'Time elapsed between coats')}${field('pirDFTPrev'+i,'DFT Avg. Previous Coat')}</div></div>`;
 }
 function pirMixSnapshot(){
   return Array.from({length:pirMixCount},(_,idx)=>{
@@ -964,7 +973,7 @@ function collectPir(){
  const data={project:projectValue('pirProject'),reportDate:val('pirReportDate'),day:val('pirDay'),weatherAM:val('pirWeatherAM'),weatherPM:val('pirWeatherPM'),inspectionReport:val('pirInspectionReport'),attachedPages,page:'1',pageOf:'1',holdPoints:pirHoldPoints.map((q,i)=>({q,status:checked('pirHold'+i)})),sspc:val('pirSSPC'),specifiedProfile:val('pirSpecifiedProfile'),profileCheck:val('pirProfileCheck'),abrasiveTest:val('pirAbrasiveTest'),blotterTest:val('pirBlotterTest'),chloride1:val('pirChloride1'),chloride2:val('pirChloride2'),illumination:val('pirIllumination'),testex:[1,2,3].map(i=>({location:val('pirTestexLoc'+i),reading:val('pirTestexReading'+i),notes:val('pirTestexNotes'+i)})),posiAdjust:val('pirPosiAdjust'),generalNotes:val('pirGeneralNotes'),qcPrint:val('pirQCPrint'),qcSignature:val('pirQCSignature'),qcsSignature:val('pirQCSSignature'),caulking:{location:val('pirCaulkLocation'),nameBatch:val('pirCaulkNameBatch'),tubeSize:val('pirTubeSize'),shelf:val('pirCaulkShelf'),totalUsed:val('pirTotalUsed')}};
  data.instruments=['Sling Psychrometer','Surface Temperature Gage','Calibration Plates','Micrometer','Positector','Wet Film Thickness Gage','Inspection Equip inspected in last 12 Months?'].map((n,i)=>({name:n,status:val('pirInstYes'+i),serial:val('pirInstSerial'+i)}));
  data.ambient=[1,2,3,4].map(i=>({location:val('pirAmbLoc'+i),time:val('pirAmbTime'+i),dry:val('pirDry'+i),wet:val('pirWet'+i),rh:val('pirRH'+i),surface:val('pirSurf'+i),dew:val('pirDew'+i),diff:val('pirDiff'+i)}));
- data.mixing=Array.from({length:pirMixCount},(_,idx)=>idx+1).map(i=>({location:val('pirMixLoc'+i),time:val('pirMixTime'+i),witness:val('pirMixWitness'+i),batchA:val('pirBatchA'+i),mfgA:val('pirMfgA'+i),shelfA:val('pirShelfA'+i),batchB:val('pirBatchB'+i),mfgB:val('pirMfgB'+i),shelfB:val('pirShelfB'+i),dust:val('pirDust'+i),thinner:val('pirThinner'+i),volume:val('pirVolume'+i),mfr:val('pirMfr'+i),prod:val('pirProd'+i),color:val('pirColor'+i),kit:val('pirKit'+i),pot:val('pirPot'+i),shelf:val('pirShelf'+i),induction:val('pirInduction'+i),temp:val('pirTemp'+i),qty:val('pirQty'+i),start:val('pirStart'+i),finish:val('pirFinish'+i),gallons:val('pirGallons'+i),system:val('pirSystem'+i),method:val('pirMethod'+i),gunTip:val('pirGunTip'+i),elapsed:val('pirElapsed'+i),dftPrev:val('pirDFTPrev'+i)}));
+ data.mixing=Array.from({length:pirMixCount},(_,idx)=>idx+1).map(i=>({location:val('pirMixLoc'+i),time:val('pirMixTime'+i),witness:val('pirMixWitness'+i),customCoaA:val('pirCustomCoaA'+i),customCoaB:val('pirCustomCoaB'+i),batchA:val('pirBatchA'+i),mfgA:val('pirMfgA'+i),shelfA:val('pirShelfA'+i),batchB:val('pirBatchB'+i),mfgB:val('pirMfgB'+i),shelfB:val('pirShelfB'+i),dust:val('pirDust'+i),thinner:val('pirThinner'+i),volume:val('pirVolume'+i),mfr:val('pirMfr'+i),prod:val('pirProd'+i),color:val('pirColor'+i),kit:val('pirKit'+i),pot:val('pirPot'+i),shelf:val('pirShelf'+i),induction:val('pirInduction'+i),temp:val('pirTemp'+i),qty:val('pirQty'+i),start:val('pirStart'+i),finish:val('pirFinish'+i),gallons:val('pirGallons'+i),system:val('pirSystem'+i),method:val('pirMethod'+i),gunTip:val('pirGunTip'+i),elapsed:val('pirElapsed'+i),dftPrev:val('pirDFTPrev'+i)}));
  data.qcSignatureData=signatureStore.pirQCSignature || ''; data.qcsSignatureData=signatureStore.pirQCSSignature || ''; data.mixingCount=pirMixCount;
  data.additionalNotesOpen=pirAdditionalNotesOpen || !!document.getElementById('pirAdditionalNotesPanel')?.offsetParent;
  data.additionalNotes={location:val('pirNotesLocation'),date:val('pirNotesDate'),qc:val('pirNotesQC'),summary:val('pirNotesSummary'),print:val('pirNotesPrint'),signature:val('pirNotesSignature'),signatureData:signatureStore.pirNotesSignature||'',rows:Array.from({length:8},(_,idx)=>{const i=idx+1; return {time:val('pirNoteTime'+i),location:val('pirNoteLoc'+i),activity:val('pirNoteAct'+i),notes:val('pirNoteText'+i)};})};
@@ -982,7 +991,7 @@ function buildPirPrint(data=collectPir(), files=[]){
  }).join('') + `<div class="pirCell tinyCell">YES</div><div class="pirCell tinyCell">Posi verified as per PA-2?</div><div class="pirCell tinyCell">Adjustment made: ${cell(data.posiAdjust)}</div>`;
  const ambHead=`<div class="pirCell tinyCell"></div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a.location)}</div>`).join('')}`;
  const ambRows=[['Time','time'],['Dry Bulb Temp','dry'],['Wet Bulb Temp','wet'],['% Relative Humidity','rh'],['Surface Temp.','surface'],['Dew Point','dew'],['Surface Temp. - Dew Point Spread','diff']].map(([label,key])=>`<div class="pirCell tinyCell">${label}</div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a[key])}</div>`).join('')}`).join('');
- const mixBlock=(m={})=>`<div class="mixPrintBlock"><div class="mixRow"><span><b>Location:</b> ${cell(m.location)}</span><span><b>Time:</b> ${cell(m.time)}</span></div><div class="mixHead">Batch #'s <span>Mix Witnessed and Acceptable ${cell(m.witness)}</span></div><div class="mixGrid"><span>(A) ${cell(m.batchA)}</span><span>Mfg Date ${cell(m.mfgA)}</span><span>Shelf Life ${cell(m.shelfA)}</span><span>(B) ${cell(m.batchB)}</span><span>Mfg Date ${cell(m.mfgB)}</span><span>Shelf Life ${cell(m.shelfB)}</span><span>Dust ${cell(m.dust)}</span><span>Thinner Type ${cell(m.thinner)}</span><span>% By Volume ${cell(m.volume)}</span><span>Mfr: ${cell(m.mfr)}</span><span>Prod. Name: ${cell(m.prod)}</span><span>Color: ${cell(m.color)}</span><span>Kit Sz/Cond.: ${cell(m.kit)}</span><span>Pot Life: ${cell(m.pot)}</span><span>Shelf Life: ${cell(m.shelf)}</span><span>Induction Time: ${cell(m.induction)}</span><span>Temperature: ${cell(m.temp)}</span><span>Quantity Mixed: ${cell(m.qty)}</span></div><div class="mixHead">Application</div><div class="mixGrid app"><span>Start: ${cell(m.start)}</span><span>Finish/Stop: ${cell(m.finish)}</span><span>Total Gallons: ${cell(m.gallons)}</span><span>Coat: ${cell(m.system)}</span><span>Method: ${cell(m.method)}</span><span>Gun/Tip Size: ${cell(m.gunTip)}</span><span>DFT Avg. Previous Coat: ${cell(m.dftPrev)}</span><span>Time elapsed between coats: ${cell(m.elapsed)}</span></div></div>`;
+ const mixBlock=(m={})=>`<div class="mixPrintBlock"><div class="mixRow"><span><b>Location:</b> ${cell(m.location)}</span><span><b>Time:</b> ${cell(m.time)}</span></div><div class="mixHead">Batch #'s <span>Mix Witnessed and Acceptable ${cell(m.witness)}</span></div><div class="mixGrid">${m.customCoaA?`<span><b>Custom COA A:</b> ${cell(m.customCoaA)}</span>`:''}${m.customCoaB?`<span><b>Custom COA B:</b> ${cell(m.customCoaB)}</span>`:''}<span>(A) ${cell(m.batchA)}</span><span>Mfg Date ${cell(m.mfgA)}</span><span>Shelf Life ${cell(m.shelfA)}</span><span>(B) ${cell(m.batchB)}</span><span>Mfg Date ${cell(m.mfgB)}</span><span>Shelf Life ${cell(m.shelfB)}</span><span>Dust ${cell(m.dust)}</span><span>Thinner Type ${cell(m.thinner)}</span><span>% By Volume ${cell(m.volume)}</span><span>Mfr: ${cell(m.mfr)}</span><span>Prod. Name: ${cell(m.prod)}</span><span>Color: ${cell(m.color)}</span><span>Kit Sz/Cond.: ${cell(m.kit)}</span><span>Pot Life: ${cell(m.pot)}</span><span>Shelf Life: ${cell(m.shelf)}</span><span>Induction Time: ${cell(m.induction)}</span><span>Temperature: ${cell(m.temp)}</span><span>Quantity Mixed: ${cell(m.qty)}</span></div><div class="mixHead">Application</div><div class="mixGrid app"><span>Start: ${cell(m.start)}</span><span>Finish/Stop: ${cell(m.finish)}</span><span>Total Gallons: ${cell(m.gallons)}</span><span>Coat: ${cell(m.system)}</span><span>Method: ${cell(m.method)}</span><span>Gun/Tip Size: ${cell(m.gunTip)}</span><span>DFT Avg. Previous Coat: ${cell(m.dftPrev)}</span><span>Time elapsed between coats: ${cell(m.elapsed)}</span></div></div>`;
  const firstMix=[0,1,2,3].map(i=>mixBlock(mix[i]||{})).join('');
  const extraMixRows=mix.slice(4).filter(m=>Object.values(m||{}).some(v=>String(v||'').trim()));
  const extraMixPage=extraMixRows.length?`<div class="pirMixExtraSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional Mix / Application Blocks</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><div class="pirExtraMixGrid">${extraMixRows.map(mixBlock).join('')}</div></div>`:'';
