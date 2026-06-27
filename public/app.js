@@ -1879,82 +1879,112 @@ async function saveDwlDirectPdf(data, msgId){
   const { jsPDF } = window.jspdf;
   const filledRows=(data.rows||[]).filter(r=>r.employee||r.location||r.activity||r.class||r.local||r.straight||r.over||r.noLunch||r.pt||r.rt);
   data = normalizeDwlDataForSave(data);
-  const rowsPerPage = 12;
+
+  // Boss-size DWL print: match the old DWL 3.0 sheet font behavior instead of shrinking the form.
+  // The old form used larger Arial/Helvetica field fonts: date about 24pt, narrative fields about 16-18pt,
+  // worker rows about 14-18pt, and 20 rows per page. Keep the same DWL structure, only change print sizing.
+  const rowsPerPage = 20;
   const needed=Math.max(1, Math.ceil(Math.max(filledRows.length,rowsPerPage)/rowsPerPage));
   const rowsForPrint=(data.rows||[]).slice(0, needed*rowsPerPage);
   while(rowsForPrint.length < needed*rowsPerPage) rowsForPrint.push({num:rowsForPrint.length+1});
+
   const doc=new jsPDF({orientation:'portrait',unit:'pt',format:'letter',compress:true});
   const pageW=612, pageH=792;
   const dateSlash=dateToSlashYYYY(data.reportDate);
-  const m=14, w=pageW-m*2;
-  const cols=[18,176,45,42,42,42,44,42,52,40,40];
+  const m=21, w=pageW-m*2;
+  const cols=[16,176,43,40,40,42,46,43,52,40,32];
   const headers=['#','Employee','Location','Activity','Class','Local','Straight','Over','No Lunch','P.T.','R.T.'];
+
+  function drawActivityGrid(startY){
+    let y=startY;
+    dwlPdfCell(doc,m,y,w,18,'Activities Performed',{fill:[217,217,217],size:12,style:'bold',align:'center',lineWidth:1.15});
+    y += 18;
+    const cellW=w/6;
+    for(let row=0; row<2; row++){
+      let x=m;
+      for(let c=0; c<6; c++){
+        const idx=row + c*2;
+        dwlPdfCell(doc,x,y,cellW,18,DWL_ACTIVITIES[idx]||'',{size:10.8,style:'bold',align:'left',lineWidth:1.05});
+        x += cellW;
+      }
+      y += 18;
+    }
+    return y;
+  }
+
   for(let p=0;p<needed;p++){
     if(p>0) doc.addPage('letter','portrait');
-    let y=14;
-    // Header
-    doc.setFont('helvetica','bold'); doc.setFontSize(11);
-    try{ doc.addImage('/assets/jagd-logo.png','PNG',m,y,18,13); }catch(e){}
-    dwlPdfText(doc,'JAGD Daily Work Log',m+24,y+11,{size:11,style:'bold',maxWidth:220});
-    dwlPdfText(doc,'DWL 4.0',pageW-m,y+11,{size:10,style:'bold',align:'right',maxWidth:80});
-    y += 26;
-    doc.setLineWidth(1.2); doc.line(m,y+w*0,w+m,y+w*0); // harmless reset line?
-    // Project / date line
-    dwlPdfText(doc,'Project:',m,y+14,{size:9.5,style:'bold'});
-    dwlPdfText(doc,data.project,m+42,y+15,{size:12,style:'bold',maxWidth:334});
-    dwlPdfText(doc,'Report Date:',pageW-m-120,y+8,{size:8,style:'bold',align:'left'});
-    dwlPdfText(doc,dateSlash,pageW-m,y+23,{size:18,style:'bold',align:'right',maxWidth:120});
-    dwlPdfText(doc,'Revision:',pageW-m-120,y+28,{size:7,style:'bold',align:'left'});
-    dwlPdfText(doc,cleanDwlRevision(data.revision || '0') || '0',pageW-m,y+28,{size:9,style:'bold',align:'right',maxWidth:120});
-    doc.setLineWidth(1.1); doc.line(m,y+31,pageW-m,y+31);
-    y += 33;
-    // Weather line
-    dwlPdfText(doc,'Weather:',m,y+12,{size:9,style:'bold'});
-    dwlPdfText(doc,data.weather,m+48,y+12,{size:10.5,style:'bold',maxWidth:224});
-    dwlPdfText(doc,'Day:',m+365,y+12,{size:8,style:'bold'});
-    dwlPdfText(doc,data.day,m+390,y+12,{size:9,style:'bold',maxWidth:85});
-    dwlPdfText(doc,'Crew:',m+485,y+12,{size:8,style:'bold'});
-    dwlPdfText(doc,data.crew,m+515,y+12,{size:9,style:'bold',maxWidth:70});
-    doc.line(m,y+17,pageW-m,y+17); y += 18;
-    // Activities table
-    dwlPdfCell(doc,m,y,w,13,'Activities Performed',{fill:[217,217,217],size:8.5,style:'bold',align:'center'}); y += 13;
-    for(let i=0;i<DWL_ACTIVITIES.length;i+=2){
-      dwlPdfCell(doc,m,y,w/2,13,DWL_ACTIVITIES[i]||'',{size:8.2,style:'bold'});
-      dwlPdfCell(doc,m+w/2,y,w/2,13,DWL_ACTIVITIES[i+1]||'',{size:8.2,style:'bold'});
-      y += 13;
+    let y=10;
+
+    // Header: match old DWL feel. Small logo/title at left, DWL version at right.
+    try{ doc.addImage('/assets/jagd-logo.png','PNG',m-2,y,18,18); }catch(e){}
+    dwlPdfText(doc,'JAGD Daily Work Log',m+24,y+13,{size:11.5,style:'bold',maxWidth:230});
+    dwlPdfText(doc,'DWL 4.0',pageW-m,y+13,{size:10.5,style:'bold',align:'right',maxWidth:90});
+    y += 36;
+
+    // Project / report date lines with larger field font.
+    dwlPdfText(doc,'Project:',m,y+12,{size:12,style:'bold'});
+    dwlPdfText(doc,data.project,m+46,y+12,{size:14,style:'bold',maxWidth:350});
+    dwlPdfText(doc,'Report Date:',pageW-m-170,y+12,{size:12,style:'bold'});
+    dwlPdfText(doc,dateSlash,pageW-m,y+12,{size:18,style:'bold',align:'right',maxWidth:115});
+    doc.setLineWidth(1.25); doc.line(m,y+18,pageW-m,y+18);
+    y += 38;
+
+    dwlPdfText(doc,'Weather:',m,y+12,{size:12,style:'bold'});
+    dwlPdfText(doc,data.weather,m+58,y+12,{size:13,style:'bold',maxWidth:230});
+    dwlPdfText(doc,'Day:',m+345,y+12,{size:12,style:'bold'});
+    dwlPdfText(doc,data.day,m+382,y+12,{size:13,style:'bold',maxWidth:100});
+    dwlPdfText(doc,'Crew:',m+492,y+12,{size:12,style:'bold'});
+    dwlPdfText(doc,data.crew,m+535,y+12,{size:13,style:'bold',maxWidth:45});
+    doc.setLineWidth(1.25); doc.line(m,y+18,pageW-m,y+18);
+    y += 20;
+
+    y = drawActivityGrid(y);
+
+    // Narrative boxes: use the old larger typed-field sizing.
+    dwlPdfBox(doc,m,y,w,84,'Location/Description of work',data.description,15.5); y += 84;
+    dwlPdfBox(doc,m,y,w,48,'Additional Notes',data.notes || data.additionalNotes,15.5); y += 48;
+    dwlPdfBox(doc,m,y,w,38,'Safety Huddle Topic',data.safetyTopic || data.safetyHuddleTopic,15.5); y += 38;
+
+    // Worker table header and rows. Keep 20 rows per page like the boss DWL, but do not shrink the font.
+    let x=m; const headerH=18;
+    for(let c=0;c<headers.length;c++){
+      dwlPdfCell(doc,x,y,cols[c],headerH,headers[c],{fill:[217,217,217],size:c===2||c===3?9.5:10.4,style:'bold',align:'center',lineWidth:1.05});
+      x+=cols[c];
     }
-    // Description / notes
-    dwlPdfBox(doc,m,y,w,78,'Location/Description of work',data.description,12); y += 78;
-    dwlPdfBox(doc,m,y,w,34,'Additional Notes',data.notes || data.additionalNotes,11); y += 34;
-    dwlPdfBox(doc,m,y,w,34,'Safety Huddle Topic',data.safetyTopic || data.safetyHuddleTopic,11); y += 34;
-    // Worker table
-    let x=m; const headerH=14;
-    for(let c=0;c<headers.length;c++){dwlPdfCell(doc,x,y,cols[c],headerH,headers[c],{fill:[217,217,217],size:7.6,style:'bold',align:'center'}); x+=cols[c];}
     y += headerH;
-    const rowH=30;
+    const rowH=18.8;
     for(let r=0;r<rowsPerPage;r++){
       const row=rowsForPrint[p*rowsPerPage+r]||{num:p*rowsPerPage+r+1};
       const vals=[p*rowsPerPage+r+1,row.employee,row.location,row.activity,row.class,row.local,row.straight,row.over,row.noLunch,row.pt,row.rt];
       x=m;
       for(let c=0;c<vals.length;c++){
-        const isName=c===1; const isNum=c!==0 && c!==2;
-        dwlPdfCell(doc,x,y,cols[c],rowH,vals[c]||'',{size:isName?16.8:(isNum?15.2:11),style:(isName||isNum)?'bold':'normal',align:c===1?'left':'center',lineWidth:0.9});
+        let size=13.8;
+        let style='bold';
+        let align='center';
+        if(c===0){ size=10.2; }
+        if(c===1){ size=13.6; align='left'; }
+        if(c===2){ size=10.8; style='normal'; }
+        if(c===3){ size=11.2; }
+        dwlPdfCell(doc,x,y,cols[c],rowH,vals[c]||'',{size,style,align,lineWidth:1.0});
         x += cols[c];
       }
       y += rowH;
     }
-    y += 12;
-    dwlPdfText(doc,'Print Name:',m,y+10,{size:7,style:'bold'});
-    dwlPdfText(doc,data.printName||data.foreman||'',m+50,y+10,{size:8.5,style:'bold',maxWidth:160});
-    dwlPdfText(doc,'Sign:',m+230,y+10,{size:7,style:'bold'});
-    if(data.signatureData){ try{ doc.addImage(data.signatureData,'PNG',m+260,y-6,120,26); }catch(e){} }
-    dwlPdfText(doc,'Date:',pageW-m-70,y+10,{size:7,style:'bold'});
-    dwlPdfText(doc,dateSlash,pageW-m,y+10,{size:8.5,style:'bold',align:'right',maxWidth:70});
-    if(needed>1) dwlPdfText(doc,`Page ${p+1} of ${needed}`,pageW/2,pageH-12,{size:7,align:'center',maxWidth:100});
+
+    y += 20;
+    dwlPdfText(doc,'Print Name:',m,y+10,{size:11,style:'normal'});
+    dwlPdfText(doc,data.printName||data.foreman||'',m+62,y+10,{size:12.5,style:'bold',maxWidth:170});
+    doc.setLineWidth(0.9); doc.line(m+62,y+13,m+210,y+13);
+    dwlPdfText(doc,'Sign:',m+235,y+10,{size:11,style:'normal'});
+    doc.line(m+268,y+13,m+440,y+13);
+    if(data.signatureData){ try{ doc.addImage(data.signatureData,'PNG',m+275,y-10,130,30); }catch(e){} }
+    dwlPdfText(doc,'Date:',pageW-m-80,y+10,{size:11,style:'normal'});
+    dwlPdfText(doc,dateSlash,pageW-m,y+10,{size:12.5,style:'bold',align:'right',maxWidth:70});
+    doc.line(pageW-m-72,y+13,pageW-m,y+13);
+    if(needed>1) dwlPdfText(doc,`Page ${p+1} of ${needed}`,pageW/2,pageH-12,{size:8.5,align:'center',maxWidth:100});
   }
-  // Match the original boss DWL behavior: let jsPDF save/download the generated PDF directly.
-  // This avoids iPhone/Safari browser print headers/footers and avoids the blank second page
-  // caused by opening the form through the native print preview.
+
   const filename = safePdfFileName();
   await downloadPdfDocThroughServer(doc, filename, msgId);
   return true;
