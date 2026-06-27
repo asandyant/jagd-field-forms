@@ -959,3 +959,89 @@
   .dailyPrintSheet{font-size:12.4px!important;line-height:1.12!important;}
   .weeklySheet{font-size:11.5px!important;line-height:1.15!important;}
 }
+
+/* v69 boss-style printable font pass across Forms.
+   Keep DWL layout that boss approved; bring PIR/DSIF/daily/weekly/extra forms up to the same readable saved-PDF style.
+   This is print/PDF output only and does not change the field entry screens. */
+@media print{
+  body:has(.pirSheetV7) .pirSheetV7{
+    width:8.38in!important;
+    height:10.82in!important;
+    max-height:10.82in!important;
+    font-size:9.2px!important;
+    line-height:1.14!important;
+    border:1.8px solid #000!important;
+  }
+  body:has(.pirSheetV7) .pirHeaderV7{height:.76in!important;grid-template-rows:.37in .39in!important;}
+  body:has(.pirSheetV7) .pirHeaderV7>div{padding:4px 6px!important;line-height:1.12!important;}
+  body:has(.pirSheetV7) .pirHLeft,
+  body:has(.pirSheetV7) .pirHRight,
+  body:has(.pirSheetV7) .pirHDay,
+  body:has(.pirSheetV7) .pirHReport,
+  body:has(.pirSheetV7) .pirHPage{font-size:8.8px!important;font-weight:650!important;}
+  body:has(.pirSheetV7) .pirHTitle{font-size:15.5px!important;line-height:1.05!important;}
+  body:has(.pirSheetV7) .pirHLogo img{max-width:.98in!important;max-height:.64in!important;}
+  body:has(.pirSheetV7) .pirTopV7{height:2.08in!important;}
+  body:has(.pirSheetV7) .pirBar,
+  body:has(.pirSheetV7) .pirIAHead,
+  body:has(.pirSheetV7) .pirMixHeadV7,
+  body:has(.pirSheetV7) .pirCaulkHeadV7{height:.22in!important;line-height:.22in!important;font-size:9px!important;}
+  body:has(.pirSheetV7) .pirTopBody{height:1.86in!important;padding:5px 7px!important;font-size:8.75px!important;line-height:1.16!important;}
+  body:has(.pirSheetV7) .pirTopCol:first-child .pirTopBody{font-size:8.45px!important;line-height:1.15!important;}
+  body:has(.pirSheetV7) .pirTopCol:nth-child(2) .pirTopBody{font-size:8.55px!important;line-height:1.13!important;}
+  body:has(.pirSheetV7) .pirTestexStackV7{height:1.86in!important;}
+  body:has(.pirSheetV7) .pirTestexPrint{font-size:11px!important;}
+  body:has(.pirSheetV7) .testexMeta{font-size:6.8px!important;}
+  body:has(.pirSheetV7) .pirIAV7{height:1.54in!important;}
+  body:has(.pirSheetV7) .pirInstGrid{grid-auto-rows:.171in!important;}
+  body:has(.pirSheetV7) .pirAmbGrid{grid-auto-rows:.193in!important;}
+  body:has(.pirSheetV7) .pirCell{padding:2px 4px!important;}
+  body:has(.pirSheetV7) .tinyCell{font-size:7.65px!important;line-height:1.04!important;}
+  body:has(.pirSheetV7) .pirMixGridV7{height:5.38in!important;grid-template-columns:1fr 1fr!important;grid-template-rows:1fr!important;}
+  body:has(.pirSheetV7) .mixRow{height:.29in!important;font-size:8.8px!important;}
+  body:has(.pirSheetV7) .mixHead{height:.24in!important;line-height:.24in!important;font-size:8.8px!important;}
+  body:has(.pirSheetV7) .mixGrid{grid-auto-rows:.202in!important;font-size:8.45px!important;line-height:1.04!important;}
+  body:has(.pirSheetV7) .mixGrid span{padding:2px 4px!important;}
+  body:has(.pirSheetV7) .pirCaulkGridV7{height:.30in!important;font-size:8.7px!important;}
+  body:has(.pirSheetV7) .pirSigGridV7{height:.38in!important;font-size:8.8px!important;}
+  body:has(.pirSheetV7) .pirRevV7{font-size:6.8px!important;}
+
+  .pirNotesSheet,.pirMixExtraSheet{
+    width:8.18in!important;
+    height:10.66in!important;
+    max-height:10.66in!important;
+    padding:.16in!important;
+    font-size:12.6px!important;
+    line-height:1.22!important;
+  }
+  .pirNotesHeader h1{font-size:22px!important;line-height:1.08!important;}
+  .pirNotesHeader p{font-size:12.4px!important;}
+  .pirNotesSheet .extraPrintTable th,.pirNotesSheet .extraPrintTable td,
+  .pirMixExtraSheet .extraPrintTable th,.pirMixExtraSheet .extraPrintTable td{font-size:12px!important;padding:5px 7px!important;}
+  .pirNotesSheet .extraPrintBox,.pirMixExtraSheet .extraPrintBox{font-size:12.6px!important;line-height:1.22!important;}
+
+  .dsifSheet{font-size:10.6px!important;line-height:1.14!important;}
+  .dsifHeader{font-size:11.2px!important;}
+  .dsifHeader .dsifTitle{font-size:14.8px!important;}
+  .dsifTable .dsifSec,.dsifTable td:nth-child(1),.dsifTable td:nth-child(4){font-size:9.2px!important;line-height:1.12!important;}
+  .dsifTable .dsifSec span{font-size:8.8px!important;}
+
+  .dailyPrintSheet{font-size:13.2px!important;line-height:1.16!important;}
+  .dailyPrintHeader h1{font-size:22px!important;}
+  .dailyPrintHeader h2{font-size:18px!important;}
+  .dailyPrintTable th,.dailyPrintTable td{font-size:12.2px!important;padding:5px 7px!important;}
+
+  .weeklySheet{font-size:13px!important;line-height:1.18!important;}
+  .weeklyPrintHeader h1{font-size:24px!important;}
+  .topicBox{font-size:13px!important;}
+  .weeklyTable th,.weeklyTable td{font-size:12.5px!important;padding:6px 7px!important;}
+
+  .mewpSheetSafe{font-size:10.7px!important;line-height:1.13!important;}
+  .mewpSheetSafe .mewpTitle{font-size:16px!important;}
+  .mewpSheetSafe .mewpCheckTable td,.mewpSheetSafe .mewpCheckTable th{font-size:9.5px!important;line-height:1.1!important;}
+
+  .extraPrintSheet{font-size:12.4px!important;line-height:1.22!important;}
+  .extraPrintHeader h1{font-size:22px!important;}
+  .extraPrintTable th,.extraPrintTable td{font-size:11.8px!important;padding:5px 7px!important;}
+  .extraPrintBox{font-size:12.4px!important;line-height:1.22!important;}
+}
