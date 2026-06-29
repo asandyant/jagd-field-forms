@@ -269,16 +269,22 @@ function portalJobBaseOptions(){
   if (portalProjectOptionsLoaded && portal.length) return portal;
   return uniqueList(PROJECT_OPTIONS.filter(o=>o && o !== 'Other' && o !== 'Warehouse'));
 }
-function projectOptions(){ return ['', ...portalJobBaseOptions(), 'Other']; }
+function projectOptions(id=''){
+  const base = portalJobBaseOptions();
+  // DWL needs Warehouse as a selectable job/location even when the Portal job feed does not include it.
+  // Keep Other at the bottom so the field guy can type a one-off/custom job name when needed.
+  const extras = (id === 'dwlProject') ? ['Warehouse', 'Other'] : ['Other'];
+  return ['', ...uniqueList([...base, ...extras])];
+}
 function optionTags(opts, selected=''){ return (opts||[]).map(o=>`<option value="${esc(o)}" ${o===selected?'selected':''}>${esc(o)}</option>`).join(''); }
-function projectField(id,label='Project / Job'){return `<div><label for="${id}">${label}</label><select id="${id}" class="projectSelect">${optionTags(projectOptions())}</select><input id="${id}Other" class="projectOther" type="text" placeholder="Enter project name" style="display:none;margin-top:8px"></div>`;}
+function projectField(id,label='Project / Job'){return `<div><label for="${id}">${label}</label><select id="${id}" class="projectSelect">${optionTags(projectOptions(id))}</select><input id="${id}Other" class="projectOther" type="text" placeholder="Enter custom job / location" style="display:none;margin-top:8px"></div>`;}
 function setupOtherProject(id){const sel=document.getElementById(id), other=document.getElementById(id+'Other'); if(!sel||!other)return; refreshProjectSelectOptions(sel); const sync=()=>{other.style.display = sel.value==='Other' ? 'block' : 'none'; if(sel.value==='Other') other.focus();}; sel.addEventListener('change',sync); sync();}
 function projectValue(id){const sel=document.getElementById(id); if(!sel)return ''; return sel.value==='Other' ? val(id+'Other') : sel.value;}
 function refreshProjectSelectOptions(sel){
   if(!sel || !sel.classList || !sel.classList.contains('projectSelect')) return;
   const current = sel.value;
   const id = sel.id || '';
-  let opts = (id === 'bolFromLocation' || id === 'bolToJob') ? bolLocationOptions() : projectOptions();
+  let opts = (id === 'bolFromLocation' || id === 'bolToJob') ? bolLocationOptions() : projectOptions(id);
   if(current && !opts.includes(current)) {
     const otherIdx = opts.indexOf('Other');
     if(otherIdx >= 0) opts = [...opts.slice(0, otherIdx), current, ...opts.slice(otherIdx)];
