@@ -345,3 +345,13 @@ input.prefilled-progress {
 .repair-card.repair-original{border-left:6px solid #2563eb;}
 .repair-top{gap:10px;}
 @media (max-width: 700px){.box-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.repair-box{min-height:118px;padding:9px}.legend-pills{justify-content:flex-start}}
+
+/* V14 emergency steel repair member-click progress */
+.member-badges.clickable-members{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+.member-chip{appearance:none;border:1px solid #fdba74;background:#fff7ed;color:#7c2d12;border-radius:999px;padding:7px 10px;font-weight:900;cursor:pointer;box-shadow:0 2px 6px rgba(15,23,42,.08);transition:transform .12s ease, box-shadow .12s ease, background .12s ease, border-color .12s ease;}
+.member-chip:hover{transform:translateY(-1px);box-shadow:0 5px 12px rgba(15,23,42,.14);}
+.member-chip.member-done{background:#dcfce7;border-color:#16a34a;color:#14532d;text-decoration:line-through;}
+.member-chip small{font-size:10px;opacity:.75;margin-left:3px;}
+.detail-member-clicks{grid-column:1 / -1;}
+.detail-member-clicks>span{display:block;color:#64748b;font-size:12px;margin-bottom:6px;}
+.repair-card .repair-meta{line-height:1.35;}

@@ -2138,7 +2138,8 @@ function migrateData(data) {
         notes: existing.notes || '',
         updatedAt: existing.updatedAt || '',
         enteredBy: existing.enteredBy || '',
-        history: Array.isArray(existing.history) ? existing.history.slice(0, 50) : []
+        history: Array.isArray(existing.history) ? existing.history.slice(0, 50) : [],
+        completedMembers: Array.isArray(existing.completedMembers) ? existing.completedMembers : []
       };
     });
     data.emergencySteelRepairs = {
@@ -2296,7 +2297,8 @@ async function readData() {
         notes: existing.notes || '',
         updatedAt: existing.updatedAt || '',
         enteredBy: existing.enteredBy || '',
-        history: Array.isArray(existing.history) ? existing.history.slice(0, 50) : []
+        history: Array.isArray(existing.history) ? existing.history.slice(0, 50) : [],
+        completedMembers: Array.isArray(existing.completedMembers) ? existing.completedMembers : []
       };
     });
     data.emergencySteelRepairs = {
@@ -2336,6 +2338,36 @@ function clampNumber(value, min, max) {
 }
 
 
+
+function emergencyMemberUnits(repair) {
+  const raw = String(repair.members || '').split(',').map(m => m.trim()).filter(Boolean);
+  if (raw.length === 1 && raw[0].toUpperCase() === 'ALL') {
+    return [{ key: 'ALL', label: 'ALL', units: Number(repair.qtyMembers || 1) }];
+  }
+  return raw.map(m => ({ key: m, label: m, units: 1 }));
+}
+
+function emergencyCompletedPieces(repair) {
+  const done = new Set(Array.isArray(repair.completedMembers) ? repair.completedMembers.map(String) : []);
+  return emergencyMemberUnits(repair).reduce((sum, m) => sum + (done.has(m.key) ? Number(m.units || 1) : 0), 0);
+}
+
+function syncEmergencyRepairStatusFromMembers(repair) {
+  const donePieces = emergencyCompletedPieces(repair);
+  const totalPieces = Number(repair.qtyMembers || 0);
+  if (totalPieces > 0 && donePieces >= totalPieces) {
+    repair.status = 'Complete';
+    repair.fieldVerified = 'Yes';
+    if (!repair.completedDate) repair.completedDate = new Date().toISOString().slice(0, 10);
+  } else if (donePieces > 0 && (!repair.status || repair.status === 'Not Started' || repair.status === 'Complete')) {
+    repair.status = 'Installed';
+    repair.completedDate = '';
+  } else if (donePieces === 0 && repair.status === 'Complete') {
+    repair.status = 'Not Started';
+    repair.completedDate = '';
+  }
+}
+
 router.get('/api/vn84b/emergency-steel-repairs', async (req, res) => {
   try {
     const data = await readData();
@@ -2343,6 +2375,61 @@ router.get('/api/vn84b/emergency-steel-repairs', async (req, res) => {
   } catch (err) {
     console.error('VN84-B emergency steel repairs read error:', err);
     res.status(500).json({ error: `Could not load Emergency Steel Repairs: ${err.message}` });
+  }
+});
+
+
+router.post('/api/vn84b/emergency-steel-repairs/member', express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    const { id, memberKey, enteredBy } = req.body || {};
+    const data = await readData();
+    const tracker = data.emergencySteelRepairs;
+    const repair = tracker.repairs.find(r => Number(r.id) === Number(id));
+    if (!repair) return res.status(404).json({ error: 'Emergency steel repair row not found.' });
+
+    const allowed = emergencyMemberUnits(repair).map(m => m.key);
+    if (!allowed.includes(String(memberKey))) return res.status(400).json({ error: 'Member is not part of this repair row.' });
+
+    repair.completedMembers = Array.isArray(repair.completedMembers) ? repair.completedMembers.map(String) : [];
+    const key = String(memberKey);
+    const wasDone = repair.completedMembers.includes(key);
+    if (wasDone) repair.completedMembers = repair.completedMembers.filter(m => m !== key);
+    else repair.completedMembers.push(key);
+
+    const stamp = new Date().toISOString();
+    syncEmergencyRepairStatusFromMembers(repair);
+    repair.enteredBy = enteredBy || repair.enteredBy || '';
+    repair.updatedAt = stamp;
+    repair.history = Array.isArray(repair.history) ? repair.history : [];
+    repair.history.unshift({
+      timestamp: stamp,
+      status: repair.status,
+      fieldVerified: repair.fieldVerified,
+      completedDate: repair.completedDate || '',
+      enteredBy: enteredBy || '',
+      notes: `${wasDone ? 'Unchecked' : 'Checked'} member ${key}. ${emergencyCompletedPieces(repair)} of ${repair.qtyMembers} pieces complete.`
+    });
+    repair.history = repair.history.slice(0, 20);
+
+    tracker.activityLog = Array.isArray(tracker.activityLog) ? tracker.activityLog : [];
+    tracker.activityLog.unshift({
+      id: Date.now().toString(36),
+      timestamp: stamp,
+      repairId: repair.id,
+      location: `${repair.pier} / ${repair.span} / ${repair.betweenStringers}`,
+      members: `${wasDone ? 'Unchecked' : 'Checked'} ${key} — ${emergencyCompletedPieces(repair)} of ${repair.qtyMembers} pieces complete`,
+      status: repair.status,
+      fieldVerified: repair.fieldVerified,
+      completedDate: repair.completedDate || '',
+      enteredBy: enteredBy || '',
+      notes: repair.notes || ''
+    });
+    tracker.activityLog = tracker.activityLog.slice(0, 500);
+
+    res.json((await writeData(data)).emergencySteelRepairs);
+  } catch (err) {
+    console.error('VN84-B emergency steel member save error:', err);
+    res.status(500).json({ error: `Could not update Emergency Steel Repair member: ${err.message}` });
   }
 });
 
@@ -2354,6 +2441,7 @@ router.post('/api/vn84b/emergency-steel-repairs/repair', express.json({ limit: '
     const repair = tracker.repairs.find(r => Number(r.id) === Number(id));
     if (!repair) return res.status(404).json({ error: 'Emergency steel repair row not found.' });
 
+    repair.completedMembers = Array.isArray(repair.completedMembers) ? repair.completedMembers : [];
     const allowedStatuses = tracker.statuses || defaultEmergencySteelRepairs.statuses;
     const safeStatus = allowedStatuses.includes(status) ? status : repair.status || 'Not Started';
     const stamp = new Date().toISOString();
