@@ -41,13 +41,33 @@ function summary() {
   const verified = repairs.filter(r => r.fieldVerified === 'Yes').length;
   const holds = repairs.filter(r => r.status === 'Hold / Issue').length;
   const inProgress = repairs.filter(r => r.status && r.status !== 'Not Started' && r.status !== 'Complete' && r.status !== 'Hold / Issue').length;
+  const additional = repairs.filter(r => isAdditional(r));
+  const original = repairs.filter(r => !isAdditional(r));
   return {
     total, complete, verified, holds, inProgress,
     members: repairs.reduce((s,r)=>s+Number(r.qtyMembers||0),0),
     sf: repairs.reduce((s,r)=>s+Number(r.estimatedSf||0),0),
     crewDays: repairs.reduce((s,r)=>s+Number(r.crewDays||0),0),
-    labor: repairs.reduce((s,r)=>s+Number(r.laborCost||0),0)
+    labor: repairs.reduce((s,r)=>s+Number(r.laborCost||0),0),
+    additionalLocations: additional.length,
+    originalLocations: original.length,
+    additionalMembers: additional.reduce((sum,r)=>sum+Number(r.qtyMembers||0),0),
+    originalMembers: original.reduce((sum,r)=>sum+Number(r.qtyMembers||0),0),
+    additionalComplete: additional.filter(r=>r.status === 'Complete').length,
+    originalComplete: original.filter(r=>r.status === 'Complete').length
   };
+}
+
+function isAdditional(r) {
+  return String(r.repairClass || '').toLowerCase().includes('additional') || Number(r.id) > 13;
+}
+
+function classLabel(r) {
+  return isAdditional(r) ? 'Red / Additional' : 'Blue / Original';
+}
+
+function classPill(r) {
+  return `<span class="class-pill ${isAdditional(r) ? 'class-additional' : 'class-original'}">${classLabel(r)}</span>`;
 }
 
 function renderFilters() {
@@ -90,10 +110,10 @@ function renderKpis() {
   document.getElementById('totalCount').textContent = s.total;
   document.getElementById('kpiGrid').innerHTML = `
     <div class="kpi-card"><span>Repair Locations</span><strong>${s.total}</strong></div>
-    <div class="kpi-card"><span>Complete</span><strong>${s.complete}</strong></div>
+    <div class="kpi-card red-kpi"><span>Red / Additional</span><strong>${s.additionalLocations}</strong><em>${s.additionalMembers} member pieces</em></div>
+    <div class="kpi-card blue-kpi"><span>Blue / Original</span><strong>${s.originalLocations}</strong><em>${s.originalMembers} member pieces</em></div>
+    <div class="kpi-card"><span>Complete</span><strong>${s.complete}</strong><em>${pct(s.complete, s.total)}%</em></div>
     <div class="kpi-card"><span>Field Verified</span><strong>${s.verified}</strong></div>
-    <div class="kpi-card"><span>In Progress</span><strong>${s.inProgress}</strong></div>
-    <div class="kpi-card"><span>Member Pieces</span><strong>${num(s.members)}</strong></div>
     <div class="kpi-card"><span>Est. Labor Backup</span><strong>${money(s.labor)}</strong></div>
   `;
 }
@@ -103,18 +123,18 @@ function renderChart() {
   const groups = {};
   (emergencyData.repairs || []).forEach(r => {
     const key = r.pier || 'Unknown';
-    if (!groups[key]) groups[key] = { total: 0, complete: 0, verified: 0, issue: 0 };
-    groups[key].total += 1;
+    if (!groups[key]) groups[key] = { additional: 0, original: 0, complete: 0, issue: 0 };
+    if (isAdditional(r)) groups[key].additional += 1;
+    else groups[key].original += 1;
     if (r.status === 'Complete') groups[key].complete += 1;
-    if (r.fieldVerified === 'Yes') groups[key].verified += 1;
     if (r.status === 'Hold / Issue') groups[key].issue += 1;
   });
   const labels = Object.keys(groups).sort((a,b)=>a.localeCompare(b, undefined, { numeric: true }));
   const datasets = [
-    { label: 'Total locations', data: labels.map(l=>groups[l].total), backgroundColor: '#94a3b8' },
-    { label: 'Field verified', data: labels.map(l=>groups[l].verified), backgroundColor: '#2563eb' },
+    { label: 'Red / Additional', data: labels.map(l=>groups[l].additional), backgroundColor: '#dc2626' },
+    { label: 'Blue / Original', data: labels.map(l=>groups[l].original), backgroundColor: '#2563eb' },
     { label: 'Complete', data: labels.map(l=>groups[l].complete), backgroundColor: '#16a34a' },
-    { label: 'Hold / Issue', data: labels.map(l=>groups[l].issue), backgroundColor: '#dc2626' }
+    { label: 'Hold / Issue', data: labels.map(l=>groups[l].issue), backgroundColor: '#f59e0b' }
   ];
   if (repairChart) repairChart.destroy();
   repairChart = new Chart(ctx, {
@@ -128,17 +148,56 @@ function renderChart() {
   });
 }
 
+function repairBox(r) {
+  const statusClass = STATUS_CLASS[r.status] || '';
+  const members = String(r.members || '').replace(/\s+/g, ' ');
+  return `
+    <button class="repair-box ${isAdditional(r) ? 'box-additional' : 'box-original'} ${statusClass} ${Number(r.id) === Number(selectedRepairId) ? 'selected' : ''}" data-id="${r.id}" type="button">
+      <span class="box-id">#${r.id}</span>
+      <strong>${r.pier} / ${r.span}</strong>
+      <em>${r.betweenStringers}</em>
+      <small>${members}</small>
+    </button>
+  `;
+}
+
+function renderRepairMatrix() {
+  const matrix = document.getElementById('repairMatrix');
+  if (!matrix) return;
+  const repairs = getFilteredRepairs();
+  const byPier = {};
+  repairs.forEach(r => {
+    const key = r.pier || 'Unknown';
+    if (!byPier[key]) byPier[key] = [];
+    byPier[key].push(r);
+  });
+  const piers = Object.keys(byPier).sort((a,b)=>a.localeCompare(b, undefined, { numeric: true }));
+  matrix.innerHTML = piers.map(pier => `
+    <section class="pier-box-group">
+      <h3>${pier}</h3>
+      <div class="box-grid">${byPier[pier].sort((a,b)=>Number(a.id)-Number(b.id)).map(repairBox).join('')}</div>
+    </section>
+  `).join('') || '<p>No repairs match the current filter.</p>';
+  matrix.querySelectorAll('.repair-box').forEach(box => {
+    box.addEventListener('click', () => {
+      selectedRepairId = Number(box.dataset.id);
+      render();
+      document.querySelector('.detail-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+}
+
 function repairCard(r) {
   const statusClass = STATUS_CLASS[r.status] || '';
   const members = String(r.members || '').split(',').map(m=>m.trim()).filter(Boolean);
   return `
-    <article class="repair-card ${Number(r.id) === Number(selectedRepairId) ? 'selected' : ''}" data-id="${r.id}">
+    <article class="repair-card ${isAdditional(r) ? 'repair-additional' : 'repair-original'} ${Number(r.id) === Number(selectedRepairId) ? 'selected' : ''}" data-id="${r.id}">
       <div class="repair-top">
         <div>
           <div class="repair-title">#${r.id} · ${r.pier} / ${r.span} · ${r.betweenStringers}</div>
           <div class="repair-meta">${r.qtyMembers} member pieces · ${r.estimatedSf} est. SF · ${r.source}</div>
         </div>
-        <span class="status-pill ${statusClass}">${r.status}</span>
+        ${classPill(r)}<span class="status-pill ${statusClass}">${r.status}</span>
       </div>
       <div class="member-badges">${members.map(m=>`<span>${m}</span>`).join('')}</div>
       ${r.notes ? `<p class="repair-meta"><strong>Note:</strong> ${r.notes}</p>` : ''}
@@ -171,6 +230,7 @@ function renderDetail() {
   document.getElementById('detailTitle').textContent = `Repair #${r.id}`;
   document.getElementById('detailSub').textContent = `${r.pier} / ${r.span} / Between ${r.betweenStringers}`;
   document.getElementById('detailGrid').innerHTML = `
+    <div><span>Repair Class</span><strong>${classLabel(r)}</strong></div>
     <div><span>Members</span><strong>${r.members}</strong></div>
     <div><span>Qty Pieces</span><strong>${r.qtyMembers}</strong></div>
     <div><span>Est. SF</span><strong>${r.estimatedSf}</strong></div>
@@ -201,13 +261,13 @@ function renderActivity() {
 
 function renderOfficeTable() {
   const table = document.getElementById('officeTable');
-  const headers = ['ID','Status','Pier','Span','Between','Members','Qty','Est. SF','Crew Days','Labor','Verified','Done Date','Notes'];
+  const headers = ['ID','Class','Status','Pier','Span','Between','Members','Qty','Est. SF','Crew Days','Labor','Verified','Done Date','Notes'];
   const rows = getFilteredRepairs();
   table.innerHTML = `
     <thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
     <tbody>${rows.map(r=>`
       <tr>
-        <td>${r.id}</td><td>${r.status}</td><td>${r.pier}</td><td>${r.span}</td><td>${r.betweenStringers}</td>
+        <td>${r.id}</td><td>${classLabel(r)}</td><td>${r.status}</td><td>${r.pier}</td><td>${r.span}</td><td>${r.betweenStringers}</td>
         <td>${r.members}</td><td>${r.qtyMembers}</td><td>${r.estimatedSf}</td><td>${r.crewDays}</td>
         <td>${money(r.laborCost)}</td><td>${r.fieldVerified}</td><td>${r.completedDate || ''}</td><td>${r.notes || ''}</td>
       </tr>
@@ -218,6 +278,7 @@ function renderOfficeTable() {
 function render() {
   renderKpis();
   renderChart();
+  renderRepairMatrix();
   renderList();
   renderDetail();
   renderActivity();

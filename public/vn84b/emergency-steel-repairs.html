@@ -12,7 +12,7 @@
     <div>
       <p class="eyebrow">JAGD Construction · Extra Work Tracker</p>
       <h1>Emergency Steel Repairs</h1>
-      <p class="subhead">Belt Parkway Ramp SP end cross frame repairs · 86 locations · 300 estimated member pieces</p>
+      <p class="subhead">Belt Parkway Ramp SP end cross frame repairs · 73 red/additional · 13 blue/original</p>
       <div class="back-row" style="margin-top:14px;">
         <a class="hero-link" href="/vn84b">← Back to VN84-B Tracker</a>
         <button id="refreshBtn" type="button">Refresh</button>
@@ -33,12 +33,26 @@
       <div class="panel-head">
         <div>
           <h2>Emergency Steel Repair Activity</h2>
-          <p>Track each drawing-listed repair location by pier/span/stringers, member pieces, status, field verification, and notes.</p>
+          <p>Red boxes are additional repairs; blue boxes are original repairs. Click any box below to open/update that repair location.</p>
         </div>
       </div>
       <canvas id="repairChart" height="110"></canvas>
     </section>
 
+
+    <section class="panel matrix-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Click Repair Boxes</h2>
+          <p>Red = additional repair. Blue = original repair. Click a box to update that location, then save from the detail panel.</p>
+        </div>
+        <div class="legend-pills">
+          <span class="class-pill class-additional">Red / Additional</span>
+          <span class="class-pill class-original">Blue / Original</span>
+        </div>
+      </div>
+      <div id="repairMatrix" class="repair-matrix"></div>
+    </section>
     <section class="panel">
       <div class="panel-head">
         <div>

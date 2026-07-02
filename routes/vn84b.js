@@ -63,7 +63,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 2,
@@ -84,7 +86,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 3,
@@ -105,7 +109,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 4,
@@ -126,7 +132,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 5,
@@ -147,7 +155,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 6,
@@ -168,7 +178,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 7,
@@ -189,7 +201,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 8,
@@ -210,7 +224,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 9,
@@ -231,7 +247,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 10,
@@ -252,7 +270,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 11,
@@ -273,7 +293,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 12,
@@ -294,7 +316,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 13,
@@ -315,7 +339,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Original Repair",
+    "repairClassShort": "Blue / Original"
   },
   {
     "id": 14,
@@ -336,7 +362,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 15,
@@ -357,7 +385,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 16,
@@ -378,7 +408,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 17,
@@ -399,7 +431,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 18,
@@ -420,7 +454,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 19,
@@ -441,7 +477,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 20,
@@ -462,7 +500,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 21,
@@ -483,7 +523,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 22,
@@ -504,7 +546,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 23,
@@ -525,7 +569,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 24,
@@ -546,7 +592,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 25,
@@ -567,7 +615,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 26,
@@ -588,7 +638,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 27,
@@ -609,7 +661,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 28,
@@ -630,7 +684,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 29,
@@ -651,7 +707,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 30,
@@ -672,7 +730,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 31,
@@ -693,7 +753,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 32,
@@ -714,7 +776,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 33,
@@ -735,7 +799,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 34,
@@ -756,7 +822,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 35,
@@ -777,7 +845,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 36,
@@ -798,7 +868,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 37,
@@ -819,7 +891,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 38,
@@ -840,7 +914,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 39,
@@ -861,7 +937,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 40,
@@ -882,7 +960,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 41,
@@ -903,7 +983,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 42,
@@ -924,7 +1006,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 43,
@@ -945,7 +1029,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 44,
@@ -966,7 +1052,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 45,
@@ -987,7 +1075,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 46,
@@ -1008,7 +1098,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 47,
@@ -1029,7 +1121,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 48,
@@ -1050,7 +1144,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 49,
@@ -1071,7 +1167,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 50,
@@ -1092,7 +1190,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 51,
@@ -1113,7 +1213,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 52,
@@ -1134,7 +1236,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 53,
@@ -1155,7 +1259,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 54,
@@ -1176,7 +1282,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 55,
@@ -1197,7 +1305,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 56,
@@ -1218,7 +1328,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 57,
@@ -1239,7 +1351,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 58,
@@ -1260,7 +1374,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 59,
@@ -1281,7 +1397,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 60,
@@ -1302,7 +1420,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 61,
@@ -1323,7 +1443,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 62,
@@ -1344,7 +1466,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 63,
@@ -1365,7 +1489,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 64,
@@ -1386,7 +1512,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 65,
@@ -1407,7 +1535,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 66,
@@ -1428,7 +1558,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 67,
@@ -1449,7 +1581,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 68,
@@ -1470,7 +1604,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 69,
@@ -1491,7 +1627,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 70,
@@ -1512,7 +1650,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 71,
@@ -1533,7 +1673,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 72,
@@ -1554,7 +1696,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 73,
@@ -1575,7 +1719,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 74,
@@ -1596,7 +1742,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 75,
@@ -1617,7 +1765,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 76,
@@ -1638,7 +1788,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 77,
@@ -1659,7 +1811,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 78,
@@ -1680,7 +1834,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 79,
@@ -1701,7 +1857,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 80,
@@ -1722,7 +1880,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 81,
@@ -1743,7 +1903,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 82,
@@ -1764,7 +1926,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 83,
@@ -1785,7 +1949,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 84,
@@ -1806,7 +1972,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 85,
@@ -1827,7 +1995,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   },
   {
     "id": 86,
@@ -1848,7 +2018,9 @@ const emergencyRepairRows = [
     "notes": "",
     "updatedAt": "",
     "enteredBy": "",
-    "history": []
+    "history": [],
+    "repairClass": "Additional Repair",
+    "repairClassShort": "Red / Additional"
   }
 ];
 
@@ -1859,7 +2031,7 @@ const defaultEmergencySteelRepairs = {
   bridge: 'Verrazzano-Narrows Bridge',
   description: 'Extra Belt Parkway Ramp SP end cross frame steel repairs outside JAGD original contract.',
   source: 'VN-84B Belt Parkway Ramp SP End Cross Frame Repairs / DU08A-CS-452',
-  drawingNote: 'Red indicates additional repairs. Blue indicates original repairs. Track each repair location by pier, span, between stringers, member list, status, field verification, and notes.',
+  drawingNote: 'Red indicates additional repairs. Blue indicates original repairs. This tracker calls out each row as Red / Additional or Blue / Original and lets the field click a repair box to update it.',
   repairLocations: 86,
   estimatedMemberPieces: 300,
   estimatedSf: 1413,
