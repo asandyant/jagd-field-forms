@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VN84-B Emergency Steel Repairs</title>
+  <link rel="stylesheet" href="/vn84b/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="emergency-page">
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">JAGD Construction · Extra Work Tracker</p>
+      <h1>Emergency Steel Repairs</h1>
+      <p class="subhead">Belt Parkway Ramp SP end cross frame repairs · 86 locations · 300 estimated member pieces</p>
+      <div class="back-row" style="margin-top:14px;">
+        <a class="hero-link" href="/vn84b">← Back to VN84-B Tracker</a>
+        <button id="refreshBtn" type="button">Refresh</button>
+        <button id="printBtn" type="button">Print / PDF</button>
+      </div>
+    </div>
+    <div class="status-card">
+      <span>Repair Locations Complete</span>
+      <strong id="completePercent">0%</strong>
+      <em><b id="completeCount">0</b> of <b id="totalCount">86</b></em>
+    </div>
+  </header>
+
+  <main>
+    <section class="emergency-kpis" id="kpiGrid"></section>
+
+    <section class="panel chart-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Emergency Steel Repair Activity</h2>
+          <p>Track each drawing-listed repair location by pier/span/stringers, member pieces, status, field verification, and notes.</p>
+        </div>
+      </div>
+      <canvas id="repairChart" height="110"></canvas>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Filter Repair Locations</h2>
+          <p>Use this in the field to find the repair row from the drawing table.</p>
+        </div>
+      </div>
+      <div class="filter-grid">
+        <label>Search
+          <input id="searchInput" type="search" placeholder="SP-7, A-B, F, J1, etc." />
+        </label>
+        <label>Pier
+          <select id="pierFilter"></select>
+        </label>
+        <label>Span
+          <select id="spanFilter"></select>
+        </label>
+        <label>Status
+          <select id="statusFilter"></select>
+        </label>
+      </div>
+    </section>
+
+    <section class="emergency-layout">
+      <section class="panel">
+        <h2>Repair Locations</h2>
+        <div id="repairList" class="repair-list"></div>
+      </section>
+
+      <section class="panel detail-card">
+        <h2 id="detailTitle">Select a repair</h2>
+        <p id="detailSub">Pick a row on the left to update status and notes.</p>
+        <div id="detailGrid" class="detail-grid"></div>
+
+        <form id="repairForm" class="emergency-form" style="display:none;">
+          <input id="repairId" type="hidden" />
+          <label>Status
+            <select id="statusSelect"></select>
+          </label>
+          <label>Field Verified
+            <select id="verifiedSelect">
+              <option value="No">No</option>
+              <option value="Yes">Yes</option>
+            </select>
+          </label>
+          <label>Completed Date
+            <input id="completedDateInput" type="date" />
+          </label>
+          <label>Entered By
+            <input id="enteredByInput" type="text" placeholder="Foreman / office name" />
+          </label>
+          <label>Notes
+            <textarea id="notesInput" rows="4" placeholder="Access, material, issue, QC, photo note, etc."></textarea>
+          </label>
+          <button type="submit">Save Emergency Steel Repair</button>
+          <p id="saveMessage" class="save-message"></p>
+        </form>
+
+        <hr style="border:none;border-top:1px solid var(--line);margin:18px 0;" />
+        <h2>Recent Updates</h2>
+        <div id="activityList" class="activity-list"></div>
+      </section>
+    </section>
+
+    <section class="panel">
+      <h2>Office Backup Table</h2>
+      <p>Summary table for boss/office review. Print this page or export PDF from the browser if needed.</p>
+      <div style="overflow:auto;margin-top:12px;">
+        <table class="print-table" id="officeTable"></table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/vn84b/emergency-steel-repairs.js"></script>
+</body>
+</html>
