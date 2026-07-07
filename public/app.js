@@ -1324,12 +1324,37 @@ function renderWeeklyLive(meeting){
   weeklyLastAttendees = Array.isArray(meeting.attendees) ? meeting.attendees.slice() : [];
   document.getElementById('weeklyCopyBtn').onclick=()=>navigator.clipboard?.writeText(link);
   document.getElementById('weeklyPrintBtn').onclick=async()=>{
+    const btn = document.getElementById('weeklyPrintBtn');
+    if(btn){ btn.disabled = true; btn.textContent = 'Preparing latest sign-ins...'; }
     if(weeklyPollTimer) { clearInterval(weeklyPollTimer); weeklyPollTimer = null; }
-    const latest=await fetchWeeklyMeeting(meeting.id);
-    document.title=weeklyTitle(latest);
-    logGeneratedForm('weekly-safety', latest.project, latest.date, document.title);
-    buildWeeklyPrint(latest);
-    openPrintNow();
+    try{
+      let latest=await fetchWeeklyMeeting(meeting.id);
+      let latestRows = Array.isArray(latest.attendees) ? latest.attendees : [];
+      const screenRows = Array.isArray(weeklyLastAttendees) ? weeklyLastAttendees : [];
+      // Safety net: if the live screen already showed signatures but the last fetch comes back empty/stale,
+      // use the last visible sign-in list instead of generating a blank PDF.
+      if(latestRows.length === 0 && screenRows.length > 0){
+        latest = {...latest, attendees: screenRows};
+        latestRows = screenRows;
+      }
+      if(latestRows.length === 0){
+        alert('No worker sign-ins were found for this meeting yet. Wait a few seconds after workers sign in, then try Save PDF again.');
+        pollWeekly(meeting.id);
+        weeklyPollTimer = setInterval(()=>pollWeekly(meeting.id),3000);
+        return;
+      }
+      document.title=weeklyTitle(latest);
+      logGeneratedForm('weekly-safety', latest.project, latest.date, document.title);
+      buildWeeklyPrint(latest);
+      openPrintNow();
+    }catch(e){
+      console.error(e);
+      alert('Could not load the latest weekly safety sign-ins. Please try again.');
+      pollWeekly(meeting.id);
+      weeklyPollTimer = setInterval(()=>pollWeekly(meeting.id),3000);
+    }finally{
+      if(btn){ btn.disabled = false; btn.textContent = 'Save PDF / Print Meeting'; }
+    }
   };
   pollWeekly(meeting.id);
   weeklyPollTimer = setInterval(()=>pollWeekly(meeting.id),3000);
