@@ -598,10 +598,66 @@ function weekLabel(dateStr){
 }
 function formLabel(type){ return FORM_TYPE_META[type]?.label || String(type||'Form').toUpperCase(); }
 function formBucket(type){ return FORM_TYPE_META[type]?.bucket || 'daily'; }
-function localPhotoFiles(inputId){ const inp=document.getElementById(inputId); if(!inp) return []; return [...inp.files].filter(f=>f.type.startsWith('image/')).map(f=>({originalName:f.name, mimetype:f.type, url:URL.createObjectURL(f)})); }
+const photoFileStore = window.photoFileStore || (window.photoFileStore = {});
+function getPhotoFileStore(inputId){
+  if(!photoFileStore[inputId]) photoFileStore[inputId]=[];
+  return photoFileStore[inputId];
+}
+function localPhotoFiles(inputId){
+  const stored=getPhotoFileStore(inputId);
+  const fallback=[...(document.getElementById(inputId)?.files||[])];
+  const files=stored.length ? stored : fallback;
+  return files.filter(f=>f.type && f.type.startsWith('image/')).map(f=>({originalName:f.name, mimetype:f.type, url:URL.createObjectURL(f)}));
+}
 function radioBlock(name){return `<div class="choiceBtns"><label><input type="radio" name="${name}" value="YES">YES</label><label><input type="radio" name="${name}" value="NO">NO</label><label><input type="radio" name="${name}" value="N/A">N/A</label></div>`;}
-function photoInput(id,label='Photos / attached pages'){return `<div><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/*,.pdf" multiple><p class="tiny">Photos can be attached to the printed/PDF report. Image photos will show in print preview.</p><div id="${id}Preview" class="photoGrid"></div></div>`;}
-function setupPhotoPreview(inputId){const input=document.getElementById(inputId), preview=document.getElementById(inputId+'Preview'); if(!input||!preview)return; input.addEventListener('change',()=>{preview.innerHTML=''; [...input.files].forEach(f=>{ if(f.type.startsWith('image/')){ const img=document.createElement('img'); img.src=URL.createObjectURL(f); preview.appendChild(img);} else { const p=document.createElement('div'); p.className='notice'; p.textContent=f.name; preview.appendChild(p);} });});}
+function photoInput(id,label='Photos / attached pages'){
+  return `<div><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/*,.pdf" multiple><p class="tiny"><b>Need more than one photo?</b> Take/select a photo, then tap Choose File again to add another. Image photos will print on attached photo pages.</p><div id="${id}Count" class="tiny"></div><div id="${id}Preview" class="photoGrid"></div></div>`;
+}
+function renderPhotoPreview(inputId){
+  const preview=document.getElementById(inputId+'Preview');
+  const count=document.getElementById(inputId+'Count');
+  if(!preview) return;
+  const files=getPhotoFileStore(inputId);
+  preview.innerHTML='';
+  if(count){
+    const imageCount=files.filter(f=>f.type && f.type.startsWith('image/')).length;
+    const otherCount=files.length-imageCount;
+    count.textContent = files.length ? `${imageCount} photo${imageCount===1?'':'s'} selected${otherCount?` + ${otherCount} attachment${otherCount===1?'':'s'}`:''}. Tap Choose File again to add more.` : '';
+  }
+  files.forEach((f,idx)=>{
+    const wrap=document.createElement('div');
+    wrap.className='photoPreviewItem';
+    if(f.type && f.type.startsWith('image/')){
+      const img=document.createElement('img');
+      img.src=URL.createObjectURL(f);
+      wrap.appendChild(img);
+    } else {
+      const p=document.createElement('div');
+      p.className='notice';
+      p.textContent=f.name;
+      wrap.appendChild(p);
+    }
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.className='btn light photoRemoveBtn';
+    btn.textContent='Remove';
+    btn.onclick=()=>{ getPhotoFileStore(inputId).splice(idx,1); renderPhotoPreview(inputId); };
+    wrap.appendChild(btn);
+    preview.appendChild(wrap);
+  });
+}
+function setupPhotoPreview(inputId){
+  const input=document.getElementById(inputId);
+  if(!input||input.dataset.multiPhotoReady==='1') return;
+  input.dataset.multiPhotoReady='1';
+  input.addEventListener('change',()=>{
+    const store=getPhotoFileStore(inputId);
+    [...input.files].forEach(f=>store.push(f));
+    input.value=''; // lets phone users take/select another photo with the same button
+    renderPhotoPreview(inputId);
+  });
+  renderPhotoPreview(inputId);
+}
 
 function buildExtraPhotoPages(inputId, reportTitle, reportMeta=''){
   const photos = localPhotoFiles(inputId);

@@ -1058,3 +1058,8 @@
   .extraPhotoMeta{font-size:10.5px!important}
   .extraPhotoPrintBox div{font-size:9.5px!important}
 }
+
+/* Photo upload previews: allow field users to add/remove multiple photos one at a time on phones. */
+.photoPreviewItem{position:relative;border:1px solid #d9e2ef;border-radius:10px;padding:8px;background:#fff;display:flex;flex-direction:column;gap:6px;align-items:flex-start;}
+.photoPreviewItem img{max-width:100%;border-radius:8px;display:block;}
+.photoRemoveBtn{font-size:12px;padding:6px 10px;}
