@@ -250,6 +250,7 @@ function normalizePrintPagesFromHtml(html){
   return [raw];
 }
 function setPrint(html){
+  currentPdfMergeAttachmentInputId = null;
   setPrintPages(normalizePrintPagesFromHtml(html));
 }
 function setPrintPages(pages){
@@ -481,6 +482,54 @@ function waitForImagesIn(node){
     return new Promise(res=>{img.onload=res; img.onerror=res; setTimeout(res,1200);});
   }));
 }
+function loadScriptOnce(src, globalCheck){
+  if(globalCheck && globalCheck()) return Promise.resolve();
+  return new Promise((resolve,reject)=>{
+    const existing=Array.from(document.scripts).find(s=>s.src===src);
+    if(existing){ existing.addEventListener('load',()=>resolve(),{once:true}); existing.addEventListener('error',()=>reject(new Error('Could not load PDF merge library')),{once:true}); return; }
+    const sc=document.createElement('script');
+    sc.src=src;
+    sc.async=true;
+    sc.onload=()=>resolve();
+    sc.onerror=()=>reject(new Error('Could not load PDF merge library'));
+    document.head.appendChild(sc);
+  });
+}
+async function ensurePdfLibForMerge(){
+  if(window.PDFLib && window.PDFLib.PDFDocument) return window.PDFLib;
+  await loadScriptOnce('https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js', ()=>window.PDFLib && window.PDFLib.PDFDocument);
+  if(!window.PDFLib || !window.PDFLib.PDFDocument) throw new Error('PDF merge library did not load');
+  return window.PDFLib;
+}
+function downloadBlobFile(blob, filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=filename || 'report.pdf';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ try{a.remove(); URL.revokeObjectURL(url);}catch(e){} }, 1500);
+}
+async function appendPdfAttachmentsToReport(reportBytes, inputId){
+  const files=inputId ? localPdfAttachmentFileObjects(inputId) : [];
+  if(!files.length) return {bytes:reportBytes, count:0};
+  const { PDFDocument } = await ensurePdfLibForMerge();
+  const outDoc = await PDFDocument.load(reportBytes);
+  let count=0;
+  for(const file of files){
+    try{
+      const bytes=await file.arrayBuffer();
+      const srcDoc=await PDFDocument.load(bytes, {ignoreEncryption:true});
+      const pages=await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+      pages.forEach(pg=>outDoc.addPage(pg));
+      count++;
+    }catch(err){
+      console.warn('Could not merge attached PDF', file && file.name, err);
+    }
+  }
+  const merged=await outDoc.save();
+  return {bytes:merged, count};
+}
 async function saveCleanPdfFromPrintPage(msgId){
   if(!window.jspdf || !window.jspdf.jsPDF || !window.html2canvas) return false;
   const sourcePages = Array.from(document.querySelectorAll('.printPage'));
@@ -528,7 +577,18 @@ async function saveCleanPdfFromPrintPage(msgId){
       pdf.addImage(imgData, 'JPEG', x, y, imgW, imgH);
     }
     if(!pdf) return false;
-    pdf.save(safePdfFileName());
+    const filename = safePdfFileName();
+    const attachmentInputId = currentPdfMergeAttachmentInputId;
+    const pdfAttachments = attachmentInputId ? localPdfAttachmentFileObjects(attachmentInputId) : [];
+    if(pdfAttachments.length){
+      if(msg) msg.innerHTML = '<div class="notice">Merging attached PDF files into final report packet...</div>';
+      const reportBytes = pdf.output('arraybuffer');
+      const merged = await appendPdfAttachmentsToReport(reportBytes, attachmentInputId);
+      downloadBlobFile(new Blob([merged.bytes], {type:'application/pdf'}), filename);
+      if(msg) msg.innerHTML = `<div class="success">Complete PDF packet created${merged.count?` with ${merged.count} attached PDF${merged.count===1?'':'s'} merged at the end`:''}. Use Share/Files/Dropbox to send it.</div>`;
+      return true;
+    }
+    pdf.save(filename);
     if(msg) msg.innerHTML = '<div class="success">Clean PDF created. Use Share/Files/Dropbox to send it.</div>';
     return true;
   } finally {
@@ -599,6 +659,8 @@ function weekLabel(dateStr){
 function formLabel(type){ return FORM_TYPE_META[type]?.label || String(type||'Form').toUpperCase(); }
 function formBucket(type){ return FORM_TYPE_META[type]?.bucket || 'daily'; }
 const photoFileStore = window.photoFileStore || (window.photoFileStore = {});
+let currentPdfMergeAttachmentInputId = null;
+function setPdfAttachmentMergeInput(inputId){ currentPdfMergeAttachmentInputId = inputId || null; }
 function getPhotoFileStore(inputId){
   if(!photoFileStore[inputId]) photoFileStore[inputId]=[];
   return photoFileStore[inputId];
@@ -611,7 +673,7 @@ function localPhotoFiles(inputId){
 }
 function radioBlock(name){return `<div class="choiceBtns"><label><input type="radio" name="${name}" value="YES">YES</label><label><input type="radio" name="${name}" value="NO">NO</label><label><input type="radio" name="${name}" value="N/A">N/A</label></div>`;}
 function photoInput(id,label='Photos / PDF attachments'){
-  return `<div><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/*,.pdf" multiple><p class="tiny"><b>Photos:</b> Take/select a photo, then tap Choose File again to add another. Photos print on photo pages. <b>PDFs:</b> PDF files are listed on the PDF attachments page and can be opened from the preview before saving.</p><div id="${id}Count" class="tiny"></div><div id="${id}Preview" class="photoGrid"></div></div>`;
+  return `<div><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/*,.pdf" multiple><p class="tiny"><b>Photos:</b> Take/select a photo, then tap Choose File again to add another. Photos print on photo pages. <b>PDFs:</b> Use Open PDF to check the file. PDF pages are merged at the end of the saved report packet when the clean PDF builder is available.</p><div id="${id}Count" class="tiny"></div><div id="${id}Preview" class="photoGrid"></div></div>`;
 }
 function renderPhotoPreview(inputId){
   const preview=document.getElementById(inputId+'Preview');
@@ -697,6 +759,12 @@ function localAttachmentFiles(inputId){
     isPdf:(f.type==='application/pdf') || String(f.name||'').toLowerCase().endsWith('.pdf')
   }));
 }
+function localPdfAttachmentFileObjects(inputId){
+  const stored=getPhotoFileStore(inputId);
+  const fallback=[...(document.getElementById(inputId)?.files||[])];
+  const files=stored.length ? stored : fallback;
+  return files.filter(f=>((f.type==='application/pdf') || String(f.name||'').toLowerCase().endsWith('.pdf')));
+}
 function fileSizeLabel(bytes){
   const n=Number(bytes||0);
   if(!n) return '';
@@ -707,7 +775,7 @@ function fileSizeLabel(bytes){
 function buildExtraAttachmentPages(inputId, reportTitle, reportMeta=''){
   const files=localAttachmentFiles(inputId);
   if(!files.length) return '';
-  return `<div class="extraPrintSheet extraAttachmentSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>${esc(reportTitle)} PDF ATTACHMENTS</h1></div><div class="extraPhotoMeta"><b>${esc(reportMeta)}</b><span>${files.length} attachment${files.length===1?'':'s'}</span></div><table class="extraPrintTable"><tr><th>#</th><th>PDF / Attachment File Name</th><th>Size</th></tr>${files.map((f,i)=>`<tr><td>${i+1}</td><td>${esc(f.originalName)}${f.isPdf?'':' (not PDF)'}</td><td>${esc(fileSizeLabel(f.size))}</td></tr>`).join('')}</table><div class="notice"><b>Attachment note:</b> The file names above were selected with this report. Open/check PDF files from the form preview before saving, then keep/email those files with this report packet. Browser print cannot merge separate external PDFs into this generated report automatically.</div></div>`;
+  return `<div class="extraPrintSheet extraAttachmentSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>${esc(reportTitle)} PDF ATTACHMENTS</h1></div><div class="extraPhotoMeta"><b>${esc(reportMeta)}</b><span>${files.length} attachment${files.length===1?'':'s'}</span></div><table class="extraPrintTable"><tr><th>#</th><th>PDF / Attachment File Name</th><th>Size</th></tr>${files.map((f,i)=>`<tr><td>${i+1}</td><td>${esc(f.originalName)}${f.isPdf?'':' (not PDF)'}</td><td>${esc(fileSizeLabel(f.size))}</td></tr>`).join('')}</table><div class="notice"><b>Attachment note:</b> PDF attachments are merged into the final report packet when the clean PDF builder is available. If the browser falls back to Print/Save, use the Open PDF preview and keep/email the listed attachments with the report.</div></div>`;
 }
 
 
@@ -2408,7 +2476,7 @@ function buildIncidentPrint(){
   const secondWitnessPage = buildIncidentSecondWitnessPage();
   const photoPages = buildExtraPhotoPages('irPhotos', 'Incident Report', meta);
   const attachmentPages = buildExtraAttachmentPages('irPhotos', 'Incident Report', meta);
-  document.title=`Incident Report - ${dateToDisplay(val('irReportDate'))} - ${cleanFilePart(projectValue('irProject'))}`; setPrint(html + witnessPage + secondWitnessPage + photoPages + attachmentPages);
+  document.title=`Incident Report - ${dateToDisplay(val('irReportDate'))} - ${cleanFilePart(projectValue('irProject'))}`; setPrint(html + witnessPage + secondWitnessPage + photoPages + attachmentPages); setPdfAttachmentMergeInput('irPhotos');
 }
 function disciplinaryReportForm(){
   app.innerHTML=extraFormIntro('Disciplinary Action','Employee disciplinary form with violation, action taken, corrective action, and signatures.')+`<div class="panel"><h2>Basic Info</h2><div class="grid three">${field('drReportDate','Report Date','date')} ${projectField('drProject','Project')} ${field('drProjectLocation','Project Location')} ${field('drIncidentDate','Incident Date','date')} ${field('drIncidentTime','Time of Incident','time')} ${field('drEmployee','Employee')} ${field('drPage','Page','text','placeholder="1 of 1"')}</div></div><div class="panel"><h2>Incident / Violation</h2>${textarea('drDescription','Description of Incident & Safety Violation')}<div class="grid three"><label class="checkPill"><input id="drVerbal" type="checkbox"> Verbal</label><label class="checkPill"><input id="drWritten" type="checkbox"> Written</label><label class="checkPill"><input id="drReprimanded" type="checkbox"> Reprimanded</label><label class="checkPill"><input id="drSuspension" type="checkbox"> Temporary Suspension</label><label class="checkPill"><input id="drTerminated" type="checkbox"> Terminated</label>${field('drOffense','Number of Offense Past 6 Months')} ${field('drFrom','Suspension From','date')} ${field('drTo','Suspension To','date')}</div>${textarea('drCorrective','Corrective Action Taken')}${textarea('drComments','Supplemental Review / Comments')}${textarea('drEmployeeRemarks','Employee Remarks')}</div><div class="panel"><h2>Signatures</h2><div class="grid three">${field('drEmployeePrint','Employee Print Name')} ${sigField('drEmployeeSig','Employee Signature')} ${field('drEmployeeSigDate','Employee Date','date')} ${field('drSupervisor','Supervisor Print Name')} ${field('drSupervisorTitle','Supervisor Title')} ${sigField('drSupervisorSig','Supervisor Signature')} ${field('drSupervisorDate','Supervisor Date','date')} ${field('drSteward','Steward Print Name')} ${field('drUnionLocal','Union / Local')} ${sigField('drStewardSig','Steward Signature')} ${field('drStewardDate','Steward Date','date')}</div><div class="actions"><button class="btn" id="drPrintBtn">Save PDF / Print Disciplinary Report</button></div>${printPdfHelp('dr')}<div id="drMsg"></div></div></div>`;
@@ -2431,7 +2499,7 @@ function buildHeavyAccidentPrint(){
   const secondWitnessPage = buildAccidentSecondWitnessPage();
   const photoPages = buildExtraPhotoPages('harPhotos', 'Accident Report', meta);
   const attachmentPages = buildExtraAttachmentPages('harPhotos', 'Accident Report', meta);
-  document.title=`Accident Report - ${dateToDisplay(val('harReportDate'))} - ${cleanFilePart(projectValue('harProject'))}`; setPrint(html + witnessPage + secondWitnessPage + photoPages + attachmentPages);
+  document.title=`Accident Report - ${dateToDisplay(val('harReportDate'))} - ${cleanFilePart(projectValue('harProject'))}`; setPrint(html + witnessPage + secondWitnessPage + photoPages + attachmentPages); setPdfAttachmentMergeInput('harPhotos');
 }
 function extraPrintBox(title, text, h=0.7){return `<div class="extraPrintBox" style="min-height:${h}in"><b>${esc(title)}:</b><br>${esc(text)}</div>`;}
 
