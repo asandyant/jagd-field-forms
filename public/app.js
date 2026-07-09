@@ -143,6 +143,30 @@ const pirHoldPoints = [
 
 function esc(v){return String(v ?? '').replace(/[&<>'"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[s]));}
 function val(id){const el=document.getElementById(id); return el ? el.value.trim() : '';}
+function pirInstrumentNames(){return ['Sling Psychrometer','Surface Temperature Gage','Calibration Plates','Micrometer','Positector','Wet Film Thickness Gage','Inspection Equip inspected in last 12 Months?'];}
+function savePirInstrumentSerials(data){
+  try{
+    const serials=(data&&data.instruments||[]).map(x=>String(x&&x.serial||'').trim());
+    if(!serials.some(Boolean)) return;
+    localStorage.setItem('jagdPirLastInstrumentSerials', JSON.stringify({savedAt:new Date().toISOString(), project:data.project||'', reportDate:data.reportDate||'', serials}));
+  }catch(e){console.warn('Could not save PIR instrument serials', e);}
+}
+function loadPirInstrumentSerials(){
+  const msg=document.getElementById('pirSerialMsg');
+  try{
+    const raw=localStorage.getItem('jagdPirLastInstrumentSerials');
+    if(!raw){ if(msg) msg.innerHTML='<div class="tiny noticeInline">No prior PIR serial numbers found on this device.</div>'; return; }
+    const saved=JSON.parse(raw);
+    const serials=Array.isArray(saved.serials)?saved.serials:[];
+    let filled=0;
+    pirInstrumentNames().forEach((_,i)=>{
+      const el=document.getElementById('pirInstSerial'+i);
+      const v=String(serials[i]||'').trim();
+      if(el && v){ el.value=v; filled++; }
+    });
+    if(msg) msg.innerHTML=`<div class="tiny success">Loaded ${filled} serial number${filled===1?'':'s'} from last saved PIR${saved.reportDate?' ('+esc(saved.reportDate)+')':''}.</div>`;
+  }catch(e){ if(msg) msg.innerHTML='<div class="tiny noticeInline">Could not load prior serial numbers from this device.</div>'; console.warn(e); }
+}
 
 function parsePirTemp(value){
   if(value===undefined || value===null) return NaN;
@@ -1120,7 +1144,7 @@ function pirForm(){
     <div id="pir-hold" class="panel"><h2>Hold Point Inspections Performed</h2><div class="grid two">${pirHoldPoints.map((q,i)=>`<div class="checkrow"><div class="questionTitle">${q}</div>${radioBlock('pirHold'+i)}</div>`).join('')}</div></div>
     <div id="pir-surface" class="panel"><h2>Surface Cleanliness / Profile Measurement</h2><div class="grid three">${field('pirSSPC','SSPC/NACE SP')} ${field('pirSpecifiedProfile','Specified Profile')} ${field('pirProfileCheck','Profile Check')} ${selectField('pirAbrasiveTest','Abrasive Test Acceptable',['','YES','NO','N/A'])} ${selectField('pirBlotterTest','Blotter Test Acceptable',['','YES','NO','N/A'])} ${field('pirChloride1','Chloride ug/cm²')} ${field('pirChloride2','Chloride ug/cm²')} ${selectField('pirIllumination','Illumination Acceptable',['','YES','NO','N/A'])}</div></div>
     <div id="pir-testex" class="panel"><h2>Testex Tape Inserts</h2><div class="testexScreenGrid">${[1,2,3].map(i=>`<div class="testexCard"><div class="testexBox screen"><span>Insert Testex Tape Here</span></div>${field('pirTestexLoc'+i,'Tape '+i+' Location / Area')}${field('pirTestexReading'+i,'Tape '+i+' Profile Reading')}${field('pirTestexNotes'+i,'Tape '+i+' Notes')}</div>`).join('')}</div></div>
-    <div id="pir-instruments" class="panel"><h2>Calibrated QC Equipment</h2><div class="grid three">${['Sling Psychrometer','Surface Temperature Gage','Calibration Plates','Micrometer','Positector','Wet Film Thickness Gage','Inspection Equip inspected in last 12 Months?'].map((n,i)=>`<div class="checkrow"><label>${n}</label>${selectField('pirInstYes'+i,'Status',['YES','NO','N/A'])}${field('pirInstSerial'+i,'Serial Number')}${i===4?field('pirPosiAdjust','PA-2 Adjustment made') : ''}</div>`).join('')}</div></div>
+    <div id="pir-instruments" class="panel"><div class="sectionTitleRow"><h2>Calibrated QC Equipment</h2><button type="button" class="btn light small" id="pirLoadSerialsBtn">Load Yesterday's Serial Numbers</button></div><p class="tiny">Loads the last saved PIR serial numbers from this same device. Use when the same QC equipment is used again.</p><div id="pirSerialMsg"></div><div class="grid three">${pirInstrumentNames().map((n,i)=>`<div class="checkrow"><label>${n}</label>${selectField('pirInstYes'+i,'Status',['YES','NO','N/A'])}${field('pirInstSerial'+i,'Serial Number')}${i===4?field('pirPosiAdjust','PA-2 Adjustment made') : ''}</div>`).join('')}</div></div>
     <div id="pir-ambient" class="panel"><h2>Ambient Conditions</h2><p class="tiny"><b>Auto-calc:</b> Enter Dry Bulb + Wet Bulb to calculate % Relative Humidity and Dew Point. Enter Surface Temp to calculate Surface Temp. - Dew Point Spread.</p><p class="tiny noticeInline"><b>Note:</b> Typical field practice is four ambient readings. Add readings as needed; blank readings still print as empty columns.</p><div id="pirAmbientBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirAmbientBlock">+ Add another Ambient Reading</button></div></div>
     <div id="pir-mixing" class="panel"><h2>Mixing / Application</h2><div id="pirMixBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirMixBlock">+ Add another Mix / Application Block</button></div></div>
     <div id="pir-caulk" class="panel"><h2>Caulking / Signatures</h2><div class="grid three">${field('pirCaulkLocation','Caulking Location')} ${field('pirCaulkNameBatch','Name / Batch')} ${field('pirTubeSize','Tube Size')} ${field('pirCaulkShelf','Shelf Life')} ${field('pirTotalUsed','Total Amount Used')} ${field('pirQCPrint','QC Print')} ${sigField('pirQCSignature','QC Signature')} ${sigField('pirQCSSignature','QCS Signature')}</div>${textarea('pirGeneralNotes','General Notes / Nonconformance / Corrective Actions')}<div class="actions"><button class="btn light" id="pirAddNotesPageBtn" type="button">+ Add Additional QC Notes Page</button></div><div id="pirAdditionalNotesPanel" class="panel innerPanel" style="display:none"><h2>Additional QC Notes Page</h2><p class="tiny">Optional second page for side notes, cleaned/completed areas, activity times, or anything QC wants to track. This only prints when opened.</p><div class="grid three">${field('pirNotesLocation','Notes Location / Area')} ${field('pirNotesDate','Notes Date','date')} ${field('pirNotesQC','QC Print Name')}</div><div class="extraTableWrap"><table class="table extraEntryTable"><thead><tr><th>Time</th><th>Location / Area</th><th>Activity / What Happened</th><th>Notes</th></tr></thead><tbody>${Array.from({length:8},(_,idx)=>{const i=idx+1;return `<tr><td><input id="pirNoteTime${i}" type="time"></td><td><input id="pirNoteLoc${i}"></td><td><input id="pirNoteAct${i}"></td><td><input id="pirNoteText${i}"></td></tr>`}).join('')}</tbody></table></div>${textarea('pirNotesSummary','Additional Summary / QC Comments')}<div class="grid two">${field('pirNotesPrint','QC Print')} ${sigField('pirNotesSignature','QC Signature')}</div></div><div class="actions"><button class="btn" id="pirPrintBtn">Save PDF / Print PIR</button></div>${printPdfHelp('pir')}<div id="pirMsg"></div></div>
@@ -1141,10 +1165,12 @@ function pirForm(){
   pirAdditionalNotesOpen=false;
   const pirNotesBtn=document.getElementById('pirAddNotesPageBtn');
   if(pirNotesBtn){pirNotesBtn.onclick=()=>{pirAdditionalNotesOpen=true; const panel=document.getElementById('pirAdditionalNotesPanel'); if(panel) panel.style.display='block'; pirNotesBtn.textContent='Additional QC Notes Page Added'; pirNotesBtn.disabled=true; const d=document.getElementById('pirNotesDate'); if(d && !d.value) d.value=val('pirReportDate'); const qc=document.getElementById('pirNotesQC'); if(qc && !qc.value) qc.value=val('pirQCPrint'); panel&&panel.scrollIntoView({behavior:'smooth',block:'start'});};}
+  const pirLoadSerialsBtn=document.getElementById('pirLoadSerialsBtn');
+  if(pirLoadSerialsBtn){pirLoadSerialsBtn.onclick=loadPirInstrumentSerials;}
   document.getElementById('addPirMixBlock').onclick=()=>{pirMixCount=Math.min(PIR_MIX_MAX_BLOCKS,pirMixCount+1); renderPirMixBlocks();};
   document.getElementById('addPirAmbientBlock').onclick=()=>{pirAmbientCount=Math.min(4,pirAmbientCount+1); renderPirAmbientBlocks(); if(pirAmbientCount>=4) document.getElementById('addPirAmbientBlock').disabled=true;};
   initSignatureButtons();
-  document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); document.title = formSaveTitle('pir', data.reportDate, data.project); logGeneratedForm('pir', data.project, data.reportDate, document.title); buildPirPrint(data); openPrintNow('pirMsg');}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
+  document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); savePirInstrumentSerials(data); document.title = formSaveTitle('pir', data.reportDate, data.project); logGeneratedForm('pir', data.project, data.reportDate, document.title); buildPirPrint(data); openPrintNow('pirMsg');}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
 }
 
 function collectPir(){
@@ -1157,7 +1183,7 @@ function collectPir(){
    isChecked('pirAttachBol')?'Bill of Lading':''
  ].filter(Boolean).join(', ');
  const data={project:projectValue('pirProject'),reportDate:val('pirReportDate'),day:val('pirDay'),weatherAM:val('pirWeatherAM'),weatherPM:val('pirWeatherPM'),inspectionReport:val('pirInspectionReport'),attachedPages,page:'1',pageOf:'1',holdPoints:pirHoldPoints.map((q,i)=>({q,status:checked('pirHold'+i)})),sspc:val('pirSSPC'),specifiedProfile:val('pirSpecifiedProfile'),profileCheck:val('pirProfileCheck'),abrasiveTest:val('pirAbrasiveTest'),blotterTest:val('pirBlotterTest'),chloride1:val('pirChloride1'),chloride2:val('pirChloride2'),illumination:val('pirIllumination'),testex:[1,2,3].map(i=>({location:val('pirTestexLoc'+i),reading:val('pirTestexReading'+i),notes:val('pirTestexNotes'+i)})),posiAdjust:val('pirPosiAdjust'),generalNotes:val('pirGeneralNotes'),qcPrint:val('pirQCPrint'),qcSignature:val('pirQCSignature'),qcsSignature:val('pirQCSSignature'),caulking:{location:val('pirCaulkLocation'),nameBatch:val('pirCaulkNameBatch'),tubeSize:val('pirTubeSize'),shelf:val('pirCaulkShelf'),totalUsed:val('pirTotalUsed')}};
- data.instruments=['Sling Psychrometer','Surface Temperature Gage','Calibration Plates','Micrometer','Positector','Wet Film Thickness Gage','Inspection Equip inspected in last 12 Months?'].map((n,i)=>({name:n,status:val('pirInstYes'+i),serial:val('pirInstSerial'+i)}));
+ data.instruments=pirInstrumentNames().map((n,i)=>({name:n,status:val('pirInstYes'+i),serial:val('pirInstSerial'+i)}));
  data.ambient=[1,2,3,4].map(i=>({location:val('pirAmbLoc'+i),time:val('pirAmbTime'+i),dry:val('pirDry'+i),wet:val('pirWet'+i),rh:val('pirRH'+i),surface:val('pirSurf'+i),dew:val('pirDew'+i),diff:val('pirDiff'+i)}));
  data.mixing=Array.from({length:pirMixCount},(_,idx)=>idx+1).map(i=>({location:val('pirMixLoc'+i),time:val('pirMixTime'+i),witness:val('pirMixWitness'+i),customCoaA:val('pirCustomCoaA'+i),customCoaB:val('pirCustomCoaB'+i),batchA:val('pirBatchA'+i),mfgA:val('pirMfgA'+i),shelfA:val('pirShelfA'+i),batchB:val('pirBatchB'+i),mfgB:val('pirMfgB'+i),shelfB:val('pirShelfB'+i),dust:val('pirDust'+i),thinner:val('pirThinner'+i),volume:val('pirVolume'+i),mfr:val('pirMfr'+i),prod:val('pirProd'+i),color:val('pirColor'+i),kit:val('pirKit'+i),pot:val('pirPot'+i),shelf:val('pirShelf'+i),induction:val('pirInduction'+i),temp:val('pirTemp'+i),qty:val('pirQty'+i),start:val('pirStart'+i),finish:val('pirFinish'+i),gallons:val('pirGallons'+i),system:val('pirSystem'+i),method:val('pirMethod'+i),gunTip:val('pirGunTip'+i),elapsed:val('pirElapsed'+i),dftPrev:val('pirDFTPrev'+i)}));
  data.qcSignatureData=signatureStore.pirQCSignature || ''; data.qcsSignatureData=signatureStore.pirQCSSignature || ''; data.mixingCount=pirMixCount;
@@ -1172,7 +1198,7 @@ function buildPirPrint(data=collectPir(), files=[]){
  const amb = data.ambient || [];
  const mix = data.mixing || [];
  const cell=(x)=>esc(x||'');
- const instRows=['Sling Psychrometer','Surface Temperature Gage','Calibration Plates','Micrometer','Positector','Wet Film Thickness Gage','Inspection Equip inspected in last 12 Months?'].map((n,i)=>{
+ const instRows=pirInstrumentNames().map((n,i)=>{
    const row=inst[i]||{}; return `<div class="pirCell tinyCell">${cell(row.status||'YES')}</div><div class="pirCell tinyCell">${cell(n)}</div><div class="pirCell tinyCell">${cell(row.serial)}</div>`;
  }).join('') + `<div class="pirCell tinyCell">YES</div><div class="pirCell tinyCell">Posi verified as per PA-2?</div><div class="pirCell tinyCell">Adjustment made: ${cell(data.posiAdjust)}</div>`;
  const ambHead=`<div class="pirCell tinyCell"></div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a.location)}</div>`).join('')}`;
