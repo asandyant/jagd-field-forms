@@ -610,8 +610,8 @@ function localPhotoFiles(inputId){
   return files.filter(f=>f.type && f.type.startsWith('image/')).map(f=>({originalName:f.name, mimetype:f.type, url:URL.createObjectURL(f)}));
 }
 function radioBlock(name){return `<div class="choiceBtns"><label><input type="radio" name="${name}" value="YES">YES</label><label><input type="radio" name="${name}" value="NO">NO</label><label><input type="radio" name="${name}" value="N/A">N/A</label></div>`;}
-function photoInput(id,label='Photos / attached pages'){
-  return `<div><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/*,.pdf" multiple><p class="tiny"><b>Need more than one photo or PDF?</b> Take/select one file, then tap Choose File again to add another. Image photos print on photo pages. PDF attachments print on the attachment list and can be opened before saving.</p><div id="${id}Count" class="tiny"></div><div id="${id}Preview" class="photoGrid"></div></div>`;
+function photoInput(id,label='Photos / PDF attachments'){
+  return `<div><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/*,.pdf" multiple><p class="tiny"><b>Photos:</b> Take/select a photo, then tap Choose File again to add another. Photos print on photo pages. <b>PDFs:</b> PDF files are listed on the PDF attachments page and can be opened from the preview before saving.</p><div id="${id}Count" class="tiny"></div><div id="${id}Preview" class="photoGrid"></div></div>`;
 }
 function renderPhotoPreview(inputId){
   const preview=document.getElementById(inputId+'Preview');
@@ -621,31 +621,40 @@ function renderPhotoPreview(inputId){
   preview.innerHTML='';
   if(count){
     const imageCount=files.filter(f=>f.type && f.type.startsWith('image/')).length;
-    const otherCount=files.length-imageCount;
-    count.textContent = files.length ? `${imageCount} photo${imageCount===1?'':'s'} selected${otherCount?` + ${otherCount} attachment${otherCount===1?'':'s'}`:''}. Tap Choose File again to add more.` : '';
+    const pdfCount=files.filter(f=>f.type==='application/pdf' || String(f.name||'').toLowerCase().endsWith('.pdf')).length;
+    const otherCount=files.length-imageCount-pdfCount;
+    count.textContent = files.length ? `${imageCount} photo${imageCount===1?'':'s'} selected${pdfCount?` + ${pdfCount} PDF${pdfCount===1?'':'s'}`:''}${otherCount?` + ${otherCount} other attachment${otherCount===1?'':'s'}`:''}. Tap Choose File again to add more.` : '';
   }
   files.forEach((f,idx)=>{
     const wrap=document.createElement('div');
     wrap.className='photoPreviewItem';
-    if(f.type && f.type.startsWith('image/')){
+    const isImage=!!(f.type && f.type.startsWith('image/'));
+    const isPdf=(f.type==='application/pdf') || String(f.name||'').toLowerCase().endsWith('.pdf');
+    const objectUrl=URL.createObjectURL(f);
+    if(isImage){
       const img=document.createElement('img');
-      img.src=URL.createObjectURL(f);
+      img.src=objectUrl;
       wrap.appendChild(img);
     } else {
       const p=document.createElement('div');
       p.className='notice';
-      p.textContent=f.name;
+      p.innerHTML=`<b>${isPdf?'PDF attachment':'Attachment'}:</b><br>${esc(f.name||'file')}`;
       wrap.appendChild(p);
-      const openBtn=document.createElement('button');
-      openBtn.type='button';
-      openBtn.className='btn light photoOpenBtn';
-      openBtn.textContent=(f.type==='application/pdf' || /\.pdf$/i.test(f.name||'')) ? 'Open PDF' : 'Open Attachment';
-      openBtn.onclick=()=>{
-        const url=URL.createObjectURL(f);
-        window.open(url,'_blank','noopener');
-        setTimeout(()=>URL.revokeObjectURL(url), 60000);
-      };
-      wrap.appendChild(openBtn);
+    }
+    if(isPdf){
+      const open=document.createElement('button');
+      open.type='button';
+      open.className='btn light photoOpenBtn';
+      open.textContent='Open PDF';
+      open.onclick=()=>window.open(objectUrl,'_blank','noopener');
+      wrap.appendChild(open);
+    } else if(!isImage){
+      const open=document.createElement('button');
+      open.type='button';
+      open.className='btn light photoOpenBtn';
+      open.textContent='Open Attachment';
+      open.onclick=()=>window.open(objectUrl,'_blank','noopener');
+      wrap.appendChild(open);
     }
     const btn=document.createElement('button');
     btn.type='button';
@@ -675,6 +684,30 @@ function buildExtraPhotoPages(inputId, reportTitle, reportMeta=''){
   const chunks=[];
   for(let i=0;i<photos.length;i+=4) chunks.push(photos.slice(i,i+4));
   return chunks.map((chunk, pageIndex)=>`<div class="extraPrintSheet extraPhotoSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>${esc(reportTitle)} PHOTOS</h1></div><div class="extraPhotoMeta"><b>${esc(reportMeta)}</b><span>Photo Page ${pageIndex+1} of ${chunks.length}</span></div><div class="extraPhotoPrintGrid">${chunk.map((photo, idx)=>`<div class="extraPhotoPrintBox"><img src="${photo.url}" alt="Photo ${pageIndex*4+idx+1}"><div>Photo ${pageIndex*4+idx+1}: ${esc(photo.originalName||'')}</div></div>`).join('')}</div></div>`).join('');
+}
+
+function localAttachmentFiles(inputId){
+  const stored=getPhotoFileStore(inputId);
+  const fallback=[...(document.getElementById(inputId)?.files||[])];
+  const files=stored.length ? stored : fallback;
+  return files.filter(f=>!(f.type && f.type.startsWith('image/'))).map(f=>({
+    originalName:f.name||'attachment',
+    mimetype:f.type||'',
+    size:f.size||0,
+    isPdf:(f.type==='application/pdf') || String(f.name||'').toLowerCase().endsWith('.pdf')
+  }));
+}
+function fileSizeLabel(bytes){
+  const n=Number(bytes||0);
+  if(!n) return '';
+  if(n<1024) return `${n} B`;
+  if(n<1024*1024) return `${Math.round(n/1024)} KB`;
+  return `${(n/(1024*1024)).toFixed(1)} MB`;
+}
+function buildExtraAttachmentPages(inputId, reportTitle, reportMeta=''){
+  const files=localAttachmentFiles(inputId);
+  if(!files.length) return '';
+  return `<div class="extraPrintSheet extraAttachmentSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>${esc(reportTitle)} PDF ATTACHMENTS</h1></div><div class="extraPhotoMeta"><b>${esc(reportMeta)}</b><span>${files.length} attachment${files.length===1?'':'s'}</span></div><table class="extraPrintTable"><tr><th>#</th><th>PDF / Attachment File Name</th><th>Size</th></tr>${files.map((f,i)=>`<tr><td>${i+1}</td><td>${esc(f.originalName)}${f.isPdf?'':' (not PDF)'}</td><td>${esc(fileSizeLabel(f.size))}</td></tr>`).join('')}</table><div class="notice"><b>Attachment note:</b> The file names above were selected with this report. Open/check PDF files from the form preview before saving, then keep/email those files with this report packet. Browser print cannot merge separate external PDFs into this generated report automatically.</div></div>`;
 }
 
 
@@ -2346,23 +2379,36 @@ function incidentReportForm(){
 }
 
 function hasAnyField(ids){ return (ids||[]).some(id=>String(val(id)||'').trim()) || (ids||[]).some(id=>!!signatureStore[id]); }
+function hasWitnessContent(prefix, includeUnusual=false){
+  const fields=[`${prefix}Name`,`${prefix}Company`,`${prefix}Phone`,`${prefix}Supervisor`,`${prefix}Statement`,`${prefix}Prevent`,`${prefix}Print`];
+  if(includeUnusual) fields.push(`${prefix}Unusual`);
+  return fields.some(id=>String(val(id)||'').trim()) || !!signatureStore[`${prefix}Signature`];
+}
+function buildIncidentWitnessPage(){
+  if(!hasWitnessContent('irWitness')) return '';
+  return `<div class="extraPrintSheet irPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>INCIDENT REPORT - WITNESS STATEMENT</h1></div><table class="extraPrintTable"><tr><th>Project</th><td>${esc(projectValue('irProject'))}</td><th>Report Date</th><td>${esc(dateToSlashYYYY(val('irReportDate')))}</td></tr><tr><th>Incident Date</th><td>${esc(dateToSlashYYYY(val('irIncidentDate')))}</td><th>Employee</th><td>${esc(val('irEmployee'))}</td></tr></table><h2 class="extraSectionTitle">Witness Statement</h2><table class="extraPrintTable"><tr><th>Witness</th><td>${esc(val('irWitnessName'))}</td><th>Company / Trade</th><td>${esc(val('irWitnessCompany'))}</td><th>Phone</th><td>${esc(val('irWitnessPhone'))}</td></tr><tr><th>Date / Time</th><td>${esc(dateToSlashYYYY(val('irWitnessDate')))} ${esc(val('irWitnessTime'))}</td><th>Supervisor Notified</th><td colspan="3">${esc(val('irWitnessSupervisor'))}</td></tr></table>${extraPrintBox('Witness Statement - In Their Own Words',val('irWitnessStatement'),2.1)}${extraPrintBox('How Could This Be Prevented in the Future?',val('irWitnessPrevent'),1.0)}<div class="extraSigGrid two"><div><b>Witness Print Name:</b> ${esc(val('irWitnessPrint')||val('irWitnessName'))}</div><div><b>Witness Signature:</b> ${sigPrint(signatureStore.irWitnessSignature,'')}</div></div></div>`;
+}
+function buildAccidentWitnessPage(){
+  if(!hasWitnessContent('harWitness', true)) return '';
+  return `<div class="extraPrintSheet harPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>ACCIDENT REPORT - WITNESS STATEMENT</h1></div><table class="extraPrintTable"><tr><th>Project</th><td>${esc(projectValue('harProject'))}</td><th>Report Date</th><td>${esc(dateToSlashYYYY(val('harReportDate')))}</td></tr><tr><th>Incident Date</th><td>${esc(dateToSlashYYYY(val('harDate')))}</td><th>Employee</th><td>${esc(val('harEmployee'))}</td></tr></table><h2 class="extraSectionTitle">Witness Statement</h2><table class="extraPrintTable"><tr><th>Witness</th><td>${esc(val('harWitnessName'))}</td><th>Company / Trade</th><td>${esc(val('harWitnessCompany'))}</td><th>Phone</th><td>${esc(val('harWitnessPhone'))}</td></tr><tr><th>Date / Time</th><td>${esc(dateToSlashYYYY(val('harWitnessDate')))} ${esc(val('harWitnessTime'))}</td><th>Supervisor Notified</th><td colspan="3">${esc(val('harWitnessSupervisor'))}</td></tr></table>${extraPrintBox('Witness Statement - In Their Own Words',val('harWitnessStatement'),2.0)}${extraPrintBox('Anything Unusual or Unexpected?',val('harWitnessUnusual'),.85)}${extraPrintBox('How Could This Be Prevented in the Future?',val('harWitnessPrevent'),.85)}<div class="extraSigGrid two"><div><b>Witness Print Name:</b> ${esc(val('harWitnessPrint')||val('harWitnessName'))}</div><div><b>Witness Signature:</b> ${sigPrint(signatureStore.harWitnessSignature,'')}</div></div></div>`;
+}
 function buildIncidentSecondWitnessPage(){
-  const hasSecond = hasAnyField(['irWitness2Name','irWitness2Company','irWitness2Phone','irWitness2Date','irWitness2Time','irWitness2Supervisor','irWitness2Statement','irWitness2Prevent','irWitness2Print','irWitness2Signature']);
-  if(!hasSecond) return '';
+  if(!hasWitnessContent('irWitness2')) return '';
   return `<div class="extraPrintSheet irPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>INCIDENT REPORT - SECOND WITNESS</h1></div><table class="extraPrintTable"><tr><th>Project</th><td>${esc(projectValue('irProject'))}</td><th>Report Date</th><td>${esc(dateToSlashYYYY(val('irReportDate')))}</td></tr><tr><th>Incident Date</th><td>${esc(dateToSlashYYYY(val('irIncidentDate')))}</td><th>Employee</th><td>${esc(val('irEmployee'))}</td></tr></table><h2 class="extraSectionTitle">Second Witness Statement</h2><table class="extraPrintTable"><tr><th>Witness 2</th><td>${esc(val('irWitness2Name'))}</td><th>Company / Trade</th><td>${esc(val('irWitness2Company'))}</td><th>Phone</th><td>${esc(val('irWitness2Phone'))}</td></tr><tr><th>Date / Time</th><td>${esc(dateToSlashYYYY(val('irWitness2Date')))} ${esc(val('irWitness2Time'))}</td><th>Supervisor Notified</th><td colspan="3">${esc(val('irWitness2Supervisor'))}</td></tr></table>${extraPrintBox('Second Witness Statement - In Their Own Words',val('irWitness2Statement'),2.2)}${extraPrintBox('How Could This Be Prevented in the Future?',val('irWitness2Prevent'),1.0)}<div class="extraSigGrid two"><div><b>Witness 2 Print Name:</b> ${esc(val('irWitness2Print')||val('irWitness2Name'))}</div><div><b>Witness 2 Signature:</b> ${sigPrint(signatureStore.irWitness2Signature,'')}</div></div></div>`;
 }
 function buildAccidentSecondWitnessPage(){
-  const hasSecond = hasAnyField(['harWitness2Name','harWitness2Company','harWitness2Phone','harWitness2Date','harWitness2Time','harWitness2Supervisor','harWitness2Statement','harWitness2Unusual','harWitness2Prevent','harWitness2Print','harWitness2Signature']);
-  if(!hasSecond) return '';
+  if(!hasWitnessContent('harWitness2', true)) return '';
   return `<div class="extraPrintSheet harPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>ACCIDENT REPORT - SECOND WITNESS</h1></div><table class="extraPrintTable"><tr><th>Project</th><td>${esc(projectValue('harProject'))}</td><th>Report Date</th><td>${esc(dateToSlashYYYY(val('harReportDate')))}</td></tr><tr><th>Incident Date</th><td>${esc(dateToSlashYYYY(val('harDate')))}</td><th>Employee</th><td>${esc(val('harEmployee'))}</td></tr></table><h2 class="extraSectionTitle">Second Witness Statement</h2><table class="extraPrintTable"><tr><th>Witness 2</th><td>${esc(val('harWitness2Name'))}</td><th>Company / Trade</th><td>${esc(val('harWitness2Company'))}</td><th>Phone</th><td>${esc(val('harWitness2Phone'))}</td></tr><tr><th>Date / Time</th><td>${esc(dateToSlashYYYY(val('harWitness2Date')))} ${esc(val('harWitness2Time'))}</td><th>Supervisor Notified</th><td colspan="3">${esc(val('harWitness2Supervisor'))}</td></tr></table>${extraPrintBox('Second Witness Statement - In Their Own Words',val('harWitness2Statement'),2.0)}${extraPrintBox('Anything Unusual or Unexpected?',val('harWitness2Unusual'),.85)}${extraPrintBox('How Could This Be Prevented in the Future?',val('harWitness2Prevent'),.85)}<div class="extraSigGrid two"><div><b>Witness 2 Print Name:</b> ${esc(val('harWitness2Print')||val('harWitness2Name'))}</div><div><b>Witness 2 Signature:</b> ${sigPrint(signatureStore.harWitness2Signature,'')}</div></div></div>`;
 }
 
 function buildIncidentPrint(){
-  const html=`<div class="extraPrintSheet irPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>INCIDENT REPORT</h1></div><table class="extraPrintTable"><tr><th>Report Date</th><td>${esc(dateToSlashYYYY(val('irReportDate')))}</td><th>Page</th><td>1 of 1</td></tr><tr><th>Employee</th><td>${esc(val('irEmployee'))}</td><th>Additional Sheets Attached</th><td>${esc(val('irAdditionalSheets'))}</td></tr><tr><th>Project</th><td>${esc(projectValue('irProject'))}</td><th>Project Location</th><td>${esc(val('irProjectLocation'))}</td></tr><tr><th>Incident Date</th><td>${esc(dateToSlashYYYY(val('irIncidentDate')))}</td><th>Time of Incident</th><td>${esc(val('irIncidentTime'))}</td></tr></table>${extraPrintBox('Description of Incident',val('irDescription'))}${extraPrintBox('Injuries Sustained',val('irInjuries'))}${extraPrintBox('Medical Review & Treatment',val('irTreatment'))}${extraPrintBox('Cause of Incident',val('irCause'))}${extraPrintBox('Corrective Action Taken to Prevent Recurrences',val('irCorrective'))}${extraPrintBox('Supplemental Review / Comments',val('irComments'))}<table class="extraPrintTable"><tr><th>Post to OSHA 300 Log</th><td>${esc(radioVal('irOsha300'))}</td><th>Police Report</th><td>${esc(radioVal('irPolice'))}</td></tr><tr><th>Agency</th><td>${esc(val('irAgency'))}</td><th>Report No.</th><td>${esc(val('irReportNo'))}</td></tr><tr><th>Reported to OSHA</th><td>${esc(radioVal('irReportedOsha'))}</td><th>To Whom</th><td>${esc(val('irToWhom'))}</td></tr><tr><th>Date / Time / By Whom</th><td colspan="3">${esc(dateToSlashYYYY(val('irOshaDate')))} ${esc(val('irOshaTime'))} &nbsp; ${esc(val('irByWhom'))}</td></tr></table>${(val('irWitnessName')||val('irWitnessStatement')||signatureStore.irWitnessSignature)?`<h2 class="extraSectionTitle">Witness Statement</h2><table class="extraPrintTable"><tr><th>Witness</th><td>${esc(val('irWitnessName'))}</td><th>Company / Trade</th><td>${esc(val('irWitnessCompany'))}</td><th>Phone</th><td>${esc(val('irWitnessPhone'))}</td></tr><tr><th>Date / Time</th><td>${esc(dateToSlashYYYY(val('irWitnessDate')))} ${esc(val('irWitnessTime'))}</td><th>Supervisor Notified</th><td colspan="3">${esc(val('irWitnessSupervisor'))}</td></tr></table>${extraPrintBox('Witness Statement - In Their Own Words',val('irWitnessStatement'),1.0)}${extraPrintBox('How Could This Be Prevented in the Future?',val('irWitnessPrevent'),.55)}<div class="extraSigGrid two"><div><b>Witness Print Name:</b> ${esc(val('irWitnessPrint')||val('irWitnessName'))}</div><div><b>Witness Signature:</b> ${sigPrint(signatureStore.irWitnessSignature,'')}</div></div>`:''}<div class="extraSigGrid two"><div><b>Report Completed By:</b> ${esc(val('irCompletedBy'))}</div><div><b>Signature:</b> ${sigPrint(signatureStore.irSignature,'')}</div></div></div>`;
+  const html=`<div class="extraPrintSheet irPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>INCIDENT REPORT</h1></div><table class="extraPrintTable"><tr><th>Report Date</th><td>${esc(dateToSlashYYYY(val('irReportDate')))}</td><th>Page</th><td>1 of 1</td></tr><tr><th>Employee</th><td>${esc(val('irEmployee'))}</td><th>Additional Sheets Attached</th><td>${esc(val('irAdditionalSheets'))}</td></tr><tr><th>Project</th><td>${esc(projectValue('irProject'))}</td><th>Project Location</th><td>${esc(val('irProjectLocation'))}</td></tr><tr><th>Incident Date</th><td>${esc(dateToSlashYYYY(val('irIncidentDate')))}</td><th>Time of Incident</th><td>${esc(val('irIncidentTime'))}</td></tr></table>${extraPrintBox('Description of Incident',val('irDescription'))}${extraPrintBox('Injuries Sustained',val('irInjuries'))}${extraPrintBox('Medical Review & Treatment',val('irTreatment'))}${extraPrintBox('Cause of Incident',val('irCause'))}${extraPrintBox('Corrective Action Taken to Prevent Recurrences',val('irCorrective'))}${extraPrintBox('Supplemental Review / Comments',val('irComments'))}<table class="extraPrintTable"><tr><th>Post to OSHA 300 Log</th><td>${esc(radioVal('irOsha300'))}</td><th>Police Report</th><td>${esc(radioVal('irPolice'))}</td></tr><tr><th>Agency</th><td>${esc(val('irAgency'))}</td><th>Report No.</th><td>${esc(val('irReportNo'))}</td></tr><tr><th>Reported to OSHA</th><td>${esc(radioVal('irReportedOsha'))}</td><th>To Whom</th><td>${esc(val('irToWhom'))}</td></tr><tr><th>Date / Time / By Whom</th><td colspan="3">${esc(dateToSlashYYYY(val('irOshaDate')))} ${esc(val('irOshaTime'))} &nbsp; ${esc(val('irByWhom'))}</td></tr></table><div class="extraSigGrid two"><div><b>Report Completed By:</b> ${esc(val('irCompletedBy'))}</div><div><b>Signature:</b> ${sigPrint(signatureStore.irSignature,'')}</div></div></div>`;
   const meta = `${dateToDisplay(val('irReportDate'))} - ${projectValue('irProject')}`;
+  const witnessPage = buildIncidentWitnessPage();
   const secondWitnessPage = buildIncidentSecondWitnessPage();
   const photoPages = buildExtraPhotoPages('irPhotos', 'Incident Report', meta);
-  document.title=`Incident Report - ${dateToDisplay(val('irReportDate'))} - ${cleanFilePart(projectValue('irProject'))}`; setPrint(html + secondWitnessPage + photoPages);
+  const attachmentPages = buildExtraAttachmentPages('irPhotos', 'Incident Report', meta);
+  document.title=`Incident Report - ${dateToDisplay(val('irReportDate'))} - ${cleanFilePart(projectValue('irProject'))}`; setPrint(html + witnessPage + secondWitnessPage + photoPages + attachmentPages);
 }
 function disciplinaryReportForm(){
   app.innerHTML=extraFormIntro('Disciplinary Action','Employee disciplinary form with violation, action taken, corrective action, and signatures.')+`<div class="panel"><h2>Basic Info</h2><div class="grid three">${field('drReportDate','Report Date','date')} ${projectField('drProject','Project')} ${field('drProjectLocation','Project Location')} ${field('drIncidentDate','Incident Date','date')} ${field('drIncidentTime','Time of Incident','time')} ${field('drEmployee','Employee')} ${field('drPage','Page','text','placeholder="1 of 1"')}</div></div><div class="panel"><h2>Incident / Violation</h2>${textarea('drDescription','Description of Incident & Safety Violation')}<div class="grid three"><label class="checkPill"><input id="drVerbal" type="checkbox"> Verbal</label><label class="checkPill"><input id="drWritten" type="checkbox"> Written</label><label class="checkPill"><input id="drReprimanded" type="checkbox"> Reprimanded</label><label class="checkPill"><input id="drSuspension" type="checkbox"> Temporary Suspension</label><label class="checkPill"><input id="drTerminated" type="checkbox"> Terminated</label>${field('drOffense','Number of Offense Past 6 Months')} ${field('drFrom','Suspension From','date')} ${field('drTo','Suspension To','date')}</div>${textarea('drCorrective','Corrective Action Taken')}${textarea('drComments','Supplemental Review / Comments')}${textarea('drEmployeeRemarks','Employee Remarks')}</div><div class="panel"><h2>Signatures</h2><div class="grid three">${field('drEmployeePrint','Employee Print Name')} ${sigField('drEmployeeSig','Employee Signature')} ${field('drEmployeeSigDate','Employee Date','date')} ${field('drSupervisor','Supervisor Print Name')} ${field('drSupervisorTitle','Supervisor Title')} ${sigField('drSupervisorSig','Supervisor Signature')} ${field('drSupervisorDate','Supervisor Date','date')} ${field('drSteward','Steward Print Name')} ${field('drUnionLocal','Union / Local')} ${sigField('drStewardSig','Steward Signature')} ${field('drStewardDate','Steward Date','date')}</div><div class="actions"><button class="btn" id="drPrintBtn">Save PDF / Print Disciplinary Report</button></div>${printPdfHelp('dr')}<div id="drMsg"></div></div></div>`;
@@ -2379,11 +2425,13 @@ function heavyAccidentReportForm(){
   setupOtherProject('harProject'); setupToday('harDate'); setupToday('harReportDate'); setupToday('harWitnessDate'); setupToday('harWitness2Date'); setupSecondWitnessToggle('harAddWitness2Btn','harWitness2Panel'); setupPhotoPreview('harPhotos'); initSignatureButtons(); const d=document.getElementById('harDate'), day=document.getElementById('harDay'); const upd=()=>{if(d&&d.value&&day){day.value=new Date(d.value+'T00:00:00').toLocaleDateString(undefined,{weekday:'long'});}}; d&&d.addEventListener('change',upd); upd(); extraPrintButton('harPrintBtn', buildHeavyAccidentPrint, 'harMsg', ()=>logGeneratedForm('har', projectValue('harProject'), val('harReportDate'), `Accident Report - ${dateToDisplay(val('harReportDate'))} - ${cleanFilePart(projectValue('harProject'))}`));
 }
 function buildHeavyAccidentPrint(){
-  const html=`<div class="extraPrintSheet harPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>ACCIDENT / INCIDENT INVESTIGATION REPORT</h1></div><table class="extraPrintTable"><tr><th>Date of Incident</th><td>${esc(dateToSlashYYYY(val('harDate')))}</td><th>Time</th><td>${esc(val('harTime'))}</td><th>Date of Report</th><td>${esc(dateToSlashYYYY(val('harReportDate')))}</td></tr><tr><th>Project Name</th><td>${esc(projectValue('harProject'))}</td><th>Day / Weather</th><td>${esc(val('harDay'))} / ${esc(val('harWeather'))}</td><th>Project Manager</th><td>${esc(val('harPM'))}</td></tr><tr><th>Superintendent / Foreman</th><td>${esc(val('harForeman'))}</td><th>Drug Screen</th><td>${esc(val('harDrugScreen'))}</td><th>Type of Incident</th><td>${esc(val('harType'))}</td></tr><tr><th>Exact Location</th><td colspan="5">${esc(val('harExactLoc'))} ${esc(val('harAddress'))} ${esc(val('harCity'))}</td></tr><tr><th>Injured Employee</th><td>${esc(val('harEmployee'))}</td><th>Employee ID</th><td>${esc(val('harEmpId'))}</td><th>Phone</th><td>${esc(val('harPhone'))}</td></tr><tr><th>DOB</th><td>${esc(dateToSlashYYYY(val('harDob')))}</td><th>Occupation</th><td>${esc(val('harOccupation'))}</td><th>Years / Hire / Start</th><td>${esc(val('harYears'))} / ${esc(dateToSlashYYYY(val('harHire')))} / ${esc(val('harStart'))}</td></tr></table>${extraPrintBox('PPE Worn',val('harPpe'),.55)}${extraPrintBox('Detailed Description of Injury',val('harInjury'),.75)}<table class="extraPrintTable"><tr><th>Onsite First Aid</th><td>${esc(radioVal('harFirstAid'))}</td><th>Offsite Medical Treatment</th><td>${esc(radioVal('harMedical'))}</td><th>Witnesses</th><td>${esc(radioVal('harWitnesses'))}</td></tr><tr><th>Property Damage</th><td colspan="5">${esc(radioVal('harProperty'))}</td></tr></table>${extraPrintBox('Treatment / Facility / Date Treatment Given',val('harTreatment'),.75)}${extraPrintBox('Property / Equipment / Vehicle Damage',val('harDamage'),.75)}${extraPrintBox('Detailed Chronological Description of What Happened',val('harDescription'),1.25)}${extraPrintBox('Root Cause / Contributing Factors',val('harRootCause'),.75)}${extraPrintBox('Corrective Actions Taken or Planned',val('harCorrective'),.75)}${(val('harWitnessName')||val('harWitnessStatement')||signatureStore.harWitnessSignature)?`<h2 class="extraSectionTitle">Witness Statement</h2><table class="extraPrintTable"><tr><th>Witness</th><td>${esc(val('harWitnessName'))}</td><th>Company / Trade</th><td>${esc(val('harWitnessCompany'))}</td><th>Phone</th><td>${esc(val('harWitnessPhone'))}</td></tr><tr><th>Date / Time</th><td>${esc(dateToSlashYYYY(val('harWitnessDate')))} ${esc(val('harWitnessTime'))}</td><th>Supervisor Notified</th><td colspan="3">${esc(val('harWitnessSupervisor'))}</td></tr></table>${extraPrintBox('Witness Statement - In Their Own Words',val('harWitnessStatement'),.85)}${extraPrintBox('Anything Unusual or Unexpected?',val('harWitnessUnusual'),.45)}${extraPrintBox('How Could This Be Prevented in the Future?',val('harWitnessPrevent'),.45)}<div class="extraSigGrid two"><div><b>Witness Print Name:</b> ${esc(val('harWitnessPrint')||val('harWitnessName'))}</div><div><b>Witness Signature:</b> ${sigPrint(signatureStore.harWitnessSignature,'')}</div></div>`:''}<div class="extraSigGrid two"><div><b>Completed By:</b> ${esc(val('harCompletedBy'))}</div><div><b>Signature:</b> ${sigPrint(signatureStore.harSignature,'')}</div></div></div>`;
+  const html=`<div class="extraPrintSheet harPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>ACCIDENT / INCIDENT INVESTIGATION REPORT</h1></div><table class="extraPrintTable"><tr><th>Date of Incident</th><td>${esc(dateToSlashYYYY(val('harDate')))}</td><th>Time</th><td>${esc(val('harTime'))}</td><th>Date of Report</th><td>${esc(dateToSlashYYYY(val('harReportDate')))}</td></tr><tr><th>Project Name</th><td>${esc(projectValue('harProject'))}</td><th>Day / Weather</th><td>${esc(val('harDay'))} / ${esc(val('harWeather'))}</td><th>Project Manager</th><td>${esc(val('harPM'))}</td></tr><tr><th>Superintendent / Foreman</th><td>${esc(val('harForeman'))}</td><th>Drug Screen</th><td>${esc(val('harDrugScreen'))}</td><th>Type of Incident</th><td>${esc(val('harType'))}</td></tr><tr><th>Exact Location</th><td colspan="5">${esc(val('harExactLoc'))} ${esc(val('harAddress'))} ${esc(val('harCity'))}</td></tr><tr><th>Injured Employee</th><td>${esc(val('harEmployee'))}</td><th>Employee ID</th><td>${esc(val('harEmpId'))}</td><th>Phone</th><td>${esc(val('harPhone'))}</td></tr><tr><th>DOB</th><td>${esc(dateToSlashYYYY(val('harDob')))}</td><th>Occupation</th><td>${esc(val('harOccupation'))}</td><th>Years / Hire / Start</th><td>${esc(val('harYears'))} / ${esc(dateToSlashYYYY(val('harHire')))} / ${esc(val('harStart'))}</td></tr></table>${extraPrintBox('PPE Worn',val('harPpe'),.55)}${extraPrintBox('Detailed Description of Injury',val('harInjury'),.75)}<table class="extraPrintTable"><tr><th>Onsite First Aid</th><td>${esc(radioVal('harFirstAid'))}</td><th>Offsite Medical Treatment</th><td>${esc(radioVal('harMedical'))}</td><th>Witnesses</th><td>${esc(radioVal('harWitnesses'))}</td></tr><tr><th>Property Damage</th><td colspan="5">${esc(radioVal('harProperty'))}</td></tr></table>${extraPrintBox('Treatment / Facility / Date Treatment Given',val('harTreatment'),.75)}${extraPrintBox('Property / Equipment / Vehicle Damage',val('harDamage'),.75)}${extraPrintBox('Detailed Chronological Description of What Happened',val('harDescription'),1.25)}${extraPrintBox('Root Cause / Contributing Factors',val('harRootCause'),.75)}${extraPrintBox('Corrective Actions Taken or Planned',val('harCorrective'),.75)}<div class="extraSigGrid two"><div><b>Completed By:</b> ${esc(val('harCompletedBy'))}</div><div><b>Signature:</b> ${sigPrint(signatureStore.harSignature,'')}</div></div></div>`;
   const meta = `${dateToDisplay(val('harReportDate'))} - ${projectValue('harProject')}`;
+  const witnessPage = buildAccidentWitnessPage();
   const secondWitnessPage = buildAccidentSecondWitnessPage();
   const photoPages = buildExtraPhotoPages('harPhotos', 'Accident Report', meta);
-  document.title=`Accident Report - ${dateToDisplay(val('harReportDate'))} - ${cleanFilePart(projectValue('harProject'))}`; setPrint(html + secondWitnessPage + photoPages);
+  const attachmentPages = buildExtraAttachmentPages('harPhotos', 'Accident Report', meta);
+  document.title=`Accident Report - ${dateToDisplay(val('harReportDate'))} - ${cleanFilePart(projectValue('harProject'))}`; setPrint(html + witnessPage + secondWitnessPage + photoPages + attachmentPages);
 }
 function extraPrintBox(title, text, h=0.7){return `<div class="extraPrintBox" style="min-height:${h}in"><b>${esc(title)}:</b><br>${esc(text)}</div>`;}
 
