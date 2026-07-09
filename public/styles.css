@@ -1063,3 +1063,9 @@
 .photoPreviewItem{position:relative;border:1px solid #d9e2ef;border-radius:10px;padding:8px;background:#fff;display:flex;flex-direction:column;gap:6px;align-items:flex-start;}
 .photoPreviewItem img{max-width:100%;border-radius:8px;display:block;}
 .photoRemoveBtn{font-size:12px;padding:6px 10px;}
+
+/* Incident/Accident evidence attachment controls */
+.evidenceUploadBox .pdfAttachBox{margin-top:14px;padding-top:12px;border-top:1px dashed #cbd5e1;}
+.hiddenFileInput{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.filePickBtn{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin:4px 0 8px;}
+.extraAttachmentSheet .notice{margin-top:18px;}
