@@ -1212,7 +1212,17 @@ function buildPirPrint(data=collectPir(), files=[]){
  </div>`;
  const notes=data.additionalNotes||{};
  const hasGeneralNotes=String(data.generalNotes||'').trim();
- const hasNotes=data.additionalNotesOpen || hasGeneralNotes || (notes.summary||notes.location||notes.qc||notes.print||'').trim() || (notes.rows||[]).some(r=>r.time||r.location||r.activity||r.notes);
+ const hasAdditionalNotesContent = Boolean(
+    (notes.summary||'').trim() ||
+    (notes.location||'').trim() ||
+    (notes.print||'').trim() ||
+    (notes.signature||'').trim() ||
+    (notes.signatureData||'').trim() ||
+    (notes.rows||[]).some(r=>r.time||r.location||r.activity||r.notes)
+  );
+  // Do not print/save the optional Additional QC Notes page just because the panel was opened
+  // or because the auto-filled date/QC fields have values. Print only when real notes exist.
+  const hasNotes=hasGeneralNotes || hasAdditionalNotesContent;
  const notesRows=(notes.rows||Array.from({length:8},()=>({}))).map(r=>`<tr><td>${cell(r.time)}</td><td>${cell(r.location)}</td><td>${cell(r.activity)}</td><td>${cell(r.notes)}</td></tr>`).join('');
  const notesPage=hasNotes?`<div class="pirNotesSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional QC Notes</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><table class="extraPrintTable"><tr><th>Date</th><td>${cell(notes.date||data.reportDate)}</td><th>Location / Area</th><td>${cell(notes.location)}</td><th>QC</th><td>${cell(notes.qc||data.qcPrint)}</td></tr></table>${hasGeneralNotes?extraPrintBox('General Notes / Nonconformance / Corrective Actions',data.generalNotes,1.05):''}<table class="extraPrintTable pirNotesTable"><tr><th>Time</th><th>Location / Area</th><th>Activity / What Happened</th><th>Notes</th></tr>${notesRows}</table>${extraPrintBox('Additional Summary / QC Comments',notes.summary||'',1.35)}<div class="extraSigGrid two"><div><b>QC Print:</b> ${cell(notes.print||notes.qc||data.qcPrint)}</div><div><b>QC Signature:</b> ${sigPrint(notes.signatureData,notes.signature||'')}</div></div></div>`:'';
  const pages=[html, extraMixPage, notesPage].filter(Boolean);
