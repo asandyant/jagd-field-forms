@@ -49,11 +49,36 @@
       <p id="officeNote">Loading office note...</p>
     </section>
 
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Office Billing Progress</h2>
+          <p>Shows each section's share of the contract, field progress where we have tracker tie-ins, earned-to-date value, and remaining value.</p>
+        </div>
+      </div>
+      <div class="billing-table-wrap">
+        <table class="print-table payment-table">
+          <thead>
+            <tr>
+              <th>Section</th>
+              <th>Contract Value</th>
+              <th>% of Contract</th>
+              <th>Field Progress</th>
+              <th>Earned to Date</th>
+              <th>Remaining</th>
+              <th>Tracker Tie-In</th>
+            </tr>
+          </thead>
+          <tbody id="earnedProgressBody"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="panel chart-panel">
       <div class="panel-head">
         <div>
-          <h2>Billing Value by Area</h2>
-          <p>Grouped from the payment breakdown sheet so production can be tied back to how the office bills the job.</p>
+          <h2>Contract Value vs Earned to Date</h2>
+          <p>Contract value comes from the payment breakdown. Earned-to-date is calculated from the linked field tracker progress.</p>
         </div>
       </div>
       <canvas id="paymentChart" height="120"></canvas>

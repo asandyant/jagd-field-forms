@@ -2035,11 +2035,11 @@ const paymentBreakdown = {
   period: '6.01.26 - 6.30.26',
   approvedToDate: 25000,
   sections: [
-    { id: 'general', name: 'General / Contract Start', color: '#64748b', total: 25000, description: 'General contract item not tied to the field color zones.' },
-    { id: 'sp-ramp', name: 'Blue — SP Ramp / Belt Parkway Tangent', color: '#2563eb', total: 7749530, description: 'Blue area from the office email. Includes Belt Parkway tangent / SP ramp items.' },
-    { id: 'horseshoe', name: 'Orange — Horseshoe', color: '#f97316', total: 3073920, description: 'Orange area from the office email. Includes Horseshoe holes, bearings, blast/paint, and access.' },
-    { id: 'ebu-connection', name: 'Green — Horseshoe to EB Upper Mainline', color: '#16a34a', total: 922700, description: 'Green area from the office email. Includes EBU Upper/92nd St Exit connection items.' },
-    { id: 'ramp-n', name: 'Ramp N / Yard Ramp', color: '#7c3aed', total: 199450, description: 'Ramp N items from the payment breakdown.' }
+    { id: 'general', name: 'General / Contract Start', color: '#64748b', total: 25000, progressAreaIds: [], description: 'General contract item not tied to the field color zones.' },
+    { id: 'sp-ramp', name: 'Blue — SP Ramp / Belt Parkway Tangent', color: '#2563eb', total: 7749530, progressAreaIds: ['blue-bridge-87', 'belt-parkway-bearings', 'blue-bridge-237-crosses', 'belt-parkway-jacking'], description: 'Blue area from the office email. Includes Belt Parkway tangent / SP ramp items.' },
+    { id: 'horseshoe', name: 'Orange — Horseshoe', color: '#f97316', total: 3073920, progressAreaIds: ['orange-bridge-piers'], description: 'Orange area from the office email. Includes Horseshoe holes, bearings, blast/paint, and access.' },
+    { id: 'ebu-connection', name: 'Green — Horseshoe to EB Upper Mainline', color: '#16a34a', total: 922700, progressAreaIds: [], description: 'Green area from the office email. Includes EBU Upper/92nd St Exit connection items.' },
+    { id: 'ramp-n', name: 'Ramp N / Yard Ramp', color: '#7c3aed', total: 199450, progressAreaIds: [], description: 'Ramp N items from the payment breakdown.' }
   ],
   items: [
     { item: 1, sectionId: 'general', description: 'Work plans', amount: 25000 },
