@@ -39,7 +39,8 @@ const bearingSubAreas = [
   { id: 'sp9', name: 'SP9', total: 18 },
   { id: 'sp10', name: 'SP10', total: 18 },
   { id: 'sp11', name: 'SP11', total: 18 },
-  { id: 'sp12', name: 'SP12', total: 18 }
+  { id: 'sp12', name: 'SP12', total: 18 },
+  { id: 'sp13', name: 'SP13', total: 18 }
 ];
 
 
@@ -2024,6 +2025,70 @@ const emergencyRepairRows = [
   }
 ];
 
+
+const paymentBreakdown = {
+  id: 'vn84b-payment-breakdown',
+  name: 'VN84-B Payment Breakdown',
+  source: 'VN-84B_Payment_Breakdown_06.30.26.xlsx and Defoe Item Comp.xlsx',
+  officeNote: 'Email note: Blue is SP ramp, Orange is Horseshoe, and Green is where the horseshoe connects to EB Upper mainline.',
+  contractTotal: 11970600,
+  period: '6.01.26 - 6.30.26',
+  approvedToDate: 25000,
+  sections: [
+    { id: 'general', name: 'General / Contract Start', color: '#64748b', total: 25000, description: 'General contract item not tied to the field color zones.' },
+    { id: 'sp-ramp', name: 'Blue — SP Ramp / Belt Parkway Tangent', color: '#2563eb', total: 7749530, description: 'Blue area from the office email. Includes Belt Parkway tangent / SP ramp items.' },
+    { id: 'horseshoe', name: 'Orange — Horseshoe', color: '#f97316', total: 3073920, description: 'Orange area from the office email. Includes Horseshoe holes, bearings, blast/paint, and access.' },
+    { id: 'ebu-connection', name: 'Green — Horseshoe to EB Upper Mainline', color: '#16a34a', total: 922700, description: 'Green area from the office email. Includes EBU Upper/92nd St Exit connection items.' },
+    { id: 'ramp-n', name: 'Ramp N / Yard Ramp', color: '#7c3aed', total: 199450, description: 'Ramp N items from the payment breakdown.' }
+  ],
+  items: [
+    { item: 1, sectionId: 'general', description: 'Work plans', amount: 25000 },
+    { item: 2, sectionId: 'sp-ramp', description: 'New Belt Ramp - Clean & Paint All New Connection Points per Spec Sections 09930 & 09940', amount: 775000 },
+    { item: 3, sectionId: 'sp-ramp', description: 'Anti-Graffiti of H8', amount: 7200 },
+    { item: 4, sectionId: 'sp-ramp', description: 'Clean, prep & paint fire hose valve Stations per Spec Sections 02082, 09931 & 09940', amount: 54000 },
+    { item: 5, sectionId: 'sp-ramp', description: 'Clean, prep & paint fire department connections per Spec Sections 02082, 09931 & 09940', amount: 15000 },
+    { item: 6, sectionId: 'sp-ramp', description: 'Clean, prep & paint Belt parkway tangent holes per Spec Sections 02082, 09931 & 09940', amount: 44080 },
+    { item: 7, sectionId: 'sp-ramp', description: 'Belt parkway tangent - Keim coat per spec section 09930', amount: 610000 },
+    { item: 8, sectionId: 'sp-ramp', description: 'Anti-Graffiti of SP piers in the park and along Fort Hamilton', amount: 77500 },
+    { item: 9, sectionId: 'sp-ramp', description: 'Clean, prep & paint Belt parkway tangent steel repairs per spec section 02082, 09931 & 00940', amount: 78000 },
+    { item: 10, sectionId: 'sp-ramp', description: 'Clean, prep & paint Belt parkway tangent bearings per spec section 02082, 09931 & 00940', amount: 118750, trackerLink: 'Belt Parkway Bearings' },
+    { item: 11, sectionId: 'sp-ramp', description: 'Belt Parkway tangent - Localized paint removal (Jacking Locations) per spec sections 02082, 09931 & 09940', amount: 175000, trackerLink: 'Belt Parkway Jacking Locations' },
+    { item: 12, sectionId: 'sp-ramp', description: 'Belt Parkway Tangent - Localized Paint Removal (At Widening Connections) per Spec Sections 02082, 09931 & 09940', amount: 75000 },
+    { item: 13, sectionId: 'sp-ramp', description: 'Belt Parkway Tangent - Blast & Paint per Spec Sections 02082, 09931 & 09940', amount: 3320000 },
+    { item: 14, sectionId: 'sp-ramp', description: 'Belt Parkway Tangent - Access Platform', amount: 2400000 },
+    { item: 15, sectionId: 'horseshoe', description: 'Clean, Prep & Paint Belt Parkway Horseshoe Holes per Spec Sections 02082, 09931 & 09940', amount: 30720 },
+    { item: 16, sectionId: 'horseshoe', description: 'Belt Parkway Horseshoe - Keim Coating per Spec Section 09930', amount: 403200 },
+    { item: 17, sectionId: 'horseshoe', description: 'Clean, Prep & Paint Belt Parkway Horseshoe Bearings per Spec Sections 02082, 09931 & 09940', amount: 90000 },
+    { item: 18, sectionId: 'horseshoe', description: 'Belt Parkway Horseshoe Localized Paint Removal (At Widening Connections) per Spec Sections 02082, 09931 & 09940', amount: 145000 },
+    { item: 19, sectionId: 'horseshoe', description: 'Belt Parkway Horseshoe - Blast & Paint per Spec Sections 02082, 09931 & 09940', amount: 1500000 },
+    { item: 20, sectionId: 'horseshoe', description: 'Belt Parkway Horseshoe - Access Platform', amount: 905000 },
+    { item: 21, sectionId: 'ebu-connection', description: 'Clean, Prep & Paint EBU Mainline Upper/92nd St Exit Holes per Spec Sections 02082, 09931 & 09940', amount: 127200 },
+    { item: 22, sectionId: 'ebu-connection', description: 'Clean, Prep & Paint EBU Mainline Upper/92nd St Exit Holes per Spec Sections 02082, 09931 & 09940', amount: 14400 },
+    { item: 23, sectionId: 'ebu-connection', description: 'EBU Mainline Upper/92nd St Exit Bearings per Spec Sections 02082, 09931 & 09940', amount: 60625 },
+    { item: 24, sectionId: 'ebu-connection', description: 'EBU Mainline Upper/92nd St Exit Localized Paint Removal (Jacking Locations) per Spec Sections 02082, 09931 & 09940', amount: 23250 },
+    { item: 25, sectionId: 'ebu-connection', description: 'Clean, Prep & Paint EBU Mainline Upper/92nd St Exit Touch-Up (Floorbeam Extensions) per Spec Sections 02082, 09931 & 09940', amount: 194000 },
+    { item: 26, sectionId: 'ebu-connection', description: 'EBU Mainline Upper/92nd St Exit Localized Paint Removal (At Widening Connections) per Spec Sections 02082, 09931 & 09940', amount: 255225 },
+    { item: 27, sectionId: 'ebu-connection', description: 'Access Platform for Jack & Ped Work', amount: 248000 },
+    { item: 29, sectionId: 'ramp-n', description: 'Clean, Prep & Paint Ramp N Touch-Up (Connections) per Spec Sections 02082, 09931 & 09940', amount: 95700 },
+    { item: 30, sectionId: 'ramp-n', description: 'Ramp N Localized Paint Removal (Cut Lines) per Spec Sections 02082, 09931 & 09940', amount: 72500 },
+    { item: 31, sectionId: 'ramp-n', description: 'Ramp N - De-Lead Bearings per Spec Sections 02082, 09931 & 09940', amount: 31250 }
+  ],
+  defoeComparison: [
+    { area: 'Belt Ramps', bidItem: 20355901, description: 'KEIM Coating of SP Piers SP Abut to SP-12', quantity: 36260, unit: 'SF', note: 'We have 18,000 SF' },
+    { area: 'Belt Parkway', bidItem: 20456502, description: 'Localized Paint Removal', quantity: 92, unit: 'EA', note: 'Bearings' },
+    { area: 'Belt Parkway', bidItem: 20456503, description: 'Localized Paint Removal', quantity: 98, unit: 'EA', note: 'Bearings' },
+    { area: 'Belt Parkway', bidItem: 20458501, description: 'Localized Paint Removal (Jacking Locations)', quantity: 2500, unit: 'SF', note: 'Need to Bid' },
+    { area: 'Belt Parkway', bidItem: 21157201, description: 'Structural Steel Paint System', quantity: 228000, unit: 'SF', note: 'We have 220,000 SF' },
+    { area: 'Horse Shoe', bidItem: 30355901, description: 'KEIM Coating of SP Piers SP Abut to SP-12', quantity: 25200, unit: 'SF', note: 'We have 15,500 SF' },
+    { area: 'Horse Shoe', bidItem: 30456502, description: 'Localized Paint Removal', quantity: 74, unit: 'EA', note: 'Bearings' },
+    { area: 'Horse Shoe', bidItem: 30456503, description: 'Localized Paint Removal', quantity: 70, unit: 'EA', note: 'Bearings' },
+    { area: 'EBU 92nd St.', bidItem: 40555502, description: 'Power Tool Cleaning', quantity: 60, unit: 'EA', note: 'Bearings' },
+    { area: 'EBU 92nd St.', bidItem: 40556502, description: 'Localized Lead Abatement (Ramp F)', quantity: 30, unit: 'EA', note: 'Bearings' },
+    { area: 'EBU 92nd St.', bidItem: 40556502, description: 'Localized Lead Abatement (Jacking)', quantity: 220, unit: 'SF', note: 'Need to Bid' },
+    { area: 'EBU 92nd St.', bidItem: 40556503, description: 'Localized Lead Abatement (Ramp F)', quantity: 7, unit: 'EA', note: 'Bearings' }
+  ]
+};
+
 const defaultEmergencySteelRepairs = {
   id: 'emergency-steel-repairs',
   name: 'Emergency Steel Repairs',
@@ -2059,9 +2124,9 @@ const defaultData = {
     {
       id: 'belt-parkway-bearings',
       name: 'Belt Parkway Bearings',
-      description: '230 bearings broken out by Abutment and SP1–SP12. Each stage counts as its own 100% billing item: power tool, zinc, midcoat, finish.',
+      description: '248 bearings broken out by Abutment and SP1–SP13. Each stage counts as its own 100% billing item: power tool, zinc, midcoat, finish.',
       unitLabel: 'bearings',
-      total: 230,
+      total: 248,
       subAreas: bearingSubAreas,
       stages: ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'],
       items: []
@@ -2368,6 +2433,36 @@ function syncEmergencyRepairStatusFromMembers(repair) {
   }
 }
 
+
+function paymentPasswordConfigured() {
+  return !!(process.env.VN84B_PAYMENT_PASSWORD || '').trim();
+}
+
+function getPaymentPassword() {
+  return (process.env.VN84B_PAYMENT_PASSWORD || 'JAGD2026').trim();
+}
+
+function requirePaymentPassword(req, res, next) {
+  const configuredPassword = getPaymentPassword();
+  const suppliedPassword = (req.get('x-vn84b-payment-password') || req.query.password || '').trim();
+  if (!suppliedPassword || suppliedPassword !== configuredPassword) {
+    return res.status(401).json({
+      ok: false,
+      locked: true,
+      error: 'Payment breakdown is password protected.'
+    });
+  }
+  next();
+}
+
+router.get('/api/vn84b/payment-breakdown', requirePaymentPassword, (req, res) => {
+  res.json(paymentBreakdown);
+});
+
+router.get('/api/vn84b/payment-breakdown/status', (req, res) => {
+  res.json({ ok: true, locked: true, passwordConfigured: paymentPasswordConfigured() });
+});
+
 router.get('/api/vn84b/emergency-steel-repairs', async (req, res) => {
   try {
     const data = await readData();
@@ -2658,6 +2753,10 @@ router.post('/api/vn84b/note', express.json({ limit: '2mb' }), async (req, res) 
     console.error('VN84-B note save error:', err);
     res.status(500).json({ error: `Could not save VN84-B note: ${err.message}` });
   }
+});
+
+router.get('/vn84b/payment-breakdown', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'vn84b', 'payment-breakdown.html'));
 });
 
 router.get('/vn84b/emergency-steel-repairs', (req, res) => {

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VN84-B Payment Breakdown</title>
+  <link rel="stylesheet" href="/vn84b/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="payment-page payment-locked">
+
+  <section id="paymentLock" class="payment-lock-screen" aria-label="Payment breakdown password required">
+    <div class="payment-lock-card">
+      <p class="eyebrow">Office Only</p>
+      <h2>Payment Breakdown Locked</h2>
+      <p>Enter the office password to view pricing and billing amounts.</p>
+      <form id="paymentPasswordForm">
+        <label for="paymentPasswordInput">Password</label>
+        <input id="paymentPasswordInput" type="password" autocomplete="current-password" placeholder="Enter password" required />
+        <button type="submit">Unlock Payment Breakdown</button>
+      </form>
+      <p id="paymentPasswordError" class="payment-lock-error" hidden>Wrong password. Try again.</p>
+      <a class="lock-back-link" href="/vn84b">← Back to VN84-B Tracker</a>
+    </div>
+  </section>
+
+  <header class="topbar payment-topbar payment-protected-content">
+    <div>
+      <p class="eyebrow">JAGD Construction</p>
+      <h1>VN84-B Payment Breakdown</h1>
+      <p class="subhead">Office billing view tied to field tracker colors: Blue = SP Ramp, Orange = Horseshoe, Green = EBU connection.</p>
+      <div class="hero-links">
+        <a class="hero-link" href="/vn84b">← Back to VN84-B Tracker</a>
+        <a class="hero-link" href="/vn84b/emergency-steel-repairs">Emergency Steel Repairs</a>
+      </div>
+    </div>
+    <div class="status-card">
+      <span>Contract Total</span>
+      <strong id="contractTotal">$0</strong>
+      <em>Payment period: <b id="paymentPeriod">—</b></em>
+    </div>
+  </header>
+
+  <main class="payment-protected-content">
+    <section class="payment-kpis" id="paymentKpis"></section>
+
+    <section class="panel payment-note">
+      <h2>Office Color Breakdown</h2>
+      <p id="officeNote">Loading office note...</p>
+    </section>
+
+    <section class="panel chart-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Billing Value by Area</h2>
+          <p>Grouped from the payment breakdown sheet so production can be tied back to how the office bills the job.</p>
+        </div>
+      </div>
+      <canvas id="paymentChart" height="120"></canvas>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Payment Items</h2>
+          <p>These are the LS payment items from the office payment breakdown, grouped by the color note from the email.</p>
+        </div>
+        <div class="panel-actions">
+          <button id="printPaymentBtn" type="button">Print / PDF</button>
+        </div>
+      </div>
+      <div class="billing-table-wrap">
+        <table class="print-table payment-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Area / Color</th>
+              <th>Description</th>
+              <th>Amount</th>
+              <th>Tracker Tie-In</th>
+            </tr>
+          </thead>
+          <tbody id="paymentItemsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Defoe Item Comparison Notes</h2>
+      <p>Office reference items that look useful for quantities, bearings, jacking, touch-up, and paint system checks.</p>
+      <div class="billing-table-wrap">
+        <table class="print-table payment-table">
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>Bid Item</th>
+              <th>Description</th>
+              <th>Quantity</th>
+              <th>Unit</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody id="defoeBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/vn84b/payment-breakdown.js"></script>
+</body>
+</html>
