@@ -431,7 +431,7 @@ function safePdfFileName(){
 function base64FromDataUrl(dataUrl){
   return String(dataUrl||'').replace(/^data:application\/pdf;?base64,/i,'');
 }
-async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
+async function downloadPdfDocThroughServer(pdfDoc, filename, msgId, options={}){
   const msg = msgId ? document.getElementById(msgId) : null;
   const safeName = String(filename || safePdfFileName()).replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').trim() || 'JAGD Field Form.pdf';
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -452,9 +452,13 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
     // Mobile/iPhone: go directly to the real server PDF screen.
     // This prevents the field from accidentally sharing the website URL or a blob page from Safari.
     if(isMobile){
+      if(options.deferMobileOpen){
+        if(msg) msg.innerHTML = '<div class="success">Official DWL PDF saved. Continue with the required MURK below; the DWL PDF remains available from the MURK screen.</div>';
+        return {ok:true, downloadUrl:shareUrl, fileName:json.fileName || safeName};
+      }
       if(msg) msg.innerHTML = '<div class="notice">Opening the official DWL PDF. Use the Share button on the PDF screen to text/email/Dropbox it.</div>';
       window.location.href = shareUrl;
-      return true;
+      return {ok:true, downloadUrl:shareUrl, fileName:json.fileName || safeName};
     }
 
     if(isIOS){
@@ -469,10 +473,10 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
       setTimeout(()=>{ try{ a.remove(); }catch(e){} }, 1000);
     }
     if(msg) msg.innerHTML = '<div class="success">Official DWL PDF is ready. If the PDF screen opens, use the Share button from that PDF screen.</div>';
-    return true;
+    return {ok:true, downloadUrl:shareUrl, fileName:json.fileName || safeName};
   }catch(err){
     console.warn('Server named PDF download failed, falling back to browser save:', err);
-    try{ pdfDoc.save(safeName); if(msg) msg.innerHTML='<div class="success">Official DWL PDF saved. If iPhone changes the file name, office can rename it from the PDF contents.</div>'; return true; }
+    try{ pdfDoc.save(safeName); if(msg) msg.innerHTML='<div class="success">Official DWL PDF saved. If iPhone changes the file name, office can rename it from the PDF contents.</div>'; return {ok:true, downloadUrl:'', fileName:safeName}; }
     catch(e){ if(msg) msg.innerHTML=`<div class="notice">PDF save failed: ${esc(e.message || err.message || '')}</div>`; return false; }
   }
 }
@@ -645,6 +649,7 @@ function printPdfHelp(type){
 
 const FORM_TYPE_META = {
   dwl:{label:'DWL', bucket:'daily'},
+  murk:{label:'MURK / T&M', bucket:'daily'},
   pir:{label:'PIR', bucket:'daily'},
   mewp:{label:'MEWP', bucket:'daily'},
   daily:{label:'Daily Equipment', bucket:'daily'},
@@ -2062,9 +2067,20 @@ async function dwlForm(){
       logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle);
       const syncId = makeDwlSyncId(data, dwlFileTitle);
       const portalSend = syncDwlToPortal(data, dwlFileTitle, { syncId, keepalive:true });
-      const savedDirect = await saveDwlDirectPdf(data,'dwlMsg');
-      if(!savedDirect){ buildDwlPrint(data); await openPrintNow('dwlMsg'); }
+      const murkRequired = isD265Contract(data.project);
+      const savedDirect = await saveDwlDirectPdf(data,'dwlMsg',{deferMobileOpen:murkRequired});
+      if(!savedDirect || savedDirect.ok===false){ buildDwlPrint(data); await openPrintNow('dwlMsg'); }
       portalSend.catch(()=>{});
+      const murkSeed = createMurkSeedFromDwl(data, dwlFileTitle, savedDirect && savedDirect.downloadUrl ? savedDirect.downloadUrl : '');
+      if(murkRequired){
+        saveMurkDraft(murkSeed);
+        location.hash='#/murk?source=dwl';
+      }else if(window.confirm('DWL saved successfully.\n\nWas any work performed today that requires a time-and-material, extra-work, change-order, or GC back-charge record?')){
+        murkSeed.required=false;
+        murkSeed.labor=(murkSeed.labor||[]).map(r=>({...r,regular:'',premium:'',include:false}));
+        saveMurkDraft(murkSeed);
+        location.hash='#/murk?source=dwl';
+      }
     }catch(err){
       document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`;
       console.error(err);
@@ -2114,7 +2130,7 @@ function dwlPdfBox(doc, x, y, w, h, label, value, bodySize=9){
   dwlPdfText(doc, label, x+3, y+9.5, {size:8, style:'bold', maxWidth:w-6});
   dwlPdfWrapText(doc, value, x, y+13, w, h-13, {size:bodySize, style:'normal'});
 }
-async function saveDwlDirectPdf(data, msgId){
+async function saveDwlDirectPdf(data, msgId, options={}){
   if(!window.jspdf || !window.jspdf.jsPDF) return false;
   const msg=document.getElementById(msgId);
   if(msg) msg.innerHTML='<div class="notice">Building clean DWL PDF...</div>';
@@ -2228,8 +2244,7 @@ async function saveDwlDirectPdf(data, msgId){
   }
 
   const filename = safePdfFileName();
-  await downloadPdfDocThroughServer(doc, filename, msgId);
-  return true;
+  return await downloadPdfDocThroughServer(doc, filename, msgId, options);
 }
 
 function collectDwl(){
@@ -2262,6 +2277,70 @@ function buildDwlPrint(data){
   setPrint(html); return html;
 }
 
+
+
+// v71: MURK 31 / T&M daily record linked to the saved DWL.
+const MURK_DRAFT_KEY='jagdMurkCurrentDraftV1';
+function isD265Contract(project=''){ return /(?:^|\s|[-_/])D265\d*/i.test(String(project||'').trim()); }
+function murkNumber(v){ const n=Number(String(v||'').replace(/[^0-9.\-]/g,'')); return Number.isFinite(n)&&n>=0?n:0; }
+function murkTradeGroup(row={}){ return [row.local ? `L${row.local}` : '', row.class||''].filter(Boolean).join('-'); }
+function createMurkSeedFromDwl(data={}, title='', dwlPdfUrl=''){
+  const required=isD265Contract(data.project);
+  return {
+    id:`murk-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+    sourceDwlKey:dwlSubmitStorageKey(data),sourceDwlRevision:cleanDwlRevision(data.revision||'0')||'0',sourceDwlTitle:title,sourceDwlPdfUrl:dwlPdfUrl,
+    required, formType:'MURK 31', project:data.project||'', contractNumber:(String(data.project||'').match(/D265\d+/i)||[''])[0].toUpperCase(), contractor:'JAGD Construction', subcontractor:'', itemNumber:'', recordType:required?'NYS DOT Required Daily Record':'Time & Material', workDescription:data.description||'', reportDate:data.reportDate||'', crew:data.crew||'', foreman:data.foreman||'', printName:data.printName||data.foreman||'', statement:data.description||'', revision:'0', signatureData:'',
+    labor:dwlVisibleRows(data).map((r,i)=>({id:i+1,name:r.employee||'',tradeGroup:murkTradeGroup(r),dwlRegular:r.straight||'',dwlPremium:r.over||'',regular:required?(r.straight||''):'',premium:required?(r.over||''):'',include:required})),
+    materials:Array.from({length:16},()=>({description:'',units:'',qty:'',stock:''})),
+    equipment:Array.from({length:16},()=>({id:'',description:'',inUse:'',standby:''}))
+  };
+}
+function saveMurkDraft(data){ try{localStorage.setItem(MURK_DRAFT_KEY,JSON.stringify({...data,updatedAt:new Date().toISOString()}));}catch(e){} }
+function loadMurkDraft(){ try{return JSON.parse(localStorage.getItem(MURK_DRAFT_KEY)||'null');}catch(e){return null;} }
+function murkHistoryKey(project){return `jagdMurkHistory:${String(project||'').trim().toLowerCase().replace(/\s+/g,' ')}`;}
+function saveMurkHistory(data){try{const key=murkHistoryKey(data.project),rows=JSON.parse(localStorage.getItem(key)||'[]');rows.unshift({...data,signatureData:'',savedAt:new Date().toISOString()});localStorage.setItem(key,JSON.stringify(rows.slice(0,30)));}catch(e){}}
+function loadMostRecentMurk(project){try{const rows=JSON.parse(localStorage.getItem(murkHistoryKey(project))||'[]');return rows[0]||null;}catch(e){return null;}}
+function murkLaborRowsHtml(rows=[]){const out=[];for(let i=0;i<16;i++){const r=rows[i]||{};out.push(`<tr><td>${i+1}</td><td><input type="checkbox" id="murkLaborInclude${i}" ${r.include?'checked':''}></td><td><input id="murkLaborName${i}" value="${esc(r.name||'')}" list="dwlWorkerList"></td><td><input id="murkLaborTrade${i}" value="${esc(r.tradeGroup||'')}"></td><td class="murkDwlRef">${esc(r.dwlRegular||'')}</td><td class="murkDwlRef">${esc(r.dwlPremium||'')}</td><td><input id="murkLaborReg${i}" inputmode="decimal" value="${esc(r.regular||'')}"></td><td><input id="murkLaborPrem${i}" inputmode="decimal" value="${esc(r.premium||'')}"></td><td><output id="murkLaborTotal${i}">0</output></td></tr>`)}return out.join('');}
+function murkMaterialRowsHtml(rows=[]){return Array.from({length:16},(_,i)=>{const r=rows[i]||{};return `<tr><td>${i+1}</td><td><input id="murkMatDesc${i}" value="${esc(r.description||'')}"></td><td><input id="murkMatUnits${i}" value="${esc(r.units||'')}"></td><td><input id="murkMatQty${i}" inputmode="decimal" value="${esc(r.qty||'')}"></td><td><select id="murkMatStock${i}"><option value=""></option><option ${r.stock==='Y'?'selected':''}>Y</option><option ${r.stock==='N'?'selected':''}>N</option></select></td></tr>`}).join('');}
+function murkEquipmentRowsHtml(rows=[]){return Array.from({length:16},(_,i)=>{const r=rows[i]||{};return `<tr><td>${i+1}</td><td><input id="murkEquipId${i}" value="${esc(r.id||'')}"></td><td><input id="murkEquipDesc${i}" value="${esc(r.description||'')}"></td><td><input id="murkEquipUse${i}" inputmode="decimal" value="${esc(r.inUse||'')}"></td><td><input id="murkEquipStandby${i}" inputmode="decimal" value="${esc(r.standby||'')}"></td></tr>`}).join('');}
+function murkPasteModal(kind){
+  const isMat=kind==='materials';document.querySelectorAll('.modalOverlay').forEach(m=>m.remove());const modal=document.createElement('div');modal.className='modalOverlay no-print';
+  modal.innerHTML=`<div class="modalBox crewUploadBox"><h2>Paste ${isMat?'Materials':'Equipment'} from Notes</h2><p class="tiny">${isMat?'One line each: Description | Units | Quantity | Y or N':'One line each: Description | ID | In Use Hours | Standby Hours'}</p><textarea id="murkPasteText" placeholder="One item per line"></textarea><div class="actions right"><button class="btn light" id="murkPasteCancel" type="button">Cancel</button><button class="btn" id="murkPasteApply" type="button">Apply</button></div></div>`;document.body.appendChild(modal);
+  document.getElementById('murkPasteCancel').onclick=()=>modal.remove();document.getElementById('murkPasteApply').onclick=()=>{const lines=val('murkPasteText').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).slice(0,16);lines.forEach((line,i)=>{const p=line.split('|').map(x=>x.trim());if(isMat){document.getElementById('murkMatDesc'+i).value=p[0]||'';document.getElementById('murkMatUnits'+i).value=p[1]||'';document.getElementById('murkMatQty'+i).value=p[2]||'';document.getElementById('murkMatStock'+i).value=/^y/i.test(p[3]||'')?'Y':/^n/i.test(p[3]||'')?'N':'';}else{document.getElementById('murkEquipDesc'+i).value=p[0]||'';document.getElementById('murkEquipId'+i).value=p[1]||'';document.getElementById('murkEquipUse'+i).value=p[2]||'';document.getElementById('murkEquipStandby'+i).value=p[3]||'';}});modal.remove();};
+}
+function loadPreviousMurkSection(kind){const prev=loadMostRecentMurk(projectValue('murkProject'));const msg=document.getElementById('murkMsg');if(!prev){if(msg)msg.innerHTML='<div class="notice">No previous MURK/T&M record was found for this job on this phone.</div>';return;}const rows=kind==='materials'?prev.materials:prev.equipment;(rows||[]).slice(0,16).forEach((r,i)=>{if(kind==='materials'){document.getElementById('murkMatDesc'+i).value=r.description||'';document.getElementById('murkMatUnits'+i).value=r.units||'';document.getElementById('murkMatQty'+i).value=r.qty||'';document.getElementById('murkMatStock'+i).value=r.stock||'';}else{document.getElementById('murkEquipId'+i).value=r.id||'';document.getElementById('murkEquipDesc'+i).value=r.description||'';document.getElementById('murkEquipUse'+i).value=r.inUse||'';document.getElementById('murkEquipStandby'+i).value=r.standby||'';}});if(msg)msg.innerHTML='<div class="notice success">Loaded the most recent '+kind+' for this job. Review quantities and hours before saving.</div>';}
+function collectMurk(){
+ const draft=loadMurkDraft()||{};const labor=Array.from({length:16},(_,i)=>({id:i+1,include:!!document.getElementById('murkLaborInclude'+i)?.checked,name:val('murkLaborName'+i),tradeGroup:val('murkLaborTrade'+i),dwlRegular:draft.labor?.[i]?.dwlRegular||'',dwlPremium:draft.labor?.[i]?.dwlPremium||'',regular:val('murkLaborReg'+i),premium:val('murkLaborPrem'+i),total:murkNumber(val('murkLaborReg'+i))+murkNumber(val('murkLaborPrem'+i))}));
+ const materials=Array.from({length:16},(_,i)=>({description:val('murkMatDesc'+i),units:val('murkMatUnits'+i),qty:val('murkMatQty'+i),stock:val('murkMatStock'+i)}));
+ const equipment=Array.from({length:16},(_,i)=>({id:val('murkEquipId'+i),description:val('murkEquipDesc'+i),inUse:val('murkEquipUse'+i),standby:val('murkEquipStandby'+i)}));
+ return {...draft,project:projectValue('murkProject'),contractNumber:val('murkContract'),contractor:val('murkContractor'),subcontractor:val('murkSubcontractor'),itemNumber:val('murkItem'),recordType:val('murkRecordType'),workDescription:val('murkWorkDescription'),reportDate:val('murkDate'),crew:val('murkCrew'),revision:cleanDwlRevision(val('murkRevision')||'0')||'0',statement:val('murkStatement'),printName:val('murkPrintName'),signatureData:signatureStore.murkSignature||'',labor,materials,equipment};
+}
+function updateMurkTotals(){for(let i=0;i<16;i++){const out=document.getElementById('murkLaborTotal'+i);if(out)out.textContent=(murkNumber(val('murkLaborReg'+i))+murkNumber(val('murkLaborPrem'+i))).toFixed(1).replace(/\.0$/,'');}}
+async function murkForm(){
+ await loadActiveWorkers(true);let d=loadMurkDraft();if(!d)d=createMurkSeedFromDwl({project:'',reportDate:new Date().toISOString().slice(0,10),rows:[]});signatureStore.murkSignature=d.signatureData||'';
+ app.innerHTML=`<div class="container murkContainer"><datalist id="dwlWorkerList"></datalist><div class="panel murkHero"><div><span class="formTag">Daily Force Account / T&amp;M</span><h1>MURK 31 Daily Record</h1><p>${d.required?'<b>D265 contract: this MURK is required and linked to the DWL just saved.</b>':'Use for extra work, time and material, change orders, or GC back charges.'}</p></div>${d.sourceDwlPdfUrl?`<a class="btn light" target="_blank" rel="noopener" href="${esc(d.sourceDwlPdfUrl)}">Open Saved DWL PDF</a>`:''}</div>
+ <div class="panel"><h2>Record Information</h2><div class="grid three">${projectField('murkProject','Project / Job')}${field('murkContract','Contract Number')}${field('murkDate','Date','date')}${field('murkContractor','Contractor')}${field('murkSubcontractor','Subcontractor')}${field('murkItem','Item / CO / Back-Charge Reference')}${selectField('murkRecordType','Record Type',['NYS DOT Required Daily Record','Extra Work / Change Order','Time & Material','GC Back-Charge','Owner-Directed Work','Other'])}${field('murkCrew','Crew')}${field('murkRevision','Revision','text','inputmode="numeric"')}</div>${textarea('murkWorkDescription','Work Description')}</div>
+ <div class="panel"><h2>Labor</h2><p class="tiny">DWL hours are shown for reference. On D265 work they are prefilled; review them before saving. For optional T&amp;M/back-charge records enter only the hours attributable to this item.</p><div class="actions"><button class="btn light" id="murkUseAllLabor" type="button">Use All DWL Labor</button><button class="btn light" id="murkClearLabor" type="button">Clear MURK Hours</button></div><div class="dwlTableWrap"><table class="murkEntryTable"><thead><tr><th>#</th><th>Use</th><th>Employee</th><th>Trade &amp; Group</th><th>DWL Reg</th><th>DWL Prem</th><th>MURK Reg</th><th>MURK Prem</th><th>Total</th></tr></thead><tbody>${murkLaborRowsHtml(d.labor)}</tbody></table></div></div>
+ <div class="panel"><h2>Materials</h2><div class="actions"><button class="btn light" id="murkLoadMaterials" type="button">Load Most Recent Materials for This Job</button><button class="btn light" id="murkPasteMaterials" type="button">Paste from Notes</button></div><div class="dwlTableWrap"><table class="murkEntryTable"><thead><tr><th>#</th><th>Description</th><th>Units</th><th>Qty</th><th>Stock Y/N</th></tr></thead><tbody>${murkMaterialRowsHtml(d.materials)}</tbody></table></div></div>
+ <div class="panel"><h2>Equipment</h2><div class="actions"><button class="btn light" id="murkLoadEquipment" type="button">Load Most Recent Equipment for This Job</button><button class="btn light" id="murkPasteEquipment" type="button">Paste from Notes</button></div><div class="dwlTableWrap"><table class="murkEntryTable"><thead><tr><th>#</th><th>ID</th><th>Description</th><th>In Use</th><th>Standby</th></tr></thead><tbody>${murkEquipmentRowsHtml(d.equipment)}</tbody></table></div></div>
+ <div class="panel"><h2>Statement of Work Accomplished</h2>${textarea('murkStatement','Describe exactly what was accomplished, location, direction received, and quantities where known')}</div>
+ <div class="panel"><h2>Contractor Certification</h2><div class="grid two">${field('murkPrintName','Printed Name')}${sigField('murkSignature','Contractor Signature')}</div><div class="actions"><button class="btn" id="murkSaveBtn" type="button">Save PDF / Submit MURK</button></div><div id="murkMsg"></div></div></div>`;
+ setupOtherProject('murkProject');populateDwlWorkerDatalist();initSignatureButtons();
+ const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v||''};set('murkProject',d.project);set('murkContract',d.contractNumber);set('murkDate',d.reportDate);set('murkContractor',d.contractor||'JAGD Construction');set('murkSubcontractor',d.subcontractor);set('murkItem',d.itemNumber);set('murkRecordType',d.recordType);set('murkCrew',d.crew);set('murkRevision',d.revision||'0');set('murkWorkDescription',d.workDescription);set('murkStatement',d.statement);set('murkPrintName',d.printName);
+ document.querySelectorAll('[id^="murkLaborReg"],[id^="murkLaborPrem"]').forEach(e=>e.addEventListener('input',updateMurkTotals));updateMurkTotals();
+ document.getElementById('murkUseAllLabor').onclick=()=>{for(let i=0;i<16;i++){const r=d.labor?.[i];if(!r)continue;document.getElementById('murkLaborInclude'+i).checked=!!r.name;document.getElementById('murkLaborReg'+i).value=r.dwlRegular||'';document.getElementById('murkLaborPrem'+i).value=r.dwlPremium||'';}updateMurkTotals();};
+ document.getElementById('murkClearLabor').onclick=()=>{for(let i=0;i<16;i++){document.getElementById('murkLaborInclude'+i).checked=false;document.getElementById('murkLaborReg'+i).value='';document.getElementById('murkLaborPrem'+i).value='';}updateMurkTotals();};
+ document.getElementById('murkLoadMaterials').onclick=()=>loadPreviousMurkSection('materials');document.getElementById('murkLoadEquipment').onclick=()=>loadPreviousMurkSection('equipment');document.getElementById('murkPasteMaterials').onclick=()=>murkPasteModal('materials');document.getElementById('murkPasteEquipment').onclick=()=>murkPasteModal('equipment');
+ document.querySelectorAll('.murkContainer input,.murkContainer select,.murkContainer textarea').forEach(e=>e.addEventListener('change',()=>saveMurkDraft(collectMurk())));
+ document.getElementById('murkSaveBtn').onclick=async()=>{const data=collectMurk();const msg=document.getElementById('murkMsg');const labor=data.labor.filter(r=>r.include&&r.name&&(murkNumber(r.regular)+murkNumber(r.premium)>0));if(!data.contractNumber||!data.itemNumber||!data.reportDate){msg.innerHTML='<div class="notice">Contract number, date, and Item / CO / Back-Charge Reference are required.</div>';return;}if(!labor.length){msg.innerHTML='<div class="notice">Include at least one worker with MURK labor hours.</div>';return;}if(!data.statement.trim()){msg.innerHTML='<div class="notice">Statement of Work Accomplished is required.</div>';return;}if(!data.signatureData){msg.innerHTML='<div class="notice">Contractor signature is required.</div>';return;}const dupKey=`jagdMurkSubmitted:${data.sourceDwlKey}:${String(data.itemNumber).toLowerCase()}:${data.revision}`;if(localStorage.getItem(dupKey)&&!confirm('WARNING: This phone already saved a MURK for this DWL, item reference, and revision.\n\nCancel and increase the revision for a correction. Continue anyway?'))return;if(!confirm(`This will save the MURK PDF.\n\nJob: ${data.project}\nDate: ${dateToSlashYYYY(data.reportDate)}\nItem: ${data.itemNumber}\nRevision: ${data.revision}\n\nContinue?`))return;saveMurkDraft(data);const result=await saveMurkPdf(data,'murkMsg');if(result){localStorage.setItem(dupKey,new Date().toISOString());saveMurkHistory(data);logGeneratedForm('murk',data.project,data.reportDate,`MURK ${data.itemNumber}`);msg.innerHTML+='<div class="success">MURK saved. The draft and recent materials/equipment remain available on this phone.</div>';}};
+}
+async function saveMurkPdf(data,msgId){
+ if(!window.jspdf?.jsPDF)return false;const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'landscape',unit:'pt',format:'letter',compress:true});const W=792,H=612,m=18;doc.setFont('helvetica','bold');doc.setFontSize(8);doc.text('MURK 31 (11/22)',m,14);doc.setFontSize(11);doc.text('NEW YORK STATE DEPARTMENT OF TRANSPORTATION',W/2,14,{align:'center'});doc.setFontSize(10);doc.text('DAILY RECORD OF WORK PERFORMED, NOT INCLUDED IN CONTRACT',W/2,26,{align:'center'});
+ const cell=(x,y,w,h,t,opt={})=>dwlPdfCell(doc,x,y,w,h,t,{size:opt.size||7,style:opt.style||'normal',align:opt.align||'left',fill:opt.fill,lineWidth:.7});let y=32;const widths=[210,210,170,166];let x=m;[['Contract No:',data.contractNumber],['Contractor:',data.contractor],['Item Number:',data.itemNumber],['Date:',dateToSlashYYYY(data.reportDate)]].forEach((a,i)=>{cell(x,y,widths[i],30,`${a[0]}\n${a[1]}`,{size:7.2});x+=widths[i]});y+=30;cell(m,y,350,18,'LABOR',{style:'bold',align:'center',fill:[230,230,230]});cell(m+350,y,250,18,'MATERIALS',{style:'bold',align:'center',fill:[230,230,230]});cell(m+600,y,156,18,'EQUIPMENT',{style:'bold',align:'center',fill:[230,230,230]});y+=18;
+ const cols=[18,138,54,42,42,42,130,38,38,44,34,72,25,25];const heads=['ID','Last Name, First Name','Trade & Group','Regular','Prem','Total','Description','Units','Qty','Stock','ID','Description','Use','Stby'];x=m;heads.forEach((h,i)=>{cell(x,y,cols[i],22,h,{style:'bold',align:'center',fill:[240,240,240],size:6.4});x+=cols[i]});y+=22;const labor=data.labor.filter(r=>r.include&&r.name);const mats=data.materials.filter(r=>r.description||r.qty);const equip=data.equipment.filter(r=>r.description||r.id);for(let i=0;i<16;i++){const l=labor[i]||{},ma=mats[i]||{},e=equip[i]||{};const vals=[i+1,l.name,l.tradeGroup,l.regular,l.premium,l.name?String(murkNumber(l.regular)+murkNumber(l.premium)):'',ma.description,ma.units,ma.qty,ma.stock,e.id,e.description,e.inUse,e.standby];x=m;vals.forEach((v,j)=>{cell(x,y,cols[j],18,v,{size:j===1||j===6||j===11?6.5:6.8,align:j===1||j===6||j===11?'left':'center'});x+=cols[j]});y+=18;}
+ cell(m,y,756,54,'STATEMENT OF WORK ACCOMPLISHED:\n'+data.statement,{size:8});y+=54;cell(m,y,756,34,'CERTIFICATION: I certify to the best of my knowledge and belief that this is an accurate statement of the labor, materials and equipment used on this day.',{size:7});y+=34;cell(m,y,250,34,`Printed Name: ${data.printName||''}`,{size:8});cell(m+250,y,250,34,'Contractor Signature',{size:8});if(data.signatureData){try{doc.addImage(data.signatureData,'PNG',m+300,y+2,125,28)}catch(e){}}cell(m+500,y,126,34,`Date: ${dateToSlashYYYY(data.reportDate)}`,{size:8});cell(m+626,y,130,34,'NYS DOT Signature',{size:8});
+ const title=`MURK ${cleanDwlFilePart(data.project)} ${dateToDotMMDDYY(data.reportDate)} ${cleanDwlFilePart(data.itemNumber)}${data.revision&&data.revision!=='0'?` Rev ${data.revision}`:''}`;setNextPdfFileTitle(title);return await downloadPdfDocThroughServer(doc,safePdfFileName(),msgId);
+}
 
 // v48: Extra JAGD forms converted from PDF links into phone-friendly web forms.
 const EXTRA_FORM_ROWS = 14;
@@ -2757,7 +2836,7 @@ function setupAdminMaterialForm(){
 }
 
 
-function router(){const h=location.hash||'#/'; if(h.startsWith('#/admin')) adminView(); else if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/dwl')) dwlForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else if(h.startsWith('#/bill-of-lading')) bolForm(); else if(h.startsWith('#/incident-report')) incidentReportForm(); else if(h.startsWith('#/heavy-accident-report')) heavyAccidentReportForm(); else if(h.startsWith('#/disciplinary-report')) disciplinaryReportForm(); else home();}
+function router(){const h=location.hash||'#/'; if(h.startsWith('#/admin')) adminView(); else if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/dwl')) dwlForm(); else if(h.startsWith('#/murk')) murkForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else if(h.startsWith('#/bill-of-lading')) bolForm(); else if(h.startsWith('#/incident-report')) incidentReportForm(); else if(h.startsWith('#/heavy-accident-report')) heavyAccidentReportForm(); else if(h.startsWith('#/disciplinary-report')) disciplinaryReportForm(); else home();}
 
 window.addEventListener('beforeprint',()=>{
   const h=location.hash||'#/';
