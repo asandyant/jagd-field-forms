@@ -2353,7 +2353,7 @@ async function murkForm(){
  document.getElementById('murkClearLabor').onclick=()=>{for(let i=0;i<16;i++){document.getElementById('murkLaborInclude'+i).checked=false;document.getElementById('murkLaborReg'+i).value='';document.getElementById('murkLaborPrem'+i).value='';}updateMurkTotals();};
  document.getElementById('murkLoadMaterials').onclick=()=>loadPreviousMurkSection('materials');document.getElementById('murkLoadEquipment').onclick=()=>loadPreviousMurkSection('equipment');document.getElementById('murkPasteMaterials').onclick=()=>murkPasteModal('materials');document.getElementById('murkPasteEquipment').onclick=()=>murkPasteModal('equipment');
  document.querySelectorAll('.murkContainer input,.murkContainer select,.murkContainer textarea').forEach(e=>e.addEventListener('change',()=>saveMurkDraft(collectMurk())));
- document.getElementById('murkSaveBtn').onclick=async()=>{const data=collectMurk();const msg=document.getElementById('murkMsg');const labor=data.labor.filter(r=>r.include&&r.name&&(murkNumber(r.regular)+murkNumber(r.premium)>0));if(!data.contractNumber||!data.reportDate){msg.innerHTML='<div class="notice">Contract number and date are required.</div>';return;}if(!labor.length){msg.innerHTML='<div class="notice">Include at least one worker with MURK labor hours.</div>';return;}if(!data.statement.trim()){msg.innerHTML='<div class="notice">Statement of Work Accomplished is required.</div>';return;}if(!data.signatureData){msg.innerHTML='<div class="notice">Contractor signature is required.</div>';return;}const dupKey=`jagdMurkSubmitted:${data.sourceDwlKey}:${data.revision}`;if(localStorage.getItem(dupKey)&&!confirm('WARNING: This phone already saved a MURK for this DWL.\n\nCancel and increase the revision for a correction. Continue anyway?'))return;if(!confirm(`This will save the MURK PDF.\n\nJob: ${data.project}\nDate: ${dateToSlashYYYY(data.reportDate)}\nRevision: ${data.revision}\n\nContinue?`))return;saveMurkDraft(data);const result=await saveMurkPdf(data,'murkMsg');if(result){localStorage.setItem(dupKey,new Date().toISOString());saveMurkHistory(data);logGeneratedForm('murk',data.project,data.reportDate,'MURK 31');msg.innerHTML+='<div class="success">MURK saved. The draft and recent materials/equipment remain available on this phone.</div>';}};
+ document.getElementById('murkSaveBtn').onclick=async()=>{const data=collectMurk();const msg=document.getElementById('murkMsg');const labor=data.labor.filter(r=>r.include&&r.name&&(murkNumber(r.regular)+murkNumber(r.premium)>0));if(!data.contractNumber||!data.reportDate){msg.innerHTML='<div class="notice">Contract number and date are required.</div>';return;}if(!labor.length){msg.innerHTML='<div class="notice">Include at least one worker with MURK labor hours.</div>';return;}if(!data.statement.trim()){msg.innerHTML='<div class="notice">Statement of Work Accomplished is required.</div>';return;}if(!data.signatureData){msg.innerHTML='<div class="notice">Contractor signature is required.</div>';return;}const hasMaterials=data.materials.some(r=>String(r.description||r.units||r.qty||r.stock||'').trim());const hasEquipment=data.equipment.some(r=>String(r.id||r.description||r.inUse||r.standby||'').trim());if(!hasMaterials&&!confirm('The MATERIALS section is blank.\n\nWere no materials used today?\n\nPress OK to confirm NO MATERIALS were used, or Cancel to return and enter them.')){msg.innerHTML='<div class="notice">Add the materials used, or save again and confirm that no materials were used.</div>';return;}if(!hasEquipment&&!confirm('The EQUIPMENT section is blank.\n\nWas no equipment used today?\n\nPress OK to confirm NO EQUIPMENT was used, or Cancel to return and enter it.')){msg.innerHTML='<div class="notice">Add the equipment used, or save again and confirm that no equipment was used.</div>';return;}const dupKey=`jagdMurkSubmitted:${data.sourceDwlKey}:${data.revision}`;if(localStorage.getItem(dupKey)&&!confirm('WARNING: This phone already saved a MURK for this DWL.\n\nCancel to review the existing copy. Continue only if this is an intentional correction.'))return;if(!confirm(`This will save the MURK PDF.\n\nJob: ${data.project}\nDate: ${dateToSlashYYYY(data.reportDate)}\n\nContinue?`))return;saveMurkDraft(data);const result=await saveMurkPdf(data,'murkMsg');if(result){localStorage.setItem(dupKey,new Date().toISOString());saveMurkHistory(data);logGeneratedForm('murk',data.project,data.reportDate,'MURK 31');msg.innerHTML+='<div class="success">MURK saved. The draft and recent materials/equipment remain available on this phone.</div>';}};
 }
 async function saveMurkPdf(data,msgId){
   const msg=document.getElementById(msgId);
@@ -2400,35 +2400,35 @@ async function saveMurkPdf(data,msgId){
     }
 
     // Header - exact official template boxes.
-    stamp([66.36,25.92,88.08,180.96],data.contractNumber,{size:12,minSize:9,offsetX:3});
-    stamp([66.36,183.0,88.08,323.16],data.contractor||'JAGD Construction',{size:12,minSize:9,offsetX:3});
-    stamp([66.36,325.92,88.08,449.16],data.itemNumber,{size:12,minSize:9,offsetX:3});
-    stamp([66.36,451.2,88.08,704.64],data.workDescription,{size:12,minSize:8.5,offsetX:3});
-    stamp([66.36,706.68,88.08,764.76],dateToSlashYYYY(data.reportDate),{size:11,minSize:8.5,offsetX:3});
+    stamp([66.36,25.92,88.08,180.96],data.contractNumber,{size:13.5,minSize:10,offsetX:5});
+    stamp([66.36,183.0,88.08,323.16],data.contractor||'JAGD Construction',{size:13.5,minSize:10,offsetX:5});
+    stamp([66.36,325.92,88.08,449.16],data.itemNumber,{size:13,minSize:10,offsetX:5});
+    stamp([66.36,451.2,88.08,704.64],data.workDescription,{size:13.5,minSize:10,offsetX:5});
+    stamp([66.36,706.68,88.08,764.76],dateToSlashYYYY(data.reportDate),{size:12,minSize:9.5,offsetX:5});
 
     const labor=(data.labor||[]).filter(r=>r.include&&r.name).slice(0,16);
     const materials=(data.materials||[]).filter(r=>r.description||r.qty||r.units||r.stock).slice(0,16);
     const equipment=(data.equipment||[]).filter(r=>r.description||r.id||r.inUse||r.standby).slice(0,16);
     for(let i=1;i<=16;i++){
       const l=labor[i-1]||{}, m=materials[i-1]||{}, e=equipment[i-1]||{};
-      stamp(rowRect(i,41.64,181.08),l.name,{size:11.5,minSize:8.5});
-      stamp(rowRect(i,183.0,220.44),l.tradeGroup,{size:10,minSize:7.5});
-      stamp(rowRect(i,222.24,254.88),fmt(l.regular),{size:11.5,minSize:8.5});
-      stamp(rowRect(i,256.68,289.32),fmt(l.premium),{size:11.5,minSize:8.5});
-      stamp(rowRect(i,291.12,323.28),l.name?fmt(murkNumber(l.regular)+murkNumber(l.premium)):'',{size:11.5,minSize:8.5});
-      stamp(rowRect(i,325.8,449.28),m.description,{size:10.5,minSize:7.5});
-      stamp(rowRect(i,451.2,479.64),m.units,{size:10.5,minSize:8});
-      stamp(rowRect(i,481.56,514.44),m.qty,{size:10.5,minSize:8});
-      stamp(rowRect(i,516.36,545.4),m.stock,{size:10.5,minSize:8});
-      stamp(rowRect(i,548.16,566.52),e.id,{size:9.5,minSize:7});
-      stamp(rowRect(i,568.44,704.76),e.description,{size:10.5,minSize:7.5});
-      stamp(rowRect(i,706.56,735.0),fmt(e.inUse),{size:10.5,minSize:8});
-      stamp(rowRect(i,736.8,764.88),fmt(e.standby),{size:10.5,minSize:8});
+      stamp(rowRect(i,41.64,181.08),l.name,{size:13,minSize:10,offsetX:4});
+      stamp(rowRect(i,183.0,220.44),l.tradeGroup,{size:11.5,minSize:9,offsetX:4});
+      stamp(rowRect(i,222.24,254.88),fmt(l.regular),{size:13,minSize:10,offsetX:4});
+      stamp(rowRect(i,256.68,289.32),fmt(l.premium),{size:13,minSize:10,offsetX:4});
+      stamp(rowRect(i,291.12,323.28),l.name?fmt(murkNumber(l.regular)+murkNumber(l.premium)):'',{size:13,minSize:10,offsetX:4});
+      stamp(rowRect(i,325.8,449.28),m.description,{size:12,minSize:9,offsetX:4});
+      stamp(rowRect(i,451.2,479.64),m.units,{size:11.5,minSize:9,offsetX:4});
+      stamp(rowRect(i,481.56,514.44),m.qty,{size:11.5,minSize:9,offsetX:4});
+      stamp(rowRect(i,516.36,545.4),m.stock,{size:11.5,minSize:9,offsetX:4});
+      stamp(rowRect(i,548.16,566.52),e.id,{size:10.5,minSize:8,offsetX:4});
+      stamp(rowRect(i,568.44,704.76),e.description,{size:12,minSize:9,offsetX:4});
+      stamp(rowRect(i,706.56,735.0),fmt(e.inUse),{size:11.5,minSize:9,offsetX:4});
+      stamp(rowRect(i,736.8,764.88),fmt(e.standby),{size:11.5,minSize:9,offsetX:4});
     }
 
-    stamp([440.473,26.16,471.72,764.52],data.statement,{size:12,minSize:8.5,offsetX:2});
-    stamp([502.32,41.28,531.12,182.88],data.printName,{size:11.5,minSize:8.5});
-    stamp([501.0,341.04,529.8,377.88],dateToSlashYYYY(data.reportDate),{size:11,minSize:8.5});
+    stamp([440.473,26.16,471.72,764.52],data.statement,{size:13.5,minSize:10,offsetX:5});
+    stamp([502.32,41.28,531.12,182.88],data.printName,{size:13,minSize:10,offsetX:5});
+    stamp([501.0,341.04,529.8,377.88],dateToSlashYYYY(data.reportDate),{size:12,minSize:9.5,offsetX:5});
 
     if(data.signatureData){
       try{
