@@ -2074,6 +2074,7 @@ async function dwlForm(){
       const murkSeed = createMurkSeedFromDwl(data, dwlFileTitle, savedDirect && savedDirect.downloadUrl ? savedDirect.downloadUrl : '');
       if(murkRequired){
         saveMurkDraft(murkSeed);
+        await showRequiredMurkNotice(murkSeed);
         location.hash='#/murk?source=dwl';
       }else if(window.confirm('DWL saved successfully.\n\nWas any work performed today that requires a time-and-material, extra-work, change-order, or GC back-charge record?')){
         murkSeed.required=false;
@@ -2279,6 +2280,26 @@ function buildDwlPrint(data){
 
 
 
+// Required D265 notice shown after the DWL is safely saved and before the MURK entry page opens.
+function showRequiredMurkNotice(seed={}){
+  return new Promise(resolve=>{
+    document.querySelectorAll('.modalOverlay').forEach(m=>m.remove());
+    const modal=document.createElement('div');
+    modal.className='modalOverlay no-print';
+    modal.innerHTML=`<div class="modalBox murkRequiredModal" role="dialog" aria-modal="true" aria-labelledby="murkRequiredTitle">
+      <div class="murkRequiredIcon">!</div>
+      <h2 id="murkRequiredTitle">MURK 31 Required</h2>
+      <p><b>${esc(seed.contractNumber||'This D265 contract')}</b> requires a MURK 31 Daily Record.</p>
+      <p>The MURK will now open with the contract, date, crew, labor, and work description filled in from today's DWL.</p>
+      <p>Review the imported information, add the materials and equipment used, complete the Statement of Work Accomplished, and sign the form before saving.</p>
+      <div class="actions right"><button class="btn" id="murkRequiredContinue" type="button">Continue to Required MURK 31</button></div>
+    </div>`;
+    document.body.appendChild(modal);
+    const done=()=>{modal.remove();resolve();};
+    document.getElementById('murkRequiredContinue').onclick=done;
+  });
+}
+
 // v71: MURK 31 / T&M daily record linked to the saved DWL.
 const MURK_DRAFT_KEY='jagdMurkCurrentDraftV1';
 function isD265Contract(project=''){ return /(?:^|\s|[-_/])D265\d*/i.test(String(project||'').trim()); }
@@ -2335,11 +2356,89 @@ async function murkForm(){
  document.getElementById('murkSaveBtn').onclick=async()=>{const data=collectMurk();const msg=document.getElementById('murkMsg');const labor=data.labor.filter(r=>r.include&&r.name&&(murkNumber(r.regular)+murkNumber(r.premium)>0));if(!data.contractNumber||!data.itemNumber||!data.reportDate){msg.innerHTML='<div class="notice">Contract number, date, and Item / CO / Back-Charge Reference are required.</div>';return;}if(!labor.length){msg.innerHTML='<div class="notice">Include at least one worker with MURK labor hours.</div>';return;}if(!data.statement.trim()){msg.innerHTML='<div class="notice">Statement of Work Accomplished is required.</div>';return;}if(!data.signatureData){msg.innerHTML='<div class="notice">Contractor signature is required.</div>';return;}const dupKey=`jagdMurkSubmitted:${data.sourceDwlKey}:${String(data.itemNumber).toLowerCase()}:${data.revision}`;if(localStorage.getItem(dupKey)&&!confirm('WARNING: This phone already saved a MURK for this DWL, item reference, and revision.\n\nCancel and increase the revision for a correction. Continue anyway?'))return;if(!confirm(`This will save the MURK PDF.\n\nJob: ${data.project}\nDate: ${dateToSlashYYYY(data.reportDate)}\nItem: ${data.itemNumber}\nRevision: ${data.revision}\n\nContinue?`))return;saveMurkDraft(data);const result=await saveMurkPdf(data,'murkMsg');if(result){localStorage.setItem(dupKey,new Date().toISOString());saveMurkHistory(data);logGeneratedForm('murk',data.project,data.reportDate,`MURK ${data.itemNumber}`);msg.innerHTML+='<div class="success">MURK saved. The draft and recent materials/equipment remain available on this phone.</div>';}};
 }
 async function saveMurkPdf(data,msgId){
- if(!window.jspdf?.jsPDF)return false;const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'landscape',unit:'pt',format:'letter',compress:true});const W=792,H=612,m=18;doc.setFont('helvetica','bold');doc.setFontSize(8);doc.text('MURK 31 (11/22)',m,14);doc.setFontSize(11);doc.text('NEW YORK STATE DEPARTMENT OF TRANSPORTATION',W/2,14,{align:'center'});doc.setFontSize(10);doc.text('DAILY RECORD OF WORK PERFORMED, NOT INCLUDED IN CONTRACT',W/2,26,{align:'center'});
- const cell=(x,y,w,h,t,opt={})=>dwlPdfCell(doc,x,y,w,h,t,{size:opt.size||7,style:opt.style||'normal',align:opt.align||'left',fill:opt.fill,lineWidth:.7});let y=32;const widths=[210,210,170,166];let x=m;[['Contract No:',data.contractNumber],['Contractor:',data.contractor],['Item Number:',data.itemNumber],['Date:',dateToSlashYYYY(data.reportDate)]].forEach((a,i)=>{cell(x,y,widths[i],30,`${a[0]}\n${a[1]}`,{size:7.2});x+=widths[i]});y+=30;cell(m,y,350,18,'LABOR',{style:'bold',align:'center',fill:[230,230,230]});cell(m+350,y,250,18,'MATERIALS',{style:'bold',align:'center',fill:[230,230,230]});cell(m+600,y,156,18,'EQUIPMENT',{style:'bold',align:'center',fill:[230,230,230]});y+=18;
- const cols=[18,138,54,42,42,42,130,38,38,44,34,72,25,25];const heads=['ID','Last Name, First Name','Trade & Group','Regular','Prem','Total','Description','Units','Qty','Stock','ID','Description','Use','Stby'];x=m;heads.forEach((h,i)=>{cell(x,y,cols[i],22,h,{style:'bold',align:'center',fill:[240,240,240],size:6.4});x+=cols[i]});y+=22;const labor=data.labor.filter(r=>r.include&&r.name);const mats=data.materials.filter(r=>r.description||r.qty);const equip=data.equipment.filter(r=>r.description||r.id);for(let i=0;i<16;i++){const l=labor[i]||{},ma=mats[i]||{},e=equip[i]||{};const vals=[i+1,l.name,l.tradeGroup,l.regular,l.premium,l.name?String(murkNumber(l.regular)+murkNumber(l.premium)):'',ma.description,ma.units,ma.qty,ma.stock,e.id,e.description,e.inUse,e.standby];x=m;vals.forEach((v,j)=>{cell(x,y,cols[j],18,v,{size:j===1||j===6||j===11?6.5:6.8,align:j===1||j===6||j===11?'left':'center'});x+=cols[j]});y+=18;}
- cell(m,y,756,54,'STATEMENT OF WORK ACCOMPLISHED:\n'+data.statement,{size:8});y+=54;cell(m,y,756,34,'CERTIFICATION: I certify to the best of my knowledge and belief that this is an accurate statement of the labor, materials and equipment used on this day.',{size:7});y+=34;cell(m,y,250,34,`Printed Name: ${data.printName||''}`,{size:8});cell(m+250,y,250,34,'Contractor Signature',{size:8});if(data.signatureData){try{doc.addImage(data.signatureData,'PNG',m+300,y+2,125,28)}catch(e){}}cell(m+500,y,126,34,`Date: ${dateToSlashYYYY(data.reportDate)}`,{size:8});cell(m+626,y,130,34,'NYS DOT Signature',{size:8});
- const title=`MURK ${cleanDwlFilePart(data.project)} ${dateToDotMMDDYY(data.reportDate)} ${cleanDwlFilePart(data.itemNumber)}${data.revision&&data.revision!=='0'?` Rev ${data.revision}`:''}`;setNextPdfFileTitle(title);return await downloadPdfDocThroughServer(doc,safePdfFileName(),msgId);
+  const msg=document.getElementById(msgId);
+  try{
+    const {PDFDocument, StandardFonts, degrees}=await ensurePdfLibForMerge();
+    const templateResponse=await fetch('/murk31-template.pdf',{cache:'no-store'});
+    if(!templateResponse.ok) throw new Error(`Official MURK 31 template could not be loaded (${templateResponse.status})`);
+    const pdfDoc=await PDFDocument.load(await templateResponse.arrayBuffer(),{ignoreEncryption:true});
+    const page=pdfDoc.getPages()[0];
+    const font=await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont=await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    // Clear and flatten every existing form widget first. This avoids the official template's duplicate field names
+    // causing labor and equipment values to mirror into the wrong boxes. The agency artwork itself stays untouched.
+    try{
+      const form=pdfDoc.getForm();
+      if(form.deleteXFA) form.deleteXFA();
+      form.getFields().forEach(f=>{try{if(f.constructor?.name==='PDFTextField')f.setText('');}catch(e){}});
+      try{form.updateFieldAppearances(font);}catch(e){}
+      form.flatten();
+    }catch(e){console.warn('MURK form flatten warning',e);}
+
+    const stamp=(rect,value,opt={})=>{
+      const text=String(value??'').trim(); if(!text)return;
+      const [x1,y1,x2,y2]=rect;
+      const useFont=opt.bold?boldFont:font;
+      let size=opt.size||7;
+      const maxWidth=(y2-y1)-(opt.padX||4);
+      while(size>(opt.minSize||4.25) && useFont.widthOfTextAtSize(text,size)>maxWidth) size-=0.25;
+      page.drawText(text,{x:x1+(opt.offsetX||3),y:y1+(opt.offsetY||2),size,font:useFont,rotate:degrees(90)});
+    };
+    const fmt=v=>{const n=murkNumber(v);return n?String(Number(n.toFixed(2))):'';};
+    const rowRect=(row,y1,y2)=>{const x1=124.08+(row-1)*19.2;return [x1,y1,x1+17.64,y2];};
+
+    // Header - exact official template boxes.
+    stamp([66.36,25.92,88.08,180.96],data.contractNumber,{size:7.2});
+    stamp([66.36,183.0,88.08,323.16],data.contractor||'JAGD Construction',{size:7.2});
+    stamp([66.36,325.92,88.08,449.16],data.itemNumber,{size:7.2});
+    stamp([66.36,451.2,88.08,704.64],data.workDescription,{size:7});
+    stamp([66.36,706.68,88.08,764.76],dateToSlashYYYY(data.reportDate),{size:7});
+
+    const labor=(data.labor||[]).filter(r=>r.include&&r.name).slice(0,16);
+    const materials=(data.materials||[]).filter(r=>r.description||r.qty||r.units||r.stock).slice(0,16);
+    const equipment=(data.equipment||[]).filter(r=>r.description||r.id||r.inUse||r.standby).slice(0,16);
+    for(let i=1;i<=16;i++){
+      const l=labor[i-1]||{}, m=materials[i-1]||{}, e=equipment[i-1]||{};
+      stamp(rowRect(i,41.64,181.08),l.name,{size:6.6,minSize:4.5});
+      stamp(rowRect(i,183.0,220.44),l.tradeGroup,{size:6.2,minSize:4.25});
+      stamp(rowRect(i,222.24,254.88),fmt(l.regular),{size:6.5});
+      stamp(rowRect(i,256.68,289.32),fmt(l.premium),{size:6.5});
+      stamp(rowRect(i,291.12,323.28),l.name?fmt(murkNumber(l.regular)+murkNumber(l.premium)):'',{size:6.5});
+      stamp(rowRect(i,325.8,449.28),m.description,{size:6.3,minSize:4.25});
+      stamp(rowRect(i,451.2,479.64),m.units,{size:6.2});
+      stamp(rowRect(i,481.56,514.44),m.qty,{size:6.2});
+      stamp(rowRect(i,516.36,545.4),m.stock,{size:6.2});
+      stamp(rowRect(i,548.16,566.52),e.id,{size:5.8,minSize:4});
+      stamp(rowRect(i,568.44,704.76),e.description,{size:6.1,minSize:4.1});
+      stamp(rowRect(i,706.56,735.0),fmt(e.inUse),{size:6.2});
+      stamp(rowRect(i,736.8,764.88),fmt(e.standby),{size:6.2});
+    }
+
+    stamp([440.473,26.16,471.72,764.52],data.statement,{size:7,minSize:5});
+    stamp([502.32,41.28,531.12,182.88],data.printName,{size:7});
+    stamp([501.0,341.04,529.8,377.88],dateToSlashYYYY(data.reportDate),{size:7});
+
+    if(data.signatureData){
+      try{
+        const png=await pdfDoc.embedPng(data.signatureData);
+        // Official contractor signature box, accounting for the template's 90-degree page rotation.
+        page.drawImage(png,{x:505,y:224,width:23,height:98,rotate:degrees(90)});
+      }catch(e){console.warn('MURK signature could not be embedded',e);}
+    }
+
+    const outBytes=await pdfDoc.save({useObjectStreams:false,addDefaultPage:false});
+    const title=`MURK ${cleanDwlFilePart(data.project)} ${dateToDotMMDDYY(data.reportDate)} ${cleanDwlFilePart(data.itemNumber)}${data.revision&&data.revision!=='0'?` Rev ${data.revision}`:''}`;
+    setNextPdfFileTitle(title);
+    const filename=safePdfFileName();
+    downloadBlobFile(new Blob([outBytes],{type:'application/pdf'}),filename);
+    if(msg) msg.innerHTML='<div class="success">Official NYSDOT MURK 31 PDF saved using the unchanged agency form.</div>';
+    return {ok:true,filename,bytes:outBytes};
+  }catch(err){
+    console.error('Official MURK PDF save failed',err);
+    if(msg) msg.innerHTML=`<div class="notice">Official MURK 31 PDF could not be created: ${esc(err.message)}. Do not submit a recreated form to DOT.</div>`;
+    return false;
+  }
 }
 
 // v48: Extra JAGD forms converted from PDF links into phone-friendly web forms.
