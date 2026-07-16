@@ -2358,7 +2358,7 @@ async function murkForm(){
 async function saveMurkPdf(data,msgId){
   const msg=document.getElementById(msgId);
   try{
-    const {PDFDocument, StandardFonts, degrees}=await ensurePdfLibForMerge();
+    const {PDFDocument, StandardFonts, degrees, rgb}=await ensurePdfLibForMerge();
     const templateResponse=await fetch('/murk31-template.pdf',{cache:'no-store'});
     if(!templateResponse.ok) throw new Error(`Official MURK 31 template could not be loaded (${templateResponse.status})`);
     const pdfDoc=await PDFDocument.load(await templateResponse.arrayBuffer(),{ignoreEncryption:true});
@@ -2380,50 +2380,61 @@ async function saveMurkPdf(data,msgId){
       const text=String(value??'').trim(); if(!text)return;
       const [x1,y1,x2,y2]=rect;
       const useFont=opt.bold?boldFont:font;
-      let size=opt.size||7;
-      const maxWidth=(y2-y1)-(opt.padX||4);
-      while(size>(opt.minSize||4.25) && useFont.widthOfTextAtSize(text,size)>maxWidth) size-=0.25;
-      page.drawText(text,{x:x1+(opt.offsetX||3),y:y1+(opt.offsetY||2),size,font:useFont,rotate:degrees(90)});
+      let size=opt.size||10;
+      const maxWidth=(y2-y1)-(opt.padX||5);
+      while(size>(opt.minSize||6.5) && useFont.widthOfTextAtSize(text,size)>maxWidth) size-=0.25;
+      // The official MURK page is rotated 90 degrees. Centering on the PDF x-axis centers
+      // the text vertically in the visible landscape box; y is the left-to-right start.
+      const boxHeight=x2-x1;
+      const centeredX=x1+Math.max(4,(boxHeight-size*0.72)/2);
+      page.drawText(text,{x:centeredX+(opt.offsetX||0),y:y1+(opt.offsetY||3),size,font:useFont,rotate:degrees(90)});
     };
     const fmt=v=>{const n=murkNumber(v);return n?String(Number(n.toFixed(2))):'';};
     const rowRect=(row,y1,y2)=>{const x1=124.08+(row-1)*19.2;return [x1,y1,x1+17.64,y2];};
 
+    // The official form's Total fields carry a default calculated zero. Cover only the inside
+    // of those data cells after flattening, leaving every printed border and agency label intact.
+    for(let i=1;i<=16;i++){
+      const r=rowRect(i,291.12,323.28);
+      page.drawRectangle({x:r[0]+1,y:r[1]+1,width:r[2]-r[0]-2,height:r[3]-r[1]-2,color:rgb(1,1,1)});
+    }
+
     // Header - exact official template boxes.
-    stamp([66.36,25.92,88.08,180.96],data.contractNumber,{size:7.2});
-    stamp([66.36,183.0,88.08,323.16],data.contractor||'JAGD Construction',{size:7.2});
-    stamp([66.36,325.92,88.08,449.16],data.itemNumber,{size:7.2});
-    stamp([66.36,451.2,88.08,704.64],data.workDescription,{size:7});
-    stamp([66.36,706.68,88.08,764.76],dateToSlashYYYY(data.reportDate),{size:7});
+    stamp([66.36,25.92,88.08,180.96],data.contractNumber,{size:10,minSize:7.5});
+    stamp([66.36,183.0,88.08,323.16],data.contractor||'JAGD Construction',{size:10,minSize:7.5});
+    stamp([66.36,325.92,88.08,449.16],data.itemNumber,{size:10,minSize:7.5});
+    stamp([66.36,451.2,88.08,704.64],data.workDescription,{size:10,minSize:7.5});
+    stamp([66.36,706.68,88.08,764.76],dateToSlashYYYY(data.reportDate),{size:10,minSize:7.5});
 
     const labor=(data.labor||[]).filter(r=>r.include&&r.name).slice(0,16);
     const materials=(data.materials||[]).filter(r=>r.description||r.qty||r.units||r.stock).slice(0,16);
     const equipment=(data.equipment||[]).filter(r=>r.description||r.id||r.inUse||r.standby).slice(0,16);
     for(let i=1;i<=16;i++){
       const l=labor[i-1]||{}, m=materials[i-1]||{}, e=equipment[i-1]||{};
-      stamp(rowRect(i,41.64,181.08),l.name,{size:6.6,minSize:4.5});
-      stamp(rowRect(i,183.0,220.44),l.tradeGroup,{size:6.2,minSize:4.25});
-      stamp(rowRect(i,222.24,254.88),fmt(l.regular),{size:6.5});
-      stamp(rowRect(i,256.68,289.32),fmt(l.premium),{size:6.5});
-      stamp(rowRect(i,291.12,323.28),l.name?fmt(murkNumber(l.regular)+murkNumber(l.premium)):'',{size:6.5});
-      stamp(rowRect(i,325.8,449.28),m.description,{size:6.3,minSize:4.25});
-      stamp(rowRect(i,451.2,479.64),m.units,{size:6.2});
-      stamp(rowRect(i,481.56,514.44),m.qty,{size:6.2});
-      stamp(rowRect(i,516.36,545.4),m.stock,{size:6.2});
-      stamp(rowRect(i,548.16,566.52),e.id,{size:5.8,minSize:4});
-      stamp(rowRect(i,568.44,704.76),e.description,{size:6.1,minSize:4.1});
-      stamp(rowRect(i,706.56,735.0),fmt(e.inUse),{size:6.2});
-      stamp(rowRect(i,736.8,764.88),fmt(e.standby),{size:6.2});
+      stamp(rowRect(i,41.64,181.08),l.name,{size:10,minSize:7});
+      stamp(rowRect(i,183.0,220.44),l.tradeGroup,{size:8.5,minSize:6.5});
+      stamp(rowRect(i,222.24,254.88),fmt(l.regular),{size:10,minSize:7.5});
+      stamp(rowRect(i,256.68,289.32),fmt(l.premium),{size:10,minSize:7.5});
+      stamp(rowRect(i,291.12,323.28),l.name?fmt(murkNumber(l.regular)+murkNumber(l.premium)):'',{size:10,minSize:7.5});
+      stamp(rowRect(i,325.8,449.28),m.description,{size:9,minSize:6.5});
+      stamp(rowRect(i,451.2,479.64),m.units,{size:9,minSize:7});
+      stamp(rowRect(i,481.56,514.44),m.qty,{size:9,minSize:7});
+      stamp(rowRect(i,516.36,545.4),m.stock,{size:9,minSize:7});
+      stamp(rowRect(i,548.16,566.52),e.id,{size:8.5,minSize:6.5});
+      stamp(rowRect(i,568.44,704.76),e.description,{size:9,minSize:6.5});
+      stamp(rowRect(i,706.56,735.0),fmt(e.inUse),{size:9,minSize:7});
+      stamp(rowRect(i,736.8,764.88),fmt(e.standby),{size:9,minSize:7});
     }
 
-    stamp([440.473,26.16,471.72,764.52],data.statement,{size:7,minSize:5});
-    stamp([502.32,41.28,531.12,182.88],data.printName,{size:7});
-    stamp([501.0,341.04,529.8,377.88],dateToSlashYYYY(data.reportDate),{size:7});
+    stamp([440.473,26.16,471.72,764.52],data.statement,{size:10,minSize:7.5});
+    stamp([502.32,41.28,531.12,182.88],data.printName,{size:10,minSize:7.5});
+    stamp([501.0,341.04,529.8,377.88],dateToSlashYYYY(data.reportDate),{size:10,minSize:7.5});
 
     if(data.signatureData){
       try{
         const png=await pdfDoc.embedPng(data.signatureData);
         // Official contractor signature box, accounting for the template's 90-degree page rotation.
-        page.drawImage(png,{x:505,y:224,width:23,height:98,rotate:degrees(90)});
+        page.drawImage(png,{x:530,y:224,width:98,height:24,rotate:degrees(90)});
       }catch(e){console.warn('MURK signature could not be embedded',e);}
     }
 
