@@ -2413,9 +2413,9 @@ async function saveMurkPdf(data,msgId){
       const l=labor[i-1]||{}, m=materials[i-1]||{}, e=equipment[i-1]||{};
       stamp(rowRect(i,41.64,181.08),l.name,{size:13,minSize:10,offsetX:4});
       stamp(rowRect(i,183.0,220.44),l.tradeGroup,{size:11.5,minSize:9,offsetX:4});
-      stamp(rowRect(i,222.24,254.88),fmt(l.regular),{size:13,minSize:10,offsetX:4});
-      stamp(rowRect(i,256.68,289.32),fmt(l.premium),{size:13,minSize:10,offsetX:4});
-      stamp(rowRect(i,291.12,323.28),l.name?fmt(murkNumber(l.regular)+murkNumber(l.premium)):'',{size:13,minSize:10,offsetX:4});
+      stamp(rowRect(i,222.24,254.88),fmt(l.regular),{size:13,minSize:10,offsetX:6.5});
+      stamp(rowRect(i,256.68,289.32),fmt(l.premium),{size:13,minSize:10,offsetX:6.5});
+      stamp(rowRect(i,291.12,323.28),l.name?fmt(murkNumber(l.regular)+murkNumber(l.premium)):'',{size:13,minSize:10,offsetX:6.5});
       stamp(rowRect(i,325.8,449.28),m.description,{size:12,minSize:9,offsetX:4});
       stamp(rowRect(i,451.2,479.64),m.units,{size:11.5,minSize:9,offsetX:4});
       stamp(rowRect(i,481.56,514.44),m.qty,{size:11.5,minSize:9,offsetX:4});
