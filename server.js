@@ -30,10 +30,22 @@ const PORTAL_BOL_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_BOL_SYNC_TIMEOUT_MS
 const BOL_PORTAL_SYNC_LOG_FILE = path.join(DATA_DIR, 'bol-portal-sync-log.json');
 const BOL_COUNTERS_FILE = path.join(DATA_DIR, 'bol-counters.json');
 const DWL_GENERATED_PDF_DIR = path.join(DATA_DIR, 'dwl-generated-pdfs');
+const TM_UPLOAD_DIR = path.join(DATA_DIR, 'tm-uploads');
+const TM_RECORDS_FILE = path.join(DATA_DIR, 'tm-records.json');
+const TM_PROJECTS_FILE = path.join(DATA_DIR, 'tm-projects.json');
+const TM_DEFAULT_PROJECTS = [
+  { id: 'BRX9579', contract: 'BRX9579', name: '8 Bridges', active: true },
+  { id: 'D265307', contract: 'D265307', name: 'D265307', active: true },
+  { id: 'D265343', contract: 'D265343', name: 'D265343', active: true },
+  { id: 'HB1070MD', contract: 'HB1070MD', name: 'Macombs Dam Bridge', active: false }
+];
 
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(DWL_GENERATED_PDF_DIR, { recursive: true });
+fs.mkdirSync(TM_UPLOAD_DIR, { recursive: true });
+if (!fs.existsSync(TM_RECORDS_FILE)) fs.writeFileSync(TM_RECORDS_FILE, '[]');
+if (!fs.existsSync(TM_PROJECTS_FILE)) fs.writeFileSync(TM_PROJECTS_FILE, JSON.stringify(TM_DEFAULT_PROJECTS, null, 2));
 if (!fs.existsSync(SUBMISSIONS_FILE)) fs.writeFileSync(SUBMISSIONS_FILE, '[]');
 if (!fs.existsSync(WEEKLY_MEETINGS_FILE)) fs.writeFileSync(WEEKLY_MEETINGS_FILE, '[]');
 if (!fs.existsSync(FORM_LOGS_FILE)) fs.writeFileSync(FORM_LOGS_FILE, '[]');
@@ -65,6 +77,21 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024, files: 24 } });
+const tmStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, TM_UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const safe = String(file.originalname || 'document').replace(/[^a-zA-Z0-9._-]/g, '_');
+    cb(null, `${Date.now()}-${nanoid(8)}-${safe}`);
+  }
+});
+const tmUpload = multer({
+  storage: tmStorage,
+  limits: { fileSize: 15 * 1024 * 1024, files: 24 },
+  fileFilter: (req, file, cb) => {
+    const ok = file.mimetype === 'application/pdf' || String(file.mimetype || '').startsWith('image/');
+    cb(ok ? null : new Error('Only images and PDF files are allowed.'), ok);
+  }
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -566,6 +593,125 @@ function requireAdmin(req, res, next) {
   if (supplied !== ADMIN_PIN) return res.status(401).json({ error: 'Admin PIN required.' });
   next();
 }
+
+
+function readTmRows() {
+  try { const rows = JSON.parse(fs.readFileSync(TM_RECORDS_FILE, 'utf8')); return Array.isArray(rows) ? rows : []; }
+  catch (e) { return []; }
+}
+function writeTmRows(rows) { fs.writeFileSync(TM_RECORDS_FILE, JSON.stringify(rows, null, 2)); }
+function readTmProjects() {
+  try { const rows = JSON.parse(fs.readFileSync(TM_PROJECTS_FILE, 'utf8')); return Array.isArray(rows) ? rows : TM_DEFAULT_PROJECTS; }
+  catch (e) { return TM_DEFAULT_PROJECTS; }
+}
+function writeTmProjects(rows) { fs.writeFileSync(TM_PROJECTS_FILE, JSON.stringify(rows, null, 2)); }
+function tmMoney(v) { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : 0; }
+function tmMonthFromDate(v) { const m = String(v || '').match(/^(\d{4}-\d{2})-\d{2}$/); return m ? m[1] : ''; }
+function tmProjectLabel(p) { return p ? `${p.contract}${p.name && p.name !== p.contract ? ` - ${p.name}` : ''}` : ''; }
+function tmFileHash(filePath) {
+  const crypto = require('crypto');
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+function tmSafeRecordForPublic(record) {
+  return { ok: true, id: record.id, project: record.projectLabel, vendor: record.vendor, amount: record.amount, attachmentCount: record.files.length, createdAt: record.createdAt };
+}
+
+app.get('/api/tm/projects', (req, res) => {
+  res.json({ rows: readTmProjects().filter(p => p.active).map(p => ({ id: p.id, contract: p.contract, name: p.name })) });
+});
+
+app.post('/api/tm/submissions', tmUpload.array('files', 24), (req, res) => {
+  const cleanup = () => (req.files || []).forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
+  let data = {};
+  try { data = JSON.parse(req.body.data || '{}'); } catch (e) { cleanup(); return res.status(400).json({ error: 'Invalid submission data.' }); }
+  const files = req.files || [];
+  const projectId = cleanText(data.projectId);
+  const projects = readTmProjects();
+  let project = projects.find(p => p.id === projectId);
+  const customContract = cleanText(data.customContract);
+  const customName = cleanText(data.customName);
+  const isCustom = projectId === 'CUSTOM';
+  if (isCustom) {
+    if (!customContract) { cleanup(); return res.status(400).json({ error: 'Enter the custom contract number or job name.' }); }
+    const id = `CUSTOM-${nanoid(8)}`;
+    project = { id, contract: customContract, name: customName || customContract, active: false, custom: true, createdAt: new Date().toISOString() };
+    projects.push(project); writeTmProjects(projects);
+  }
+  if (!project) { cleanup(); return res.status(400).json({ error: 'Choose a valid project.' }); }
+  if (!files.length) return res.status(400).json({ error: 'Add at least one receipt photo or PDF.' });
+  const transactionDate = cleanText(data.transactionDate);
+  const billingMonth = tmMonthFromDate(transactionDate);
+  if (!billingMonth) { cleanup(); return res.status(400).json({ error: 'Enter a valid purchase/service date.' }); }
+  const vendor = cleanText(data.vendor), description = cleanText(data.description), submitter = cleanText(data.submitter), purchaser = cleanText(data.purchaser);
+  if (!vendor || !description || !submitter) { cleanup(); return res.status(400).json({ error: 'Vendor, description, and submitted-by name are required.' }); }
+  const fileRows = files.map(f => ({ originalName: f.originalname, filename: f.filename, size: f.size, mimetype: f.mimetype, hash: tmFileHash(f.path) }));
+  const existing = readTmRows();
+  const exactDuplicateIds = [...new Set(fileRows.flatMap(f => existing.filter(r => (r.files || []).some(old => old.hash === f.hash)).map(r => r.id)))];
+  const amount = tmMoney(data.amount);
+  const likelyDuplicateIds = existing.filter(r => r.projectId === project.id && String(r.vendor).toLowerCase() === vendor.toLowerCase() && r.transactionDate === transactionDate && Number(r.amount) === amount).map(r => r.id);
+  const id = `${String(project.contract || 'TM').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10)}-${billingMonth.replace('-', '')}-${nanoid(6).toUpperCase()}`;
+  const record = {
+    id, projectId: project.id, projectLabel: tmProjectLabel(project), customJob: !!project.custom,
+    type: cleanText(data.type) || 'Receipt / Materials', vendor, transactionDate, billingMonth, amount,
+    description, category: cleanText(data.category) || 'Other', paymentMethod: cleanText(data.paymentMethod) || 'Unknown',
+    purchaser: purchaser || submitter, submitter, status: project.custom ? 'Missing Information' : 'New',
+    notes: '', exactDuplicateIds, likelyDuplicateIds, files: fileRows,
+    rental: data.rental && typeof data.rental === 'object' ? data.rental : null,
+    owned: data.owned && typeof data.owned === 'object' ? data.owned : null,
+    history: [{ action: 'Submitted', by: submitter, at: new Date().toISOString() }], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  };
+  existing.push(record); writeTmRows(existing);
+  res.json(tmSafeRecordForPublic(record));
+});
+
+app.get('/api/admin/tm/records', requireAdmin, (req, res) => {
+  const projectId = cleanText(req.query.projectId), month = cleanText(req.query.month), status = cleanText(req.query.status);
+  const rows = readTmRows().filter(r => (!projectId || r.projectId === projectId) && (!month || r.billingMonth === month) && (!status || r.status === status)).sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+  res.json({ rows });
+});
+app.get('/api/admin/tm/projects', requireAdmin, (req, res) => res.json({ rows: readTmProjects() }));
+app.post('/api/admin/tm/projects', requireAdmin, (req, res) => {
+  const contract = cleanText(req.body.contract), name = cleanText(req.body.name), active = req.body.active !== false;
+  if (!contract || !name) return res.status(400).json({ error: 'Contract and job name are required.' });
+  const rows = readTmProjects();
+  if (rows.some(p => String(p.contract).toLowerCase() === contract.toLowerCase())) return res.status(409).json({ error: 'That contract already exists.' });
+  const row = { id: contract.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || nanoid(8), contract, name, active, createdAt: new Date().toISOString() };
+  rows.push(row); writeTmProjects(rows); res.json({ ok: true, row });
+});
+app.patch('/api/admin/tm/projects/:id', requireAdmin, (req, res) => {
+  const rows = readTmProjects(), row = rows.find(p => p.id === req.params.id);
+  if (!row) return res.status(404).json({ error: 'Project not found.' });
+  if (req.body.active !== undefined) row.active = !!req.body.active;
+  if (cleanText(req.body.contract)) row.contract = cleanText(req.body.contract);
+  if (cleanText(req.body.name)) row.name = cleanText(req.body.name);
+  writeTmProjects(rows); res.json({ ok: true, row });
+});
+app.patch('/api/admin/tm/records/:id', requireAdmin, (req, res) => {
+  const rows = readTmRows(), row = rows.find(r => r.id === req.params.id);
+  if (!row) return res.status(404).json({ error: 'Record not found.' });
+  const allowed = ['projectId','billingMonth','vendor','transactionDate','amount','description','category','paymentMethod','purchaser','status','notes'];
+  const before = {}; allowed.forEach(k => { if (req.body[k] !== undefined) { before[k] = row[k]; row[k] = k === 'amount' ? tmMoney(req.body[k]) : cleanText(req.body[k]); } });
+  if (req.body.projectId) { const p = readTmProjects().find(x => x.id === row.projectId); if (p) { row.projectLabel = tmProjectLabel(p); row.customJob = !!p.custom; } }
+  row.updatedAt = new Date().toISOString(); row.history = Array.isArray(row.history) ? row.history : [];
+  row.history.push({ action:'Office update', before, after:Object.fromEntries(Object.keys(before).map(k=>[k,row[k]])), by:'Office/Admin', at:row.updatedAt });
+  writeTmRows(rows); res.json({ ok:true,row });
+});
+app.post('/api/admin/tm/rentals/carry-forward', requireAdmin, (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.map(cleanText) : [], targetMonth = cleanText(req.body.targetMonth);
+  if (!/^\d{4}-\d{2}$/.test(targetMonth) || !ids.length) return res.status(400).json({ error:'Select rentals and a target month.' });
+  const rows = readTmRows(), made=[];
+  ids.forEach(id => { const src = rows.find(r => r.id === id && r.type === 'Rental'); if (!src) return;
+    const copy = JSON.parse(JSON.stringify(src)); copy.id = `${String(src.projectId).replace(/[^a-zA-Z0-9]/g,'').slice(0,10)}-${targetMonth.replace('-','')}-${nanoid(6).toUpperCase()}`;
+    copy.billingMonth=targetMonth; copy.transactionDate=`${targetMonth}-01`; copy.amount=0; copy.status='Missing Information'; copy.files=[];
+    copy.description=`${src.description} - carried forward from ${src.billingMonth}`; copy.carriedFrom=src.id; copy.createdAt=new Date().toISOString(); copy.updatedAt=copy.createdAt;
+    copy.history=[{action:'Rental carried forward',from:src.id,by:'Office/Admin',at:copy.createdAt}]; rows.push(copy); made.push(copy);
+  }); writeTmRows(rows); res.json({ok:true,rows:made});
+});
+app.get('/api/admin/tm/files/:filename', requireAdmin, (req, res) => {
+  const safe = path.basename(req.params.filename); const full = path.join(TM_UPLOAD_DIR, safe);
+  if (!fs.existsSync(full)) return res.status(404).json({ error:'File not found.' });
+  res.sendFile(full);
+});
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, app: 'jagd-field-forms', version: 'dwl-worker-api-fix-20260618', time: new Date().toISOString() });
