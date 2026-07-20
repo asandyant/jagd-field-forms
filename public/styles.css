@@ -1069,14 +1069,3 @@
 .hiddenFileInput{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
 .filePickBtn{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin:4px 0 8px;}
 .extraAttachmentSheet .notice{margin-top:18px;}
-
-
-/* v71 MURK 31 / T&M workflow */
-.murkContainer{max-width:1240px}.murkHero{display:flex;align-items:center;justify-content:space-between;gap:18px}.murkHero h1{margin:.25rem 0}.murkEntryTable{width:100%;border-collapse:collapse;min-width:850px}.murkEntryTable th,.murkEntryTable td{border:1px solid #9aa7b8;padding:3px;text-align:center}.murkEntryTable th{background:#e8eef5;font-size:12px}.murkEntryTable input,.murkEntryTable select{width:100%;min-width:55px;padding:8px 5px;border:0;background:#fff;font-size:14px}.murkEntryTable input[type=checkbox]{width:24px;height:24px}.murkDwlRef{background:#f2f5f8;font-weight:700;min-width:55px}.murkEntryTable output{display:block;min-width:38px;font-weight:700}.murkContainer textarea{min-height:105px}@media(max-width:720px){.murkHero{align-items:flex-start;flex-direction:column}.murkHero .btn{width:100%}.murkContainer .grid.three,.murkContainer .grid.two{grid-template-columns:1fr}.murkEntryTable th{font-size:11px}.murkEntryTable input,.murkEntryTable select{font-size:16px;padding:9px 6px}}
-
-/* Required D265 MURK handoff notice */
-.murkRequiredModal{max-width:610px;text-align:left}
-.murkRequiredModal h2{margin:.25rem 0 .75rem;text-align:center}
-.murkRequiredModal p{font-size:1rem;line-height:1.45}
-.murkRequiredIcon{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto .5rem;background:#f5c542;color:#111;font-size:2rem;font-weight:900}
-@media(max-width:600px){.murkRequiredModal{margin:12px}.murkRequiredModal .btn{width:100%}}

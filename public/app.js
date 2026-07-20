@@ -431,7 +431,7 @@ function safePdfFileName(){
 function base64FromDataUrl(dataUrl){
   return String(dataUrl||'').replace(/^data:application\/pdf;?base64,/i,'');
 }
-async function downloadPdfDocThroughServer(pdfDoc, filename, msgId, options={}){
+async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
   const msg = msgId ? document.getElementById(msgId) : null;
   const safeName = String(filename || safePdfFileName()).replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').trim() || 'JAGD Field Form.pdf';
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -452,13 +452,9 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId, options={}){
     // Mobile/iPhone: go directly to the real server PDF screen.
     // This prevents the field from accidentally sharing the website URL or a blob page from Safari.
     if(isMobile){
-      if(options.deferMobileOpen){
-        if(msg) msg.innerHTML = '<div class="success">Official DWL PDF saved. Continue with the required MURK below; the DWL PDF remains available from the MURK screen.</div>';
-        return {ok:true, downloadUrl:shareUrl, fileName:json.fileName || safeName};
-      }
       if(msg) msg.innerHTML = '<div class="notice">Opening the official DWL PDF. Use the Share button on the PDF screen to text/email/Dropbox it.</div>';
       window.location.href = shareUrl;
-      return {ok:true, downloadUrl:shareUrl, fileName:json.fileName || safeName};
+      return true;
     }
 
     if(isIOS){
@@ -473,10 +469,10 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId, options={}){
       setTimeout(()=>{ try{ a.remove(); }catch(e){} }, 1000);
     }
     if(msg) msg.innerHTML = '<div class="success">Official DWL PDF is ready. If the PDF screen opens, use the Share button from that PDF screen.</div>';
-    return {ok:true, downloadUrl:shareUrl, fileName:json.fileName || safeName};
+    return true;
   }catch(err){
     console.warn('Server named PDF download failed, falling back to browser save:', err);
-    try{ pdfDoc.save(safeName); if(msg) msg.innerHTML='<div class="success">Official DWL PDF saved. If iPhone changes the file name, office can rename it from the PDF contents.</div>'; return {ok:true, downloadUrl:'', fileName:safeName}; }
+    try{ pdfDoc.save(safeName); if(msg) msg.innerHTML='<div class="success">Official DWL PDF saved. If iPhone changes the file name, office can rename it from the PDF contents.</div>'; return true; }
     catch(e){ if(msg) msg.innerHTML=`<div class="notice">PDF save failed: ${esc(e.message || err.message || '')}</div>`; return false; }
   }
 }
@@ -649,7 +645,6 @@ function printPdfHelp(type){
 
 const FORM_TYPE_META = {
   dwl:{label:'DWL', bucket:'daily'},
-  murk:{label:'MURK / T&M', bucket:'daily'},
   pir:{label:'PIR', bucket:'daily'},
   mewp:{label:'MEWP', bucket:'daily'},
   daily:{label:'Daily Equipment', bucket:'daily'},
@@ -2067,21 +2062,9 @@ async function dwlForm(){
       logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle);
       const syncId = makeDwlSyncId(data, dwlFileTitle);
       const portalSend = syncDwlToPortal(data, dwlFileTitle, { syncId, keepalive:true });
-      const murkRequired = isD265Contract(data.project);
-      const savedDirect = await saveDwlDirectPdf(data,'dwlMsg',{deferMobileOpen:murkRequired});
-      if(!savedDirect || savedDirect.ok===false){ buildDwlPrint(data); await openPrintNow('dwlMsg'); }
+      const savedDirect = await saveDwlDirectPdf(data,'dwlMsg');
+      if(!savedDirect){ buildDwlPrint(data); await openPrintNow('dwlMsg'); }
       portalSend.catch(()=>{});
-      const murkSeed = createMurkSeedFromDwl(data, dwlFileTitle, savedDirect && savedDirect.downloadUrl ? savedDirect.downloadUrl : '');
-      if(murkRequired){
-        saveMurkDraft(murkSeed);
-        await showRequiredMurkNotice(murkSeed);
-        location.hash='#/murk?source=dwl';
-      }else if(window.confirm('DWL saved successfully.\n\nWas any work performed today that requires a time-and-material, extra-work, change-order, or GC back-charge record?')){
-        murkSeed.required=false;
-        murkSeed.labor=(murkSeed.labor||[]).map(r=>({...r,regular:'',premium:'',include:false}));
-        saveMurkDraft(murkSeed);
-        location.hash='#/murk?source=dwl';
-      }
     }catch(err){
       document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`;
       console.error(err);
@@ -2131,7 +2114,7 @@ function dwlPdfBox(doc, x, y, w, h, label, value, bodySize=9){
   dwlPdfText(doc, label, x+3, y+9.5, {size:8, style:'bold', maxWidth:w-6});
   dwlPdfWrapText(doc, value, x, y+13, w, h-13, {size:bodySize, style:'normal'});
 }
-async function saveDwlDirectPdf(data, msgId, options={}){
+async function saveDwlDirectPdf(data, msgId){
   if(!window.jspdf || !window.jspdf.jsPDF) return false;
   const msg=document.getElementById(msgId);
   if(msg) msg.innerHTML='<div class="notice">Building clean DWL PDF...</div>';
@@ -2245,7 +2228,8 @@ async function saveDwlDirectPdf(data, msgId, options={}){
   }
 
   const filename = safePdfFileName();
-  return await downloadPdfDocThroughServer(doc, filename, msgId, options);
+  await downloadPdfDocThroughServer(doc, filename, msgId);
+  return true;
 }
 
 function collectDwl(){
@@ -2278,179 +2262,6 @@ function buildDwlPrint(data){
   setPrint(html); return html;
 }
 
-
-
-// Required D265 notice shown after the DWL is safely saved and before the MURK entry page opens.
-function showRequiredMurkNotice(seed={}){
-  return new Promise(resolve=>{
-    document.querySelectorAll('.modalOverlay').forEach(m=>m.remove());
-    const modal=document.createElement('div');
-    modal.className='modalOverlay no-print';
-    modal.innerHTML=`<div class="modalBox murkRequiredModal" role="dialog" aria-modal="true" aria-labelledby="murkRequiredTitle">
-      <div class="murkRequiredIcon">!</div>
-      <h2 id="murkRequiredTitle">MURK 31 Required</h2>
-      <p><b>${esc(seed.contractNumber||'This D265 contract')}</b> requires a MURK 31 Daily Record.</p>
-      <p>The MURK will now open with the contract, date, crew, labor, and work description filled in from today's DWL.</p>
-      <p>Review the imported information, add the materials and equipment used, complete the Statement of Work Accomplished, and sign the form before saving.</p>
-      <div class="actions right"><button class="btn" id="murkRequiredContinue" type="button">Continue to Required MURK 31</button></div>
-    </div>`;
-    document.body.appendChild(modal);
-    const done=()=>{modal.remove();resolve();};
-    document.getElementById('murkRequiredContinue').onclick=done;
-  });
-}
-
-// v71: MURK 31 / T&M daily record linked to the saved DWL.
-const MURK_DRAFT_KEY='jagdMurkCurrentDraftV1';
-function isD265Contract(project=''){ return /(?:^|\s|[-_/])D265\d*/i.test(String(project||'').trim()); }
-function murkNumber(v){ const n=Number(String(v||'').replace(/[^0-9.\-]/g,'')); return Number.isFinite(n)&&n>=0?n:0; }
-function murkTradeGroup(row={}){ return [row.local ? `L${row.local}` : '', row.class||''].filter(Boolean).join('-'); }
-function createMurkSeedFromDwl(data={}, title='', dwlPdfUrl=''){
-  const required=isD265Contract(data.project);
-  return {
-    id:`murk-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-    sourceDwlKey:dwlSubmitStorageKey(data),sourceDwlRevision:cleanDwlRevision(data.revision||'0')||'0',sourceDwlTitle:title,sourceDwlPdfUrl:dwlPdfUrl,
-    required, formType:'MURK 31', project:data.project||'', contractNumber:(String(data.project||'').match(/D265\d+/i)||[''])[0].toUpperCase(), contractor:'JAGD Construction', subcontractor:'', itemNumber:'', recordType:required?'NYS DOT Required Daily Record':'Time & Material', workDescription:data.description||'', reportDate:data.reportDate||'', crew:data.crew||'', foreman:data.foreman||'', printName:data.printName||data.foreman||'', statement:data.description||'', revision:'0', signatureData:'',
-    labor:dwlVisibleRows(data).map((r,i)=>({id:i+1,name:r.employee||'',tradeGroup:murkTradeGroup(r),dwlRegular:r.straight||'',dwlPremium:r.over||'',regular:required?(r.straight||''):'',premium:required?(r.over||''):'',include:required})),
-    materials:Array.from({length:16},()=>({description:'',units:'',qty:'',stock:''})),
-    equipment:Array.from({length:16},()=>({id:'',description:'',inUse:'',standby:''}))
-  };
-}
-function saveMurkDraft(data){ try{localStorage.setItem(MURK_DRAFT_KEY,JSON.stringify({...data,updatedAt:new Date().toISOString()}));}catch(e){} }
-function loadMurkDraft(){ try{return JSON.parse(localStorage.getItem(MURK_DRAFT_KEY)||'null');}catch(e){return null;} }
-function murkHistoryKey(project){return `jagdMurkHistory:${String(project||'').trim().toLowerCase().replace(/\s+/g,' ')}`;}
-function saveMurkHistory(data){try{const key=murkHistoryKey(data.project),rows=JSON.parse(localStorage.getItem(key)||'[]');rows.unshift({...data,signatureData:'',savedAt:new Date().toISOString()});localStorage.setItem(key,JSON.stringify(rows.slice(0,30)));}catch(e){}}
-function loadMostRecentMurk(project){try{const rows=JSON.parse(localStorage.getItem(murkHistoryKey(project))||'[]');return rows[0]||null;}catch(e){return null;}}
-function murkLaborRowsHtml(rows=[]){const out=[];for(let i=0;i<16;i++){const r=rows[i]||{};out.push(`<tr><td>${i+1}</td><td><input type="checkbox" id="murkLaborInclude${i}" ${r.include?'checked':''}></td><td><input id="murkLaborName${i}" value="${esc(r.name||'')}" list="dwlWorkerList"></td><td><input id="murkLaborTrade${i}" value="${esc(r.tradeGroup||'')}"></td><td class="murkDwlRef">${esc(r.dwlRegular||'')}</td><td class="murkDwlRef">${esc(r.dwlPremium||'')}</td><td><input id="murkLaborReg${i}" inputmode="decimal" value="${esc(r.regular||'')}"></td><td><input id="murkLaborPrem${i}" inputmode="decimal" value="${esc(r.premium||'')}"></td><td><output id="murkLaborTotal${i}">0</output></td></tr>`)}return out.join('');}
-function murkMaterialRowsHtml(rows=[]){return Array.from({length:16},(_,i)=>{const r=rows[i]||{};return `<tr><td>${i+1}</td><td><input id="murkMatDesc${i}" value="${esc(r.description||'')}"></td><td><input id="murkMatUnits${i}" value="${esc(r.units||'')}"></td><td><input id="murkMatQty${i}" inputmode="decimal" value="${esc(r.qty||'')}"></td><td><select id="murkMatStock${i}"><option value=""></option><option ${r.stock==='Y'?'selected':''}>Y</option><option ${r.stock==='N'?'selected':''}>N</option></select></td></tr>`}).join('');}
-function murkEquipmentRowsHtml(rows=[]){return Array.from({length:16},(_,i)=>{const r=rows[i]||{};return `<tr><td>${i+1}</td><td><input id="murkEquipId${i}" value="${esc(r.id||'')}"></td><td><input id="murkEquipDesc${i}" value="${esc(r.description||'')}"></td><td><input id="murkEquipUse${i}" inputmode="decimal" value="${esc(r.inUse||'')}"></td><td><input id="murkEquipStandby${i}" inputmode="decimal" value="${esc(r.standby||'')}"></td></tr>`}).join('');}
-function murkPasteModal(kind){
-  const isMat=kind==='materials';document.querySelectorAll('.modalOverlay').forEach(m=>m.remove());const modal=document.createElement('div');modal.className='modalOverlay no-print';
-  modal.innerHTML=`<div class="modalBox crewUploadBox"><h2>Paste ${isMat?'Materials':'Equipment'} from Notes</h2><p class="tiny">${isMat?'One line each: Description | Units | Quantity | Y or N':'One line each: Description | ID | In Use Hours | Standby Hours'}</p><textarea id="murkPasteText" placeholder="One item per line"></textarea><div class="actions right"><button class="btn light" id="murkPasteCancel" type="button">Cancel</button><button class="btn" id="murkPasteApply" type="button">Apply</button></div></div>`;document.body.appendChild(modal);
-  document.getElementById('murkPasteCancel').onclick=()=>modal.remove();document.getElementById('murkPasteApply').onclick=()=>{const lines=val('murkPasteText').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).slice(0,16);lines.forEach((line,i)=>{const p=line.split('|').map(x=>x.trim());if(isMat){document.getElementById('murkMatDesc'+i).value=p[0]||'';document.getElementById('murkMatUnits'+i).value=p[1]||'';document.getElementById('murkMatQty'+i).value=p[2]||'';document.getElementById('murkMatStock'+i).value=/^y/i.test(p[3]||'')?'Y':/^n/i.test(p[3]||'')?'N':'';}else{document.getElementById('murkEquipDesc'+i).value=p[0]||'';document.getElementById('murkEquipId'+i).value=p[1]||'';document.getElementById('murkEquipUse'+i).value=p[2]||'';document.getElementById('murkEquipStandby'+i).value=p[3]||'';}});modal.remove();};
-}
-function loadPreviousMurkSection(kind){const prev=loadMostRecentMurk(projectValue('murkProject'));const msg=document.getElementById('murkMsg');if(!prev){if(msg)msg.innerHTML='<div class="notice">No previous MURK/T&M record was found for this job on this phone.</div>';return;}const rows=kind==='materials'?prev.materials:prev.equipment;(rows||[]).slice(0,16).forEach((r,i)=>{if(kind==='materials'){document.getElementById('murkMatDesc'+i).value=r.description||'';document.getElementById('murkMatUnits'+i).value=r.units||'';document.getElementById('murkMatQty'+i).value=r.qty||'';document.getElementById('murkMatStock'+i).value=r.stock||'';}else{document.getElementById('murkEquipId'+i).value=r.id||'';document.getElementById('murkEquipDesc'+i).value=r.description||'';document.getElementById('murkEquipUse'+i).value=r.inUse||'';document.getElementById('murkEquipStandby'+i).value=r.standby||'';}});if(msg)msg.innerHTML='<div class="notice success">Loaded the most recent '+kind+' for this job. Review quantities and hours before saving.</div>';}
-function collectMurk(){
- const draft=loadMurkDraft()||{};const labor=Array.from({length:16},(_,i)=>({id:i+1,include:!!document.getElementById('murkLaborInclude'+i)?.checked,name:val('murkLaborName'+i),tradeGroup:val('murkLaborTrade'+i),dwlRegular:draft.labor?.[i]?.dwlRegular||'',dwlPremium:draft.labor?.[i]?.dwlPremium||'',regular:val('murkLaborReg'+i),premium:val('murkLaborPrem'+i),total:murkNumber(val('murkLaborReg'+i))+murkNumber(val('murkLaborPrem'+i))}));
- const materials=Array.from({length:16},(_,i)=>({description:val('murkMatDesc'+i),units:val('murkMatUnits'+i),qty:val('murkMatQty'+i),stock:val('murkMatStock'+i)}));
- const equipment=Array.from({length:16},(_,i)=>({id:val('murkEquipId'+i),description:val('murkEquipDesc'+i),inUse:val('murkEquipUse'+i),standby:val('murkEquipStandby'+i)}));
- return {...draft,project:projectValue('murkProject'),contractNumber:val('murkContract'),contractor:val('murkContractor'),subcontractor:val('murkSubcontractor'),itemNumber:'',recordType:draft.required?'NYS DOT Required Daily Record':'Optional MURK / T&M Record',workDescription:val('murkWorkDescription'),reportDate:val('murkDate'),crew:val('murkCrew'),revision:'0',statement:val('murkStatement'),printName:val('murkPrintName'),signatureData:signatureStore.murkSignature||'',labor,materials,equipment};
-}
-function updateMurkTotals(){for(let i=0;i<16;i++){const out=document.getElementById('murkLaborTotal'+i);if(out)out.textContent=(murkNumber(val('murkLaborReg'+i))+murkNumber(val('murkLaborPrem'+i))).toFixed(1).replace(/\.0$/,'');}}
-async function murkForm(){
- await loadActiveWorkers(true);let d=loadMurkDraft();if(!d)d=createMurkSeedFromDwl({project:'',reportDate:new Date().toISOString().slice(0,10),rows:[]});signatureStore.murkSignature=d.signatureData||'';
- app.innerHTML=`<div class="container murkContainer"><datalist id="dwlWorkerList"></datalist><div class="panel murkHero"><div><span class="formTag">Daily Force Account / T&amp;M</span><h1>MURK 31 Daily Record</h1><p>${d.required?'<b>D265 contract: this MURK is required and linked to the DWL just saved.</b>':'Use for extra work, time and material, change orders, or GC back charges.'}</p></div>${d.sourceDwlPdfUrl?`<a class="btn light" target="_blank" rel="noopener" href="${esc(d.sourceDwlPdfUrl)}">Open Saved DWL PDF</a>`:''}</div>
- <div class="panel"><h2>Record Information</h2><div class="grid three">${projectField('murkProject','Project / Job')}${field('murkContract','Contract Number')}${field('murkDate','Date','date')}${field('murkContractor','Contractor')}${field('murkSubcontractor','Subcontractor')}${field('murkCrew','Crew')}</div>${textarea('murkWorkDescription','Work Description')}</div>
- <div class="panel"><h2>Labor</h2><p class="tiny">DWL hours are shown for reference. On D265 work they are prefilled; review them before saving. For optional T&amp;M/back-charge records enter only the hours attributable to this item.</p><div class="actions"><button class="btn light" id="murkUseAllLabor" type="button">Use All DWL Labor</button><button class="btn light" id="murkClearLabor" type="button">Clear MURK Hours</button></div><div class="dwlTableWrap"><table class="murkEntryTable"><thead><tr><th>#</th><th>Use</th><th>Employee</th><th>Trade &amp; Group</th><th>DWL Reg</th><th>DWL Prem</th><th>MURK Reg</th><th>MURK Prem</th><th>Total</th></tr></thead><tbody>${murkLaborRowsHtml(d.labor)}</tbody></table></div></div>
- <div class="panel"><h2>Materials</h2><div class="actions"><button class="btn light" id="murkLoadMaterials" type="button">Load Most Recent Materials for This Job</button><button class="btn light" id="murkPasteMaterials" type="button">Paste from Notes</button></div><div class="dwlTableWrap"><table class="murkEntryTable"><thead><tr><th>#</th><th>Description</th><th>Units</th><th>Qty</th><th>Stock Y/N</th></tr></thead><tbody>${murkMaterialRowsHtml(d.materials)}</tbody></table></div></div>
- <div class="panel"><h2>Equipment</h2><div class="actions"><button class="btn light" id="murkLoadEquipment" type="button">Load Most Recent Equipment for This Job</button><button class="btn light" id="murkPasteEquipment" type="button">Paste from Notes</button></div><div class="dwlTableWrap"><table class="murkEntryTable"><thead><tr><th>#</th><th>ID</th><th>Description</th><th>In Use</th><th>Standby</th></tr></thead><tbody>${murkEquipmentRowsHtml(d.equipment)}</tbody></table></div></div>
- <div class="panel"><h2>Statement of Work Accomplished</h2>${textarea('murkStatement','Describe exactly what was accomplished, location, direction received, and quantities where known')}</div>
- <div class="panel"><h2>Contractor Certification</h2><div class="grid two">${field('murkPrintName','Printed Name')}${sigField('murkSignature','Contractor Signature')}</div><div class="actions"><button class="btn" id="murkSaveBtn" type="button">Save PDF / Submit MURK</button></div><div id="murkMsg"></div></div></div>`;
- setupOtherProject('murkProject');populateDwlWorkerDatalist();initSignatureButtons();
- const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v||''};set('murkProject',d.project);set('murkContract',d.contractNumber);set('murkDate',d.reportDate);set('murkContractor',d.contractor||'JAGD Construction');set('murkSubcontractor',d.subcontractor);set('murkCrew',d.crew);set('murkWorkDescription',d.workDescription);set('murkStatement',d.statement);set('murkPrintName',d.printName);
- document.querySelectorAll('[id^="murkLaborReg"],[id^="murkLaborPrem"]').forEach(e=>e.addEventListener('input',updateMurkTotals));updateMurkTotals();
- document.getElementById('murkUseAllLabor').onclick=()=>{for(let i=0;i<16;i++){const r=d.labor?.[i];if(!r)continue;document.getElementById('murkLaborInclude'+i).checked=!!r.name;document.getElementById('murkLaborReg'+i).value=r.dwlRegular||'';document.getElementById('murkLaborPrem'+i).value=r.dwlPremium||'';}updateMurkTotals();};
- document.getElementById('murkClearLabor').onclick=()=>{for(let i=0;i<16;i++){document.getElementById('murkLaborInclude'+i).checked=false;document.getElementById('murkLaborReg'+i).value='';document.getElementById('murkLaborPrem'+i).value='';}updateMurkTotals();};
- document.getElementById('murkLoadMaterials').onclick=()=>loadPreviousMurkSection('materials');document.getElementById('murkLoadEquipment').onclick=()=>loadPreviousMurkSection('equipment');document.getElementById('murkPasteMaterials').onclick=()=>murkPasteModal('materials');document.getElementById('murkPasteEquipment').onclick=()=>murkPasteModal('equipment');
- document.querySelectorAll('.murkContainer input,.murkContainer select,.murkContainer textarea').forEach(e=>e.addEventListener('change',()=>saveMurkDraft(collectMurk())));
- document.getElementById('murkSaveBtn').onclick=async()=>{const data=collectMurk();const msg=document.getElementById('murkMsg');const labor=data.labor.filter(r=>r.include&&r.name&&(murkNumber(r.regular)+murkNumber(r.premium)>0));if(!data.contractNumber||!data.reportDate){msg.innerHTML='<div class="notice">Contract number and date are required.</div>';return;}if(!labor.length){msg.innerHTML='<div class="notice">Include at least one worker with MURK labor hours.</div>';return;}if(!data.statement.trim()){msg.innerHTML='<div class="notice">Statement of Work Accomplished is required.</div>';return;}if(!data.signatureData){msg.innerHTML='<div class="notice">Contractor signature is required.</div>';return;}const hasMaterials=data.materials.some(r=>String(r.description||r.units||r.qty||r.stock||'').trim());const hasEquipment=data.equipment.some(r=>String(r.id||r.description||r.inUse||r.standby||'').trim());if(!hasMaterials&&!confirm('The MATERIALS section is blank.\n\nWere no materials used today?\n\nPress OK to confirm NO MATERIALS were used, or Cancel to return and enter them.')){msg.innerHTML='<div class="notice">Add the materials used, or save again and confirm that no materials were used.</div>';return;}if(!hasEquipment&&!confirm('The EQUIPMENT section is blank.\n\nWas no equipment used today?\n\nPress OK to confirm NO EQUIPMENT was used, or Cancel to return and enter it.')){msg.innerHTML='<div class="notice">Add the equipment used, or save again and confirm that no equipment was used.</div>';return;}const dupKey=`jagdMurkSubmitted:${data.sourceDwlKey}:${data.revision}`;if(localStorage.getItem(dupKey)&&!confirm('WARNING: This phone already saved a MURK for this DWL.\n\nCancel to review the existing copy. Continue only if this is an intentional correction.'))return;if(!confirm(`This will save the MURK PDF.\n\nJob: ${data.project}\nDate: ${dateToSlashYYYY(data.reportDate)}\n\nContinue?`))return;saveMurkDraft(data);const result=await saveMurkPdf(data,'murkMsg');if(result){localStorage.setItem(dupKey,new Date().toISOString());saveMurkHistory(data);logGeneratedForm('murk',data.project,data.reportDate,'MURK 31');msg.innerHTML+='<div class="success">MURK saved. The draft and recent materials/equipment remain available on this phone.</div>';}};
-}
-async function saveMurkPdf(data,msgId){
-  const msg=document.getElementById(msgId);
-  try{
-    const {PDFDocument, StandardFonts, degrees, rgb}=await ensurePdfLibForMerge();
-    const templateResponse=await fetch('/murk31-template.pdf',{cache:'no-store'});
-    if(!templateResponse.ok) throw new Error(`Official MURK 31 template could not be loaded (${templateResponse.status})`);
-    const pdfDoc=await PDFDocument.load(await templateResponse.arrayBuffer(),{ignoreEncryption:true});
-    const page=pdfDoc.getPages()[0];
-    const font=await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont=await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-    // Clear and flatten every existing form widget first. This avoids the official template's duplicate field names
-    // causing labor and equipment values to mirror into the wrong boxes. The agency artwork itself stays untouched.
-    try{
-      const form=pdfDoc.getForm();
-      if(form.deleteXFA) form.deleteXFA();
-      form.getFields().forEach(f=>{try{if(f.constructor?.name==='PDFTextField')f.setText('');}catch(e){}});
-      try{form.updateFieldAppearances(font);}catch(e){}
-      form.flatten();
-    }catch(e){console.warn('MURK form flatten warning',e);}
-
-    const stamp=(rect,value,opt={})=>{
-      const text=String(value??'').trim(); if(!text)return;
-      const [x1,y1,x2,y2]=rect;
-      const useFont=opt.bold?boldFont:font;
-      let size=opt.size||10;
-      const maxWidth=(y2-y1)-(opt.padX||5);
-      while(size>(opt.minSize||6.5) && useFont.widthOfTextAtSize(text,size)>maxWidth) size-=0.25;
-      // The official MURK page is rotated 90 degrees. Centering on the PDF x-axis centers
-      // the text vertically in the visible landscape box; y is the left-to-right start.
-      const boxHeight=x2-x1;
-      const centeredX=x1+Math.max(4,(boxHeight-size*0.72)/2);
-      page.drawText(text,{x:centeredX+(opt.offsetX||0),y:y1+(opt.offsetY||3),size,font:useFont,rotate:degrees(90)});
-    };
-    const fmt=v=>{const n=murkNumber(v);return n?String(Number(n.toFixed(2))):'';};
-    const rowRect=(row,y1,y2)=>{const x1=124.08+(row-1)*19.2;return [x1,y1,x1+17.64,y2];};
-
-    // The official form's Total fields carry a default calculated zero. Cover only the inside
-    // of those data cells after flattening, leaving every printed border and agency label intact.
-    for(let i=1;i<=16;i++){
-      const r=rowRect(i,291.12,323.28);
-      page.drawRectangle({x:r[0]+1,y:r[1]+1,width:r[2]-r[0]-2,height:r[3]-r[1]-2,color:rgb(1,1,1)});
-    }
-
-    // Header - exact official template boxes.
-    stamp([66.36,25.92,88.08,180.96],data.contractNumber,{size:13.5,minSize:10,offsetX:5});
-    stamp([66.36,183.0,88.08,323.16],data.contractor||'JAGD Construction',{size:13.5,minSize:10,offsetX:5});
-    stamp([66.36,325.92,88.08,449.16],data.itemNumber,{size:13,minSize:10,offsetX:5});
-    stamp([66.36,451.2,88.08,704.64],data.workDescription,{size:13.5,minSize:10,offsetX:5});
-    stamp([66.36,706.68,88.08,764.76],dateToSlashYYYY(data.reportDate),{size:12,minSize:9.5,offsetX:5});
-
-    const labor=(data.labor||[]).filter(r=>r.include&&r.name).slice(0,16);
-    const materials=(data.materials||[]).filter(r=>r.description||r.qty||r.units||r.stock).slice(0,16);
-    const equipment=(data.equipment||[]).filter(r=>r.description||r.id||r.inUse||r.standby).slice(0,16);
-    for(let i=1;i<=16;i++){
-      const l=labor[i-1]||{}, m=materials[i-1]||{}, e=equipment[i-1]||{};
-      stamp(rowRect(i,41.64,181.08),l.name,{size:13,minSize:10,offsetX:4});
-      stamp(rowRect(i,183.0,220.44),l.tradeGroup,{size:11.5,minSize:9,offsetX:4});
-      stamp(rowRect(i,222.24,254.88),fmt(l.regular),{size:13,minSize:10,offsetX:6.5});
-      stamp(rowRect(i,256.68,289.32),fmt(l.premium),{size:13,minSize:10,offsetX:6.5});
-      stamp(rowRect(i,291.12,323.28),l.name?fmt(murkNumber(l.regular)+murkNumber(l.premium)):'',{size:13,minSize:10,offsetX:6.5});
-      stamp(rowRect(i,325.8,449.28),m.description,{size:12,minSize:9,offsetX:4});
-      stamp(rowRect(i,451.2,479.64),m.units,{size:11.5,minSize:9,offsetX:4});
-      stamp(rowRect(i,481.56,514.44),m.qty,{size:11.5,minSize:9,offsetX:4});
-      stamp(rowRect(i,516.36,545.4),m.stock,{size:11.5,minSize:9,offsetX:4});
-      stamp(rowRect(i,548.16,566.52),e.id,{size:10.5,minSize:8,offsetX:4});
-      stamp(rowRect(i,568.44,704.76),e.description,{size:12,minSize:9,offsetX:4});
-      stamp(rowRect(i,706.56,735.0),fmt(e.inUse),{size:11.5,minSize:9,offsetX:4});
-      stamp(rowRect(i,736.8,764.88),fmt(e.standby),{size:11.5,minSize:9,offsetX:4});
-    }
-
-    stamp([440.473,26.16,471.72,764.52],data.statement,{size:13.5,minSize:10,offsetX:5});
-    stamp([502.32,41.28,531.12,182.88],data.printName,{size:13,minSize:10,offsetX:5});
-    stamp([501.0,341.04,529.8,377.88],dateToSlashYYYY(data.reportDate),{size:12,minSize:9.5,offsetX:5});
-
-    if(data.signatureData){
-      try{
-        const png=await pdfDoc.embedPng(data.signatureData);
-        // Official contractor signature box, accounting for the template's 90-degree page rotation.
-        page.drawImage(png,{x:530,y:224,width:98,height:24,rotate:degrees(90)});
-      }catch(e){console.warn('MURK signature could not be embedded',e);}
-    }
-
-    const outBytes=await pdfDoc.save({useObjectStreams:false,addDefaultPage:false});
-    const title=`MURK ${cleanDwlFilePart(data.project)} ${dateToDotMMDDYY(data.reportDate)}`;
-    setNextPdfFileTitle(title);
-    const filename=safePdfFileName();
-    downloadBlobFile(new Blob([outBytes],{type:'application/pdf'}),filename);
-    if(msg) msg.innerHTML='<div class="success">Official NYSDOT MURK 31 PDF saved using the unchanged agency form.</div>';
-    return {ok:true,filename,bytes:outBytes};
-  }catch(err){
-    console.error('Official MURK PDF save failed',err);
-    if(msg) msg.innerHTML=`<div class="notice">Official MURK 31 PDF could not be created: ${esc(err.message)}. Do not submit a recreated form to DOT.</div>`;
-    return false;
-  }
-}
 
 // v48: Extra JAGD forms converted from PDF links into phone-friendly web forms.
 const EXTRA_FORM_ROWS = 14;
@@ -2946,7 +2757,7 @@ function setupAdminMaterialForm(){
 }
 
 
-function router(){const h=location.hash||'#/'; if(h.startsWith('#/admin')) adminView(); else if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/dwl')) dwlForm(); else if(h.startsWith('#/murk')) murkForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else if(h.startsWith('#/bill-of-lading')) bolForm(); else if(h.startsWith('#/incident-report')) incidentReportForm(); else if(h.startsWith('#/heavy-accident-report')) heavyAccidentReportForm(); else if(h.startsWith('#/disciplinary-report')) disciplinaryReportForm(); else home();}
+function router(){const h=location.hash||'#/'; if(h.startsWith('#/admin')) adminView(); else if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/dwl')) dwlForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else if(h.startsWith('#/bill-of-lading')) bolForm(); else if(h.startsWith('#/incident-report')) incidentReportForm(); else if(h.startsWith('#/heavy-accident-report')) heavyAccidentReportForm(); else if(h.startsWith('#/disciplinary-report')) disciplinaryReportForm(); else home();}
 
 window.addEventListener('beforeprint',()=>{
   const h=location.hash||'#/';
