@@ -30,7 +30,7 @@ function sectionProgress(section, trackerData) {
     return { linked: false, percent: 0, completedSteps: 0, totalSteps: 0, sourceNames: [] };
   }
 
-  const linkedAreas = trackerData.areas.filter(area => ids.includes(area.id));
+  const linkedAreas = trackerData.areas.filter(area => ids.includes(area.id) && area.trackingActive !== false);
   const totals = linkedAreas.reduce((acc, area) => {
     const p = areaPhysicalProgress(area);
     acc.completedSteps += p.completedSteps;
@@ -166,6 +166,26 @@ function renderEarnedProgress(data, trackerData) {
   }).join('');
 }
 
+
+function renderBearingBreakdown(data) {
+  const body = document.getElementById('bearingBreakdownBody');
+  if (!body) return;
+  body.innerHTML = (data.bearingBreakdown || []).map(row => {
+    const area = (data.officialAreas || []).find(a => a.id === row.officialAreaId) || {};
+    return `
+      <tr>
+        <td><span class="pay-color-pill" style="--pay-color:${area.color || '#64748b'};">${row.area}</span></td>
+        <td>${row.trackerName || ''}</td>
+        <td><strong>${Number(row.fieldQuantity || 0).toLocaleString()}</strong> ${row.unit || ''}</td>
+        <td><strong>${Number(row.billingQuantity || 0).toLocaleString()}</strong> ${row.unit || ''}</td>
+        <td>${row.source || ''}</td>
+        <td>${row.note || ''}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+
 function renderItems(data) {
   const body = document.getElementById('paymentItemsBody');
   body.innerHTML = (data.items || []).map(item => {
@@ -202,6 +222,7 @@ async function unlockAndLoad(password) {
   renderKpis(data, trackerData);
   renderEarnedProgress(data, trackerData);
   renderChart(data, trackerData);
+  renderBearingBreakdown(data);
   renderItems(data);
 }
 

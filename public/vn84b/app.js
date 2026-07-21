@@ -1,16 +1,26 @@
 let trackerData = null;
 let areaChart = null;
 
-const AREA_COLORS = {
-  'blue-bridge-87': { name: 'Blue Bridge 87', color: '#2563eb', soft: '#eff6ff' },
-  'belt-parkway-bearings': { name: 'Belt Parkway Bearings', color: '#ca8a04', soft: '#fefce8' },
-  'blue-bridge-237-crosses': { name: 'Blue Bridge 237 New Crosses', color: '#16a34a', soft: '#f0fdf4' },
-  'orange-bridge-piers': { name: 'Orange Bridge Piers', color: '#f97316', soft: '#fff7ed' },
-  'belt-parkway-jacking': { name: 'Belt Parkway Jacking Locations', color: '#dc2626', soft: '#fef2f2' }
+const OFFICIAL_AREA_COLORS = {
+  'area-a': { label: 'Area A / Green', color: '#16a34a', soft: '#f0fdf4' },
+  'area-b': { label: 'Area B / Yellow', color: '#eab308', soft: '#fefce8' },
+  'area-c': { label: 'Area C / Blue', color: '#2563eb', soft: '#eff6ff' },
+  'area-d': { label: 'Area D / Orange', color: '#f97316', soft: '#fff7ed' },
+  'area-e': { label: 'Area E / Pink', color: '#db2777', soft: '#fdf2f8' },
+  'general': { label: 'General', color: '#64748b', soft: '#f8fafc' }
 };
 
 function areaColor(area) {
-  return AREA_COLORS[area.id] || { color: '#334155', soft: '#f8fafc' };
+  if (area && area.color && area.soft) return { color: area.color, soft: area.soft, label: area.officialAreaLabel || area.colorName || '' };
+  return OFFICIAL_AREA_COLORS[(area && area.officialAreaId) || 'general'] || { color: '#334155', soft: '#f8fafc' };
+}
+
+function activeAreas(data) {
+  return (data.areas || []).filter(area => area.trackingActive !== false);
+}
+
+function officialAreas(data) {
+  return data.officialAreas || [];
 }
 
 function storeBrowserBackup(data) {
@@ -81,7 +91,8 @@ function subAreaPercent(area, sub) {
 }
 
 function overallPercent(data) {
-  const totals = data.areas.reduce((acc, area) => {
+  const areas = activeAreas(data);
+  const totals = areas.reduce((acc, area) => {
     acc.total += area.total * area.stages.length;
     acc.done += area.stages.reduce((sum, stage) => sum + getStageCompleted(area, stage), 0);
     return acc;
@@ -90,9 +101,25 @@ function overallPercent(data) {
 }
 
 function overallBillingPercent(data) {
-  const perArea = data.areas.map(area => billingPercent(area));
+  const areas = activeAreas(data);
+  const perArea = areas.map(area => billingPercent(area));
   if (!perArea.length) return 0;
   return Math.round((perArea.reduce((a,b)=>a+b,0) / perArea.length) * 10) / 10;
+}
+
+function officialAreaProgress(data, officialAreaId) {
+  const related = (data.areas || []).filter(a => a.officialAreaId === officialAreaId);
+  const active = related.filter(a => a.trackingActive !== false);
+  const totals = active.reduce((acc, area) => {
+    acc.total += area.total * area.stages.length;
+    acc.done += area.stages.reduce((sum, stage) => sum + getStageCompleted(area, stage), 0);
+    return acc;
+  }, { done: 0, total: 0 });
+  return {
+    totalScopes: related.length,
+    activeScopes: active.length,
+    percent: pct(totals.done, totals.total)
+  };
 }
 
 async function loadData() {
@@ -117,6 +144,7 @@ function render() {
   const billingEl = document.getElementById('overallBillingPercent');
   if (billingEl) billingEl.textContent = `${overallBillingPercent(trackerData)}%`;
   renderSummary();
+  renderOfficialAreas();
   renderAreaSelects();
   renderChart();
   renderAreas();
@@ -127,12 +155,31 @@ function renderSummary() {
   const grid = document.getElementById('summaryGrid');
   grid.innerHTML = trackerData.areas.map((area) => {
     const c = areaColor(area);
+    const status = area.trackingStatus || (area.trackingActive === false ? 'Future / Not Started' : 'Active Field Tracking');
+    const inactive = area.trackingActive === false ? ' inactive-card' : '';
     return `
-      <article class="summary-card" style="--area-color:${c.color}; --area-soft:${c.soft};">
+      <article class="summary-card${inactive}" style="--area-color:${c.color}; --area-soft:${c.soft};">
+        <span class="area-label">${area.officialAreaLabel || area.colorName || ''}</span>
         <h3>${area.name}</h3>
         <strong>${billingPercent(area)}%</strong>
-        <p>Stage average · ${areaPercent(area)}% physical complete</p>
-        <small>${area.total.toLocaleString()} ${area.unitLabel}</small>
+        <p>${status} · ${areaPercent(area)}% physical complete</p>
+        <small>${area.total.toLocaleString()} ${area.unitLabel}${area.billingQuantity ? ` · billing qty ${Number(area.billingQuantity).toLocaleString()}` : ''}</small>
+      </article>
+    `;
+  }).join('');
+}
+
+function renderOfficialAreas() {
+  const grid = document.getElementById('officialAreaGrid');
+  if (!grid) return;
+  grid.innerHTML = officialAreas(trackerData).map(area => {
+    const prog = officialAreaProgress(trackerData, area.id);
+    return `
+      <article class="official-area-card" style="--area-color:${area.color}; --area-soft:${area.soft};">
+        <strong>${area.shortName || area.name}</strong>
+        <h3>${area.name}</h3>
+        <p>${area.description || ''}</p>
+        <span>${prog.activeScopes} active / ${prog.totalScopes} total scopes · ${prog.percent}% active field progress</span>
       </article>
     `;
   }).join('');
@@ -141,10 +188,11 @@ function renderSummary() {
 function renderAreaSelects() {
   const current = document.getElementById('areaSelect').value;
   const noteCurrent = document.getElementById('noteAreaSelect').value;
-  const options = trackerData.areas.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-  document.getElementById('areaSelect').innerHTML = options;
-  document.getElementById('noteAreaSelect').innerHTML = `<option value="">General</option>${options}`;
-  if (current) document.getElementById('areaSelect').value = current;
+  const activeOptions = activeAreas(trackerData).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  const allOptions = trackerData.areas.map(a => `<option value="${a.id}">${a.name}${a.trackingActive === false ? ' (future/not started)' : ''}</option>`).join('');
+  document.getElementById('areaSelect').innerHTML = activeOptions;
+  document.getElementById('noteAreaSelect').innerHTML = `<option value="">General</option>${allOptions}`;
+  if (current && activeAreas(trackerData).some(a => a.id === current)) document.getElementById('areaSelect').value = current;
   if (noteCurrent) document.getElementById('noteAreaSelect').value = noteCurrent;
   renderStageSelect();
 }
@@ -193,7 +241,7 @@ function renderCompletedLimit() {
 
 function renderChart() {
   const ctx = document.getElementById('areaChart');
-  const labels = trackerData.areas.map(a => a.name);
+  const labels = trackerData.areas.map(a => a.name.replace('Area ', 'A').slice(0, 34));
   const stageNames = ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'];
   const datasets = stageNames.map(stage => ({
     label: stage,
@@ -242,30 +290,57 @@ function renderSubAreas(area) {
 
 function renderAreas() {
   const list = document.getElementById('areaList');
-  list.innerHTML = trackerData.areas.map(area => `
-    <article class="area-card" style="--area-color:${areaColor(area).color}; --area-soft:${areaColor(area).soft};">
-      <div class="area-head">
-        <div>
-          <h3>${area.name}</h3>
-          <p>${area.description}</p>
-        </div>
-        <span class="badge">${billingPercent(area)}% stage avg</span>
-      </div>
-      ${renderSubAreas(area)}
-      ${area.stages.map(stage => {
-        const done = getStageCompleted(area, stage);
-        const percentage = pct(done, area.total);
-        return `
-          <div class="stage-row ${stageClass(stage)}">
-            <div class="stage-top"><strong>${stage}</strong><span>${done.toLocaleString()} / ${area.total.toLocaleString()} ${area.unitLabel} · ${percentage}% of this stage</span></div>
-            <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, percentage)}%"></div></div>
+  const grouped = officialAreas(trackerData).map(official => {
+    const areas = (trackerData.areas || []).filter(area => area.officialAreaId === official.id);
+    if (!areas.length) return '';
+    return `
+      <section class="official-area-section" style="--area-color:${official.color}; --area-soft:${official.soft};">
+        <div class="official-section-head">
+          <div>
+            <span>${official.shortName}</span>
+            <h2>${official.name}</h2>
+            <p>${official.description}</p>
           </div>
-        `;
-      }).join('')}
-    </article>
-  `).join('');
+        </div>
+        ${areas.map(area => {
+          const c = areaColor(area);
+          const inactive = area.trackingActive === false ? ' inactive-card' : '';
+          const status = area.trackingStatus || (area.trackingActive === false ? 'Future / Not Started' : 'Active Field Tracking');
+          return `
+            <article class="area-card${inactive}" style="--area-color:${c.color}; --area-soft:${c.soft};">
+              <div class="area-head">
+                <div>
+                  <span class="area-label">${area.officialAreaLabel || area.colorName || ''}</span>
+                  <h3>${area.name}</h3>
+                  <p>${area.description}</p>
+                  ${area.quantityNote ? `<p class="quantity-note">${area.quantityNote}</p>` : ''}
+                </div>
+                <span class="badge">${status}</span>
+              </div>
+              <div class="quantity-strip">
+                <span>Field qty: <b>${Number(area.fieldQuantity || area.total || 0).toLocaleString()} ${area.unitLabel}</b></span>
+                ${area.billingQuantity ? `<span>Billing qty: <b>${Number(area.billingQuantity).toLocaleString()}</b></span>` : ''}
+                ${area.paymentItemRefs && area.paymentItemRefs.length ? `<span>Payment item(s): <b>${area.paymentItemRefs.join(', ')}</b></span>` : ''}
+              </div>
+              ${renderSubAreas(area)}
+              ${area.stages.map(stage => {
+                const done = getStageCompleted(area, stage);
+                const percentage = pct(done, area.total);
+                return `
+                  <div class="stage-row ${stageClass(stage)}">
+                    <div class="stage-top"><strong>${stage}</strong><span>${done.toLocaleString()} / ${area.total.toLocaleString()} ${area.unitLabel} · ${percentage}% of this stage</span></div>
+                    <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, percentage)}%"></div></div>
+                  </div>
+                `;
+              }).join('')}
+            </article>
+          `;
+        }).join('')}
+      </section>
+    `;
+  }).join('');
+  list.innerHTML = grouped || '<p>No tracker areas configured.</p>';
 }
-
 function renderLogs() {
   const daily = document.getElementById('dailyLog');
   daily.innerHTML = (trackerData.dailyLog || []).slice(0, 60).map(row => `

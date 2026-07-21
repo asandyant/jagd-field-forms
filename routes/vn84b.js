@@ -26,6 +26,93 @@ function safeClone(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
+
+const officialAreas = [
+  {
+    id: 'area-a',
+    letter: 'A',
+    colorName: 'Green',
+    color: '#16a34a',
+    soft: '#f0fdf4',
+    name: 'Area A / Green — Eastbound Mainline & 92nd St Exit',
+    shortName: 'Area A / Green',
+    description: 'Eastbound Mainline Upper, 92nd St Exit, Ramp F bearing and jacking-related office items.'
+  },
+  {
+    id: 'area-b',
+    letter: 'B',
+    colorName: 'Yellow',
+    color: '#eab308',
+    soft: '#fefce8',
+    name: 'Area B / Yellow — New Belt Ramps',
+    shortName: 'Area B / Yellow',
+    description: 'New Belt Ramp connection points, H8 anti-graffiti, fire hose valves, and fire department connections.'
+  },
+  {
+    id: 'area-c',
+    letter: 'C',
+    colorName: 'Blue',
+    color: '#2563eb',
+    soft: '#eff6ff',
+    name: 'Area C / Blue — Belt Parkway Tangent / SP Ramp',
+    shortName: 'Area C / Blue',
+    description: 'Belt Parkway Tangent / SP Ramp work. Current field tracking is mainly here: bearings, new crosses, and emergency steel repairs.'
+  },
+  {
+    id: 'area-d',
+    letter: 'D',
+    colorName: 'Orange',
+    color: '#f97316',
+    soft: '#fff7ed',
+    name: 'Area D / Orange — Existing Belt Parkway Horseshoe',
+    shortName: 'Area D / Orange',
+    description: 'Existing Belt Parkway Horseshoe work, including KEIM coating, holes, bearings, widening touch-up, blast/paint, and access.'
+  },
+  {
+    id: 'area-e',
+    letter: 'E',
+    colorName: 'Pink',
+    color: '#db2777',
+    soft: '#fdf2f8',
+    name: 'Area E / Pink — New Yard Entrance & Exit',
+    shortName: 'Area E / Pink',
+    description: 'New Yard Entrance / Exit, also shown as Ramp N in the payment breakdown.'
+  },
+  {
+    id: 'general',
+    letter: '',
+    colorName: 'Gray',
+    color: '#64748b',
+    soft: '#f8fafc',
+    name: 'General / Contract-Wide',
+    shortName: 'General',
+    description: 'General contract items not tied to one field color zone.'
+  }
+];
+
+function officialAreaById(id) {
+  return officialAreas.find(a => a.id === id) || officialAreas[officialAreas.length - 1];
+}
+
+function areaMeta(areaId, overrides = {}) {
+  const official = officialAreaById(overrides.officialAreaId || 'area-c');
+  return {
+    officialAreaId: official.id,
+    officialAreaLabel: official.shortName,
+    officialAreaName: official.name,
+    colorName: official.colorName,
+    color: official.color,
+    soft: official.soft,
+    trackingActive: overrides.trackingActive !== undefined ? overrides.trackingActive : true,
+    trackingStatus: overrides.trackingStatus || (overrides.trackingActive === false ? 'Future / Not Started' : 'Active Field Tracking'),
+    billingQuantity: overrides.billingQuantity ?? null,
+    fieldQuantity: overrides.fieldQuantity ?? null,
+    quantityNote: overrides.quantityNote || '',
+    paymentItemRefs: overrides.paymentItemRefs || []
+  };
+}
+
+
 const bearingSubAreas = [
   { id: 'abutment', name: 'Abutment', total: 10 },
   { id: 'sp1', name: 'SP1', total: 20 },
@@ -2028,64 +2115,97 @@ const emergencyRepairRows = [
 
 const paymentBreakdown = {
   id: 'vn84b-payment-breakdown',
-  name: 'VN84-B Payment Breakdown',
+  name: 'VN84-B Official Area Payment Breakdown',
   source: 'VN-84B_Payment_Breakdown_06.30.26.xlsx and Defoe Item Comp.xlsx',
-  officeNote: 'Email note: Blue is SP ramp, Orange is Horseshoe, and Green is where the horseshoe connects to EB Upper mainline.',
+  officeNote: 'Official PRDCO1 colors now used throughout: Area A Green, Area B Yellow, Area C Blue, Area D Orange, Area E Pink. Emergency Steel Repairs red/blue is a separate repair-class legend from the repair drawing.',
   contractTotal: 11970600,
   period: '6.01.26 - 6.30.26',
   approvedToDate: 25000,
+  officialAreas: officialAreas,
   sections: [
-    { id: 'general', name: 'General / Contract Start', color: '#64748b', total: 25000, progressAreaIds: [], description: 'General contract item not tied to the field color zones.' },
-    { id: 'sp-ramp', name: 'Blue — SP Ramp / Belt Parkway Tangent', color: '#2563eb', total: 7749530, progressAreaIds: ['blue-bridge-87', 'belt-parkway-bearings', 'blue-bridge-237-crosses', 'belt-parkway-jacking'], description: 'Blue area from the office email. Includes Belt Parkway tangent / SP ramp items.' },
-    { id: 'horseshoe', name: 'Orange — Horseshoe', color: '#f97316', total: 3073920, progressAreaIds: ['orange-bridge-piers'], description: 'Orange area from the office email. Includes Horseshoe holes, bearings, blast/paint, and access.' },
-    { id: 'ebu-connection', name: 'Green — Horseshoe to EB Upper Mainline', color: '#16a34a', total: 922700, progressAreaIds: [], description: 'Green area from the office email. Includes EBU Upper/92nd St Exit connection items.' },
-    { id: 'ramp-n', name: 'Ramp N / Yard Ramp', color: '#7c3aed', total: 199450, progressAreaIds: [], description: 'Ramp N items from the payment breakdown.' }
+    { id: 'general', officialAreaId: 'general', name: 'General / Contract-Wide', colorName: 'Gray', color: '#64748b', total: 25000, progressAreaIds: [], description: 'General work plan item not tied to a field color area.' },
+    { id: 'area-a-green', officialAreaId: 'area-a', name: 'Area A / Green — Eastbound Mainline & 92nd St Exit', colorName: 'Green', color: '#16a34a', total: 922700, progressAreaIds: ['area-a-ebu-bearings'], description: 'EBU Mainline Upper / 92nd St Exit / Ramp F items. Bearing quantity currently shown as an office item until field tracking starts.' },
+    { id: 'area-b-yellow', officialAreaId: 'area-b', name: 'Area B / Yellow — New Belt Ramps', colorName: 'Yellow', color: '#eab308', total: 851200, progressAreaIds: ['area-b-new-belt-ramps'], description: 'New Belt Ramp connections, H8 anti-graffiti, fire hose valves, and fire department connections.' },
+    { id: 'area-c-blue', officialAreaId: 'area-c', name: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', colorName: 'Blue', color: '#2563eb', total: 6898330, progressAreaIds: ['blue-bridge-87', 'belt-parkway-bearings', 'blue-bridge-237-crosses'], description: 'Main active field area so far. Includes SP Ramp / Belt Parkway bearings, new crosses, tangent steel repair paint, tangent KEIM, access, and future jacking.' },
+    { id: 'area-d-orange', officialAreaId: 'area-d', name: 'Area D / Orange — Existing Belt Parkway Horseshoe', colorName: 'Orange', color: '#f97316', total: 3073920, progressAreaIds: ['orange-bridge-piers', 'area-d-horseshoe-bearings'], description: 'Existing Belt Parkway Horseshoe items: holes, KEIM coating, bearings, widening touch-up, blast/paint, and access.' },
+    { id: 'area-e-pink', officialAreaId: 'area-e', name: 'Area E / Pink — New Yard Entrance & Exit / Ramp N', colorName: 'Pink', color: '#db2777', total: 199450, progressAreaIds: ['area-e-yard-ramp-bearings'], description: 'Ramp N / Yard Ramp items: touch-up, cut lines, and de-lead bearings.' }
   ],
   items: [
-    { item: 1, sectionId: 'general', description: 'Work plans', amount: 25000 },
-    { item: 2, sectionId: 'sp-ramp', description: 'New Belt Ramp - Clean & Paint All New Connection Points per Spec Sections 09930 & 09940', amount: 775000 },
-    { item: 3, sectionId: 'sp-ramp', description: 'Anti-Graffiti of H8', amount: 7200 },
-    { item: 4, sectionId: 'sp-ramp', description: 'Clean, prep & paint fire hose valve Stations per Spec Sections 02082, 09931 & 09940', amount: 54000 },
-    { item: 5, sectionId: 'sp-ramp', description: 'Clean, prep & paint fire department connections per Spec Sections 02082, 09931 & 09940', amount: 15000 },
-    { item: 6, sectionId: 'sp-ramp', description: 'Clean, prep & paint Belt parkway tangent holes per Spec Sections 02082, 09931 & 09940', amount: 44080 },
-    { item: 7, sectionId: 'sp-ramp', description: 'Belt parkway tangent - Keim coat per spec section 09930', amount: 610000 },
-    { item: 8, sectionId: 'sp-ramp', description: 'Anti-Graffiti of SP piers in the park and along Fort Hamilton', amount: 77500 },
-    { item: 9, sectionId: 'sp-ramp', description: 'Clean, prep & paint Belt parkway tangent steel repairs per spec section 02082, 09931 & 00940', amount: 78000 },
-    { item: 10, sectionId: 'sp-ramp', description: 'Clean, prep & paint Belt parkway tangent bearings per spec section 02082, 09931 & 00940', amount: 118750, trackerLink: 'Belt Parkway Bearings' },
-    { item: 11, sectionId: 'sp-ramp', description: 'Belt Parkway tangent - Localized paint removal (Jacking Locations) per spec sections 02082, 09931 & 09940', amount: 175000, trackerLink: 'Belt Parkway Jacking Locations' },
-    { item: 12, sectionId: 'sp-ramp', description: 'Belt Parkway Tangent - Localized Paint Removal (At Widening Connections) per Spec Sections 02082, 09931 & 09940', amount: 75000 },
-    { item: 13, sectionId: 'sp-ramp', description: 'Belt Parkway Tangent - Blast & Paint per Spec Sections 02082, 09931 & 09940', amount: 3320000 },
-    { item: 14, sectionId: 'sp-ramp', description: 'Belt Parkway Tangent - Access Platform', amount: 2400000 },
-    { item: 15, sectionId: 'horseshoe', description: 'Clean, Prep & Paint Belt Parkway Horseshoe Holes per Spec Sections 02082, 09931 & 09940', amount: 30720 },
-    { item: 16, sectionId: 'horseshoe', description: 'Belt Parkway Horseshoe - Keim Coating per Spec Section 09930', amount: 403200 },
-    { item: 17, sectionId: 'horseshoe', description: 'Clean, Prep & Paint Belt Parkway Horseshoe Bearings per Spec Sections 02082, 09931 & 09940', amount: 90000 },
-    { item: 18, sectionId: 'horseshoe', description: 'Belt Parkway Horseshoe Localized Paint Removal (At Widening Connections) per Spec Sections 02082, 09931 & 09940', amount: 145000 },
-    { item: 19, sectionId: 'horseshoe', description: 'Belt Parkway Horseshoe - Blast & Paint per Spec Sections 02082, 09931 & 09940', amount: 1500000 },
-    { item: 20, sectionId: 'horseshoe', description: 'Belt Parkway Horseshoe - Access Platform', amount: 905000 },
-    { item: 21, sectionId: 'ebu-connection', description: 'Clean, Prep & Paint EBU Mainline Upper/92nd St Exit Holes per Spec Sections 02082, 09931 & 09940', amount: 127200 },
-    { item: 22, sectionId: 'ebu-connection', description: 'Clean, Prep & Paint EBU Mainline Upper/92nd St Exit Holes per Spec Sections 02082, 09931 & 09940', amount: 14400 },
-    { item: 23, sectionId: 'ebu-connection', description: 'EBU Mainline Upper/92nd St Exit Bearings per Spec Sections 02082, 09931 & 09940', amount: 60625 },
-    { item: 24, sectionId: 'ebu-connection', description: 'EBU Mainline Upper/92nd St Exit Localized Paint Removal (Jacking Locations) per Spec Sections 02082, 09931 & 09940', amount: 23250 },
-    { item: 25, sectionId: 'ebu-connection', description: 'Clean, Prep & Paint EBU Mainline Upper/92nd St Exit Touch-Up (Floorbeam Extensions) per Spec Sections 02082, 09931 & 09940', amount: 194000 },
-    { item: 26, sectionId: 'ebu-connection', description: 'EBU Mainline Upper/92nd St Exit Localized Paint Removal (At Widening Connections) per Spec Sections 02082, 09931 & 09940', amount: 255225 },
-    { item: 27, sectionId: 'ebu-connection', description: 'Access Platform for Jack & Ped Work', amount: 248000 },
-    { item: 29, sectionId: 'ramp-n', description: 'Clean, Prep & Paint Ramp N Touch-Up (Connections) per Spec Sections 02082, 09931 & 09940', amount: 95700 },
-    { item: 30, sectionId: 'ramp-n', description: 'Ramp N Localized Paint Removal (Cut Lines) per Spec Sections 02082, 09931 & 09940', amount: 72500 },
-    { item: 31, sectionId: 'ramp-n', description: 'Ramp N - De-Lead Bearings per Spec Sections 02082, 09931 & 09940', amount: 31250 }
+    { item: 1, sectionId: 'general', officialAreaId: 'general', description: 'Work plans', amount: 25000 },
+    { item: 2, sectionId: 'area-b-yellow', officialAreaId: 'area-b', description: 'New Belt Ramp - Clean & Paint All New Connection Points per Spec Sections 09930 & 09940', amount: 775000 },
+    { item: 3, sectionId: 'area-b-yellow', officialAreaId: 'area-b', description: 'Anti-Graffiti of H8', amount: 7200 },
+    { item: 4, sectionId: 'area-b-yellow', officialAreaId: 'area-b', description: 'Clean, prep & paint fire hose valve Stations per Spec Sections 02082, 09931 & 09940', amount: 54000 },
+    { item: 5, sectionId: 'area-b-yellow', officialAreaId: 'area-b', description: 'Clean, prep & paint fire department connections per Spec Sections 02082, 09931 & 09940', amount: 15000 },
+    { item: 6, sectionId: 'area-c-blue', officialAreaId: 'area-c', description: 'Clean, prep & paint Belt parkway tangent holes per Spec Sections 02082, 09931 & 09940', amount: 44080 },
+    { item: 7, sectionId: 'area-c-blue', officialAreaId: 'area-c', description: 'Belt parkway tangent - Keim coat per spec section 09930', amount: 610000 },
+    { item: 8, sectionId: 'area-c-blue', officialAreaId: 'area-c', description: 'Anti-Graffiti of SP piers in the park and along Fort Hamilton', amount: 77500 },
+    { item: 9, sectionId: 'area-c-blue', officialAreaId: 'area-c', description: 'Clean, prep & paint Belt parkway tangent steel repairs per spec section 02082, 09931 & 00940', amount: 78000, trackerLink: 'Area C / Blue — Emergency Steel Repairs' },
+    { item: 10, sectionId: 'area-c-blue', officialAreaId: 'area-c', description: 'Clean, prep & paint Belt parkway tangent bearings per spec section 02082, 09931 & 00940', amount: 118750, trackerLink: 'Area C / Blue — SP Ramp Bearings' },
+    { item: 11, sectionId: 'area-c-blue', officialAreaId: 'area-c', description: 'Belt Parkway tangent - Localized paint removal (Jacking Locations) per spec sections 02082, 09931 & 09940', amount: 175000, trackerLink: 'Future / Not Started — Area C Jacking Locations' },
+    { item: 12, sectionId: 'area-c-blue', officialAreaId: 'area-c', description: 'Belt Parkway Tangent - Localized Paint Removal (At Widening Connections) per Spec Sections 02082, 09931 & 09940', amount: 75000 },
+    { item: 13, sectionId: 'area-c-blue', officialAreaId: 'area-c', description: 'Belt Parkway Tangent - Blast & Paint per Spec Sections 02082, 09931 & 09940', amount: 3320000 },
+    { item: 14, sectionId: 'area-c-blue', officialAreaId: 'area-c', description: 'Belt Parkway Tangent - Access Platform', amount: 2400000 },
+    { item: 15, sectionId: 'area-d-orange', officialAreaId: 'area-d', description: 'Clean, Prep & Paint Belt Parkway Horseshoe Holes per Spec Sections 02082, 09931 & 09940', amount: 30720 },
+    { item: 16, sectionId: 'area-d-orange', officialAreaId: 'area-d', description: 'Belt Parkway Horseshoe - Keim Coating per Spec Section 09930', amount: 403200, trackerLink: 'Area D / Orange — Horseshoe Piers / KEIM Coating' },
+    { item: 17, sectionId: 'area-d-orange', officialAreaId: 'area-d', description: 'Clean, Prep & Paint Belt Parkway Horseshoe Bearings per Spec Sections 02082, 09931 & 09940', amount: 90000, trackerLink: 'Area D / Orange — Horseshoe Bearings' },
+    { item: 18, sectionId: 'area-d-orange', officialAreaId: 'area-d', description: 'Belt Parkway Horseshoe Localized Paint Removal (At Widening Connections) per Spec Sections 02082, 09931 & 09940', amount: 145000 },
+    { item: 19, sectionId: 'area-d-orange', officialAreaId: 'area-d', description: 'Belt Parkway Horseshoe - Blast & Paint per Spec Sections 02082, 09931 & 09940', amount: 1500000 },
+    { item: 20, sectionId: 'area-d-orange', officialAreaId: 'area-d', description: 'Belt Parkway Horseshoe - Access Platform', amount: 905000 },
+    { item: 21, sectionId: 'area-a-green', officialAreaId: 'area-a', description: 'Clean, Prep & Paint EBU Mainline Upper/92nd St Exit Holes per Spec Sections 02082, 09931 & 09940', amount: 127200 },
+    { item: 22, sectionId: 'area-a-green', officialAreaId: 'area-a', description: 'Clean, Prep & Paint EBU Mainline Upper/92nd St Exit Holes per Spec Sections 02082, 09931 & 09940', amount: 14400 },
+    { item: 23, sectionId: 'area-a-green', officialAreaId: 'area-a', description: 'EBU Mainline Upper/92nd St Exit Bearings per Spec Sections 02082, 09931 & 09940', amount: 60625, trackerLink: 'Area A / Green — EBU / 92nd / Ramp F Bearings' },
+    { item: 24, sectionId: 'area-a-green', officialAreaId: 'area-a', description: 'EBU Mainline Upper/92nd St Exit Localized Paint Removal (Jacking Locations) per Spec Sections 02082, 09931 & 09940', amount: 23250, trackerLink: 'Future / Not Started — Area A Jacking-Related' },
+    { item: 25, sectionId: 'area-a-green', officialAreaId: 'area-a', description: 'Clean, Prep & Paint EBU Mainline Upper/92nd St Exit Touch-Up (Floorbeam Extensions) per Spec Sections 02082, 09931 & 09940', amount: 194000 },
+    { item: 26, sectionId: 'area-a-green', officialAreaId: 'area-a', description: 'EBU Mainline Upper/92nd St Exit Localized Paint Removal (At Widening Connections) per Spec Sections 02082, 09931 & 09940', amount: 255225 },
+    { item: 27, sectionId: 'area-a-green', officialAreaId: 'area-a', description: 'Access Platform for Jack & Ped Work', amount: 248000 },
+    { item: 29, sectionId: 'area-e-pink', officialAreaId: 'area-e', description: 'Clean, Prep & Paint Ramp N Touch-Up (Connections) per Spec Sections 02082, 09931 & 09940', amount: 95700 },
+    { item: 30, sectionId: 'area-e-pink', officialAreaId: 'area-e', description: 'Ramp N Localized Paint Removal (Cut Lines) per Spec Sections 02082, 09931 & 09940', amount: 72500 },
+    { item: 31, sectionId: 'area-e-pink', officialAreaId: 'area-e', description: 'Ramp N - De-Lead Bearings per Spec Sections 02082, 09931 & 09940', amount: 31250, trackerLink: 'Area E / Pink — Yard Ramp Bearings' }
+  ],
+  bearingBreakdown: [
+    { officialAreaId: 'area-c', area: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', trackerAreaId: 'belt-parkway-bearings', trackerName: 'SP Ramp Bearings', billingQuantity: 190, fieldQuantity: 248, unit: 'EA', source: 'Defoe: 92 EA + 98 EA; tracker: Abutment + SP1–SP13', note: 'Keep existing SP field entries. Billing and drawing/field quantities differ; show both.' },
+    { officialAreaId: 'area-d', area: 'Area D / Orange — Existing Belt Parkway Horseshoe', trackerAreaId: 'area-d-horseshoe-bearings', trackerName: 'Horseshoe Bearings', billingQuantity: 144, fieldQuantity: 144, unit: 'EA', source: 'Defoe: 74 EA + 70 EA', note: 'New official-area bucket; no field progress entered yet.' },
+    { officialAreaId: 'area-a', area: 'Area A / Green — EBU / 92nd St / Ramp F', trackerAreaId: 'area-a-ebu-bearings', trackerName: 'EBU / 92nd / Ramp F Bearings', billingQuantity: 97, fieldQuantity: 97, unit: 'EA', source: 'Defoe: 60 EA Power Tool Cleaning + 30 EA Ramp F + 7 EA Ramp F', note: 'Office quantity group; field tracking can be started when work begins.' },
+    { officialAreaId: 'area-e', area: 'Area E / Pink — Yard Ramp / Ramp N', trackerAreaId: 'area-e-yard-ramp-bearings', trackerName: 'Yard Ramp Bearings', billingQuantity: 50, fieldQuantity: 50, unit: 'EA', source: 'Defoe: 25 EA + 25 EA', note: 'Office quantity group; field tracking can be started when work begins.' }
   ],
   defoeComparison: [
-    { area: 'Belt Ramps', bidItem: 20355901, description: 'KEIM Coating of SP Piers SP Abut to SP-12', quantity: 36260, unit: 'SF', note: 'We have 18,000 SF' },
-    { area: 'Belt Parkway', bidItem: 20456502, description: 'Localized Paint Removal', quantity: 92, unit: 'EA', note: 'Bearings' },
-    { area: 'Belt Parkway', bidItem: 20456503, description: 'Localized Paint Removal', quantity: 98, unit: 'EA', note: 'Bearings' },
-    { area: 'Belt Parkway', bidItem: 20458501, description: 'Localized Paint Removal (Jacking Locations)', quantity: 2500, unit: 'SF', note: 'Need to Bid' },
-    { area: 'Belt Parkway', bidItem: 21157201, description: 'Structural Steel Paint System', quantity: 228000, unit: 'SF', note: 'We have 220,000 SF' },
-    { area: 'Horse Shoe', bidItem: 30355901, description: 'KEIM Coating of SP Piers SP Abut to SP-12', quantity: 25200, unit: 'SF', note: 'We have 15,500 SF' },
-    { area: 'Horse Shoe', bidItem: 30456502, description: 'Localized Paint Removal', quantity: 74, unit: 'EA', note: 'Bearings' },
-    { area: 'Horse Shoe', bidItem: 30456503, description: 'Localized Paint Removal', quantity: 70, unit: 'EA', note: 'Bearings' },
-    { area: 'EBU 92nd St.', bidItem: 40555502, description: 'Power Tool Cleaning', quantity: 60, unit: 'EA', note: 'Bearings' },
-    { area: 'EBU 92nd St.', bidItem: 40556502, description: 'Localized Lead Abatement (Ramp F)', quantity: 30, unit: 'EA', note: 'Bearings' },
-    { area: 'EBU 92nd St.', bidItem: 40556502, description: 'Localized Lead Abatement (Jacking)', quantity: 220, unit: 'SF', note: 'Need to Bid' },
-    { area: 'EBU 92nd St.', bidItem: 40556503, description: 'Localized Lead Abatement (Ramp F)', quantity: 7, unit: 'EA', note: 'Bearings' }
+    { officialAreaId: 'area-b', area: 'Area B / Yellow — New Belt Ramps', bidItem: 10155901, description: 'Anti-Graffiti of H8', quantity: 250, unit: 'SF', note: 'Need to Bid' },
+    { officialAreaId: 'area-b', area: 'Area B / Yellow — New Belt Ramps', bidItem: 10257201, description: 'Touch Up', quantity: 4200, unit: 'SF', note: 'Connections' },
+    { officialAreaId: 'area-b', area: 'Area B / Yellow — New Belt Ramps', bidItem: 10257201, description: 'Touch Up - Adjustments whole job', quantity: 10036, unit: 'SF', note: 'Need to Bid' },
+    { officialAreaId: 'area-b', area: 'Area B / Yellow — New Belt Ramps', bidItem: 10257201, description: 'Touch Up - Adjustments H&D', quantity: 4460.64, unit: 'SF', note: 'Connections' },
+    { officialAreaId: 'area-b', area: 'Area B / Yellow — New Belt Ramps', bidItem: 10866201, description: 'Paint Fire Standpipe System / Valves', quantity: 1, unit: 'LS', note: 'Bid item' },
+    { officialAreaId: 'area-c', area: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', bidItem: 20120202, description: 'Paint Holes', quantity: 1102, unit: 'EA', note: 'Need to Bid' },
+    { officialAreaId: 'area-c', area: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', bidItem: 20355901, description: 'KEIM Coating of SP Piers SP Abut to SP-12', quantity: 36260, unit: 'SF', note: 'We have 18,000 SF' },
+    { officialAreaId: 'area-c', area: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', bidItem: 20355901, description: 'Anti-Graffiti of SP Piers in the park and along Fort Hamilton Parkway', quantity: 7000, unit: 'SF', note: 'Need to Bid' },
+    { officialAreaId: 'area-c', area: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', bidItem: 20356401, description: 'Touch Up Painting', quantity: 210, unit: 'SF', note: 'Paint for Steel Repairs' },
+    { officialAreaId: 'area-c', area: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', bidItem: 20456502, description: 'Localized Paint Removal', quantity: 92, unit: 'EA', note: 'Bearings' },
+    { officialAreaId: 'area-c', area: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', bidItem: 20456503, description: 'Localized Paint Removal', quantity: 98, unit: 'EA', note: 'Bearings' },
+    { officialAreaId: 'area-c', area: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', bidItem: 20458501, description: 'Localized Paint Removal (Jacking Locations)', quantity: 2500, unit: 'SF', note: 'Need to Bid / future' },
+    { officialAreaId: 'area-c', area: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', bidItem: 20557201, description: 'Touch Up / Localized Paint Removal at Widening Connection', quantity: 1490, unit: 'SF', note: '465 SF + 1025 SF' },
+    { officialAreaId: 'area-c', area: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', bidItem: 21157201, description: 'Structural Steel Paint System', quantity: 228000, unit: 'SF', note: 'We have 220,000 SF' },
+    { officialAreaId: 'area-c', area: 'Area C / Blue — Belt Parkway Tangent / SP Ramp', bidItem: 21463402, description: 'Secondary Protective Shielding (SafeSpan)', quantity: 83024, unit: 'SF', note: 'We have 88,500 SF' },
+    { officialAreaId: 'area-d', area: 'Area D / Orange — Existing Belt Parkway Horseshoe', bidItem: 30120202, description: 'Paint Holes', quantity: 768, unit: 'EA', note: 'Need to Bid' },
+    { officialAreaId: 'area-d', area: 'Area D / Orange — Existing Belt Parkway Horseshoe', bidItem: 30355901, description: 'KEIM Coating of SP Piers SP Abut to SP-12', quantity: 25200, unit: 'SF', note: 'We have 15,500 SF' },
+    { officialAreaId: 'area-d', area: 'Area D / Orange — Existing Belt Parkway Horseshoe', bidItem: 30356401, description: 'Touch Up Painting', quantity: 120, unit: 'SF', note: 'Continuation of steel repairs from above item' },
+    { officialAreaId: 'area-d', area: 'Area D / Orange — Existing Belt Parkway Horseshoe', bidItem: 30456502, description: 'Localized Paint Removal', quantity: 74, unit: 'EA', note: 'Bearings' },
+    { officialAreaId: 'area-d', area: 'Area D / Orange — Existing Belt Parkway Horseshoe', bidItem: 30456503, description: 'Localized Paint Removal', quantity: 70, unit: 'EA', note: 'Bearings' },
+    { officialAreaId: 'area-d', area: 'Area D / Orange — Existing Belt Parkway Horseshoe', bidItem: 30557201, description: 'Touch Up / Localized Paint Removal at Widening Connection', quantity: 2660, unit: 'SF', note: '1290 SF + 1370 SF' },
+    { officialAreaId: 'area-d', area: 'Area D / Orange — Existing Belt Parkway Horseshoe', bidItem: 31157201, description: 'Structural Steel Paint System', quantity: 126000, unit: 'SF', note: 'We have 95,000 SF' },
+    { officialAreaId: 'area-d', area: 'Area D / Orange — Existing Belt Parkway Horseshoe', bidItem: 31363402, description: 'Secondary Protective Shielding (SafeSpan)', quantity: 54525, unit: 'SF', note: 'We have 39,000 SF' },
+    { officialAreaId: 'area-a', area: 'Area A / Green — Eastbound Mainline & 92nd St Exit', bidItem: 40120202, description: 'Paint Holes - EBU', quantity: 768, unit: 'EA', note: 'Need to Bid' },
+    { officialAreaId: 'area-a', area: 'Area A / Green — Eastbound Mainline & 92nd St Exit', bidItem: 40220201, description: 'Paint Holes - 92nd St', quantity: 768, unit: 'EA', note: 'Need to Bid' },
+    { officialAreaId: 'area-a', area: 'Area A / Green — Eastbound Mainline & 92nd St Exit', bidItem: 40555502, description: 'Power Tool Cleaning', quantity: 60, unit: 'EA', note: 'Bearings' },
+    { officialAreaId: 'area-a', area: 'Area A / Green — Eastbound Mainline & 92nd St Exit', bidItem: 40556502, description: 'Localized Lead Abatement (Ramp F)', quantity: 30, unit: 'EA', note: 'Bearings' },
+    { officialAreaId: 'area-a', area: 'Area A / Green — Eastbound Mainline & 92nd St Exit', bidItem: 40556502, description: 'Localized Lead Abatement / Touch Up (Jacking)', quantity: 440, unit: 'SF', note: '220 SF abatement + 220 SF touch-up' },
+    { officialAreaId: 'area-a', area: 'Area A / Green — Eastbound Mainline & 92nd St Exit', bidItem: 40556503, description: 'Localized Lead Abatement (Ramp F)', quantity: 7, unit: 'EA', note: 'Bearings' },
+    { officialAreaId: 'area-a', area: 'Area A / Green — Eastbound Mainline & 92nd St Exit', bidItem: 40556503, description: 'Localized Lead Abatement / Touch Up (Jacking)', quantity: 180, unit: 'SF', note: '90 SF abatement + 90 SF touch-up' },
+    { officialAreaId: 'area-a', area: 'Area A / Green — Eastbound Mainline & 92nd St Exit', bidItem: 40757201, description: 'Touch Up / Localized Paint Removal at Widening Connection', quantity: 5843, unit: 'SF', note: '2440 SF + 3403 SF' },
+    { officialAreaId: 'area-a', area: 'Area A / Green — Eastbound Mainline & 92nd St Exit', bidItem: 41363402, description: 'Access Platform for Jack & Ped Work', quantity: 1600, unit: 'SF', note: 'Need to Bid' },
+    { officialAreaId: 'area-e', area: 'Area E / Pink — New Yard Entrance & Exit / Ramp N', bidItem: 50120202, description: 'Paint Holes', quantity: 768, unit: 'EA', note: 'Need to Bid' },
+    { officialAreaId: 'area-e', area: 'Area E / Pink — New Yard Entrance & Exit / Ramp N', bidItem: 50357201, description: 'Touch Up', quantity: 220, unit: 'SF', note: 'Connections' },
+    { officialAreaId: 'area-e', area: 'Area E / Pink — New Yard Entrance & Exit / Ramp N', bidItem: 50358901, description: 'Localized Paint Removal', quantity: 1518, unit: 'SF', note: 'Cut Lines' },
+    { officialAreaId: 'area-e', area: 'Area E / Pink — New Yard Entrance & Exit / Ramp N', bidItem: 50456502, description: 'Localized Paint Removal', quantity: 25, unit: 'EA', note: 'Bearings' },
+    { officialAreaId: 'area-e', area: 'Area E / Pink — New Yard Entrance & Exit / Ramp N', bidItem: 50456503, description: 'Localized Paint Removal', quantity: 25, unit: 'EA', note: 'Bearings' }
   ]
 };
 
@@ -2094,9 +2214,11 @@ const defaultEmergencySteelRepairs = {
   name: 'Emergency Steel Repairs',
   contract: 'VN84-B',
   bridge: 'Verrazzano-Narrows Bridge',
-  description: 'Extra Belt Parkway Ramp SP end cross frame steel repairs outside JAGD original contract.',
+  description: 'Area C / Blue — extra Belt Parkway Ramp SP end cross frame steel repairs outside JAGD original contract.',
   source: 'VN-84B Belt Parkway Ramp SP End Cross Frame Repairs / DU08A-CS-452',
-  drawingNote: 'Red indicates additional repairs. Blue indicates original repairs. This tracker calls out each row as Red / Additional or Blue / Original and lets the field click a repair box to update it.',
+  officialAreaId: 'area-c',
+  officialAreaLabel: 'Area C / Blue — Belt Parkway Tangent / SP Ramp',
+  drawingNote: 'Official area is Area C / Blue. Repair-class colors stay separate: Red indicates additional repairs; Blue indicates original repairs. The field clicks member pills to update completed pieces.',
   repairLocations: 86,
   estimatedMemberPieces: 300,
   estimatedSf: 1413,
@@ -2110,54 +2232,101 @@ const defaultEmergencySteelRepairs = {
 const defaultData = {
   contract: 'VN84-B',
   bridge: 'Verrazzano-Narrows Bridge',
+  trackerVersion: 'V18 Official Area Rebuild',
   updatedAt: null,
+  officialAreas: safeClone(officialAreas),
   areas: [
     {
       id: 'blue-bridge-87',
-      name: 'Blue Bridge 87',
-      description: 'Steel repairs, power tool prep, zinc, midcoat, finish coat',
+      name: 'Area C / Blue — Belt Parkway Tangent / Steel Repair Painting',
+      description: 'Area C / Blue current field scope. Formerly shown as Blue Bridge 87. Steel repair painting broken into Power Tool Prep, Zinc, Midcoat, and Finish Coat.',
       unitLabel: 'locations',
       total: 87,
       stages: ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'],
-      items: []
+      items: [],
+      ...areaMeta('blue-bridge-87', { officialAreaId: 'area-c', fieldQuantity: 87, quantityNote: 'Original field tracker quantity retained so prior entries remain intact.', paymentItemRefs: [9] })
     },
     {
       id: 'belt-parkway-bearings',
-      name: 'Belt Parkway Bearings',
-      description: '248 bearings broken out by Abutment and SP1–SP13. Each stage counts as its own 100% billing item: power tool, zinc, midcoat, finish.',
+      name: 'Area C / Blue — SP Ramp Bearings',
+      description: 'Area C / Blue bearing tracker. Field/drawing quantity is 248 bearings broken out by Abutment and SP1–SP13. Billing comparison quantity from Defoe is 190 EA.',
       unitLabel: 'bearings',
       total: 248,
       subAreas: bearingSubAreas,
       stages: ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'],
-      items: []
+      items: [],
+      ...areaMeta('belt-parkway-bearings', { officialAreaId: 'area-c', billingQuantity: 190, fieldQuantity: 248, quantityNote: 'Field/drawing tracker has 248 bearings (Abutment + SP1–SP13). Defoe/payment comparison shows 92 EA + 98 EA = 190 EA. Do not erase existing field entries.', paymentItemRefs: [10] })
     },
     {
       id: 'blue-bridge-237-crosses',
-      name: 'Blue Bridge 237 New Crosses',
-      description: '237 new crosses: power tool prep, zinc, midcoat, finish coat',
+      name: 'Area C / Blue — New Crosses / Cross Frame Work',
+      description: 'Area C / Blue new crosses / cross frame production, power tool prep, zinc, midcoat, and finish coat.',
       unitLabel: 'crosses',
       total: 237,
       stages: ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'],
-      items: []
+      items: [],
+      ...areaMeta('blue-bridge-237-crosses', { officialAreaId: 'area-c', fieldQuantity: 237, quantityNote: 'Original field tracker quantity retained.', paymentItemRefs: [9, 13] })
     },
     {
       id: 'orange-bridge-piers',
-      name: 'Orange Bridge Piers',
-      description: '25,200 sq ft across 9 piers: power tool prep, zinc, midcoat, finish coat',
+      name: 'Area D / Orange — Horseshoe Piers / KEIM Coating',
+      description: 'Area D / Orange Horseshoe piers. Formerly shown as Orange Bridge Piers. 25,200 SF across 9 piers; power tool prep, zinc, midcoat, and finish coat retained for field tracking.',
       unitLabel: 'sq ft',
       total: 25200,
       pierCount: 9,
       stages: ['Power Tool Prep', 'Zinc Coat', 'Midcoat', 'Finish Coat'],
-      items: []
+      items: [],
+      ...areaMeta('orange-bridge-piers', { officialAreaId: 'area-d', billingQuantity: 25200, fieldQuantity: 25200, quantityNote: 'Matches Horseshoe KEIM/paint-related quantity from the new office info.', paymentItemRefs: [16] })
     },
     {
       id: 'belt-parkway-jacking',
-      name: 'Belt Parkway Jacking Locations',
-      description: '13 piers / jacking locations: power tool prep only',
+      name: 'Area C / Blue — Jacking Locations',
+      description: 'Area C / Blue future scope. 13 jacking locations, power tool prep only. No jacking production has started per field update.',
       unitLabel: 'piers',
       total: 13,
       stages: ['Power Tool Prep'],
-      items: []
+      items: [],
+      ...areaMeta('belt-parkway-jacking', { officialAreaId: 'area-c', trackingActive: false, trackingStatus: 'Future / Not Started — no field production yet', billingQuantity: 2500, fieldQuantity: 13, quantityNote: 'Field tracker is 13 jacking locations; Defoe/payment comparison references 2,500 SF localized paint removal. Keep out of active progress until work starts.', paymentItemRefs: [11] })
+    },
+    {
+      id: 'area-d-horseshoe-bearings',
+      name: 'Area D / Orange — Horseshoe Bearings',
+      description: 'Area D / Orange bearing bucket added from the Defoe item comparison. Billing quantity is 74 EA + 70 EA = 144 EA. No field production entered yet.',
+      unitLabel: 'bearings',
+      total: 144,
+      stages: ['Localized Paint Removal / Prep'],
+      items: [],
+      ...areaMeta('area-d-horseshoe-bearings', { officialAreaId: 'area-d', trackingActive: false, trackingStatus: 'Office Quantity / Not Started', billingQuantity: 144, fieldQuantity: 144, quantityNote: 'New bucket from Defoe sheet: 74 EA + 70 EA = 144 EA.', paymentItemRefs: [17] })
+    },
+    {
+      id: 'area-a-ebu-bearings',
+      name: 'Area A / Green — EBU / 92nd / Ramp F Bearings',
+      description: 'Area A / Green bearing-related office bucket. Defoe shows 60 EA power tool cleaning, 30 EA Ramp F localized lead abatement, and 7 EA Ramp F localized lead abatement = 97 EA.',
+      unitLabel: 'EA',
+      total: 97,
+      stages: ['Power Tool Cleaning', 'Localized Lead Abatement'],
+      items: [],
+      ...areaMeta('area-a-ebu-bearings', { officialAreaId: 'area-a', trackingActive: false, trackingStatus: 'Office Quantity / Not Started', billingQuantity: 97, fieldQuantity: 97, quantityNote: 'New official-area bucket from Defoe sheet: 60 + 30 + 7 = 97 EA.', paymentItemRefs: [23] })
+    },
+    {
+      id: 'area-e-yard-ramp-bearings',
+      name: 'Area E / Pink — Yard Ramp Bearings',
+      description: 'Area E / Pink / Ramp N bearing bucket added from Defoe. Billing quantity is 25 EA + 25 EA = 50 EA.',
+      unitLabel: 'bearings',
+      total: 50,
+      stages: ['Localized Paint Removal / De-Lead'],
+      items: [],
+      ...areaMeta('area-e-yard-ramp-bearings', { officialAreaId: 'area-e', trackingActive: false, trackingStatus: 'Office Quantity / Not Started', billingQuantity: 50, fieldQuantity: 50, quantityNote: 'New bucket from Defoe sheet: 25 EA + 25 EA = 50 EA.', paymentItemRefs: [31] })
+    },
+    {
+      id: 'area-b-new-belt-ramps',
+      name: 'Area B / Yellow — New Belt Ramps / Connections',
+      description: 'Area B / Yellow office bucket for new belt ramp connection points, anti-graffiti, fire hose valves, and fire department connections.',
+      unitLabel: 'LS',
+      total: 1,
+      stages: ['Office Scope Setup'],
+      items: [],
+      ...areaMeta('area-b-new-belt-ramps', { officialAreaId: 'area-b', trackingActive: false, trackingStatus: 'Office Quantity / Not Started', billingQuantity: 1, fieldQuantity: 1, quantityNote: 'Added as an official area placeholder so Area B shows in the field/office tracker.', paymentItemRefs: [2, 3, 4, 5] })
     }
   ],
   emergencySteelRepairs: safeClone(defaultEmergencySteelRepairs),
@@ -2170,6 +2339,8 @@ function migrateData(data) {
   if (!Array.isArray(data.areas)) data.areas = safeClone(defaultData.areas);
   if (!Array.isArray(data.dailyLog)) data.dailyLog = [];
   if (!Array.isArray(data.notes)) data.notes = [];
+  data.officialAreas = safeClone(officialAreas);
+  data.trackerVersion = 'V18 Official Area Rebuild';
 
   for (const defaultArea of defaultData.areas) {
     let area = data.areas.find(a => a.id === defaultArea.id);
@@ -2182,6 +2353,18 @@ function migrateData(data) {
     area.unitLabel = defaultArea.unitLabel;
     area.total = defaultArea.total;
     area.stages = safeClone(defaultArea.stages);
+    area.officialAreaId = defaultArea.officialAreaId;
+    area.officialAreaLabel = defaultArea.officialAreaLabel;
+    area.officialAreaName = defaultArea.officialAreaName;
+    area.colorName = defaultArea.colorName;
+    area.color = defaultArea.color;
+    area.soft = defaultArea.soft;
+    area.trackingActive = defaultArea.trackingActive;
+    area.trackingStatus = defaultArea.trackingStatus;
+    area.billingQuantity = defaultArea.billingQuantity;
+    area.fieldQuantity = defaultArea.fieldQuantity;
+    area.quantityNote = defaultArea.quantityNote;
+    area.paymentItemRefs = Array.isArray(defaultArea.paymentItemRefs) ? safeClone(defaultArea.paymentItemRefs) : [];
     if (defaultArea.subAreas) area.subAreas = safeClone(defaultArea.subAreas);
     else delete area.subAreas;
     if (defaultArea.pierCount) area.pierCount = defaultArea.pierCount;
@@ -2662,6 +2845,7 @@ router.post('/api/vn84b/progress', express.json({ limit: '2mb' }), async (req, r
     const data = await readData();
     const area = data.areas.find(a => a.id === areaId);
     if (!area) return res.status(404).json({ error: 'Area not found.' });
+    if (area.trackingActive === false) return res.status(400).json({ error: 'This scope is marked Future / Not Started and is not open for field progress yet.' });
     if (!area.stages.includes(stage)) return res.status(400).json({ error: 'Stage not found for this area.' });
 
     const subArea = area.subAreas && subAreaId ? area.subAreas.find(s => s.id === subAreaId) : null;
