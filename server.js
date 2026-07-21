@@ -629,7 +629,7 @@ function tmFileHash(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 function tmSafeRecordForPublic(record) {
-  return { ok: true, id: record.id, project: record.projectLabel, vendor: record.vendor, amount: record.amount, attachmentCount: record.files.length, createdAt: record.createdAt };
+  return { ok: true, id: record.id, project: record.projectLabel, category: record.category, attachmentCount: record.files.length, createdAt: record.createdAt };
 }
 
 app.get('/api/tm/projects', (req, res) => {
@@ -655,16 +655,17 @@ app.post('/api/tm/submissions', tmUpload.array('files', 24), (req, res) => {
   }
   if (!project) { cleanup(); return res.status(400).json({ error: 'Choose a valid project.' }); }
   if (!files.length) return res.status(400).json({ error: 'Add at least one receipt photo or PDF.' });
-  const transactionDate = cleanText(data.transactionDate);
-  const billingMonth = tmMonthFromDate(transactionDate);
-  if (!billingMonth) { cleanup(); return res.status(400).json({ error: 'Enter a valid purchase/service date.' }); }
-  const vendor = cleanText(data.vendor), description = cleanText(data.description), submitter = cleanText(data.submitter), purchaser = cleanText(data.purchaser);
-  if (!vendor || !description || !submitter) { cleanup(); return res.status(400).json({ error: 'Vendor, description, and submitted-by name are required.' }); }
+  const now = new Date();
+  const transactionDate = now.toISOString().slice(0, 10);
+  const billingMonth = transactionDate.slice(0, 7);
+  const category = cleanText(data.category);
+  if (!['Material', 'Equipment'].includes(category)) { cleanup(); return res.status(400).json({ error: 'Choose Material or Equipment.' }); }
+  const vendor = '', description = '', submitter = 'Field Submission', purchaser = '';
   const fileRows = files.map(f => ({ originalName: f.originalname, filename: f.filename, size: f.size, mimetype: f.mimetype, hash: tmFileHash(f.path) }));
   const existing = readTmRows();
   const exactDuplicateIds = [...new Set(fileRows.flatMap(f => existing.filter(r => (r.files || []).some(old => old.hash === f.hash)).map(r => r.id)))];
   const amount = tmMoney(data.amount);
-  const likelyDuplicateIds = existing.filter(r => r.projectId === project.id && String(r.vendor).toLowerCase() === vendor.toLowerCase() && r.transactionDate === transactionDate && Number(r.amount) === amount).map(r => r.id);
+  const likelyDuplicateIds = [];
   const id = `${String(project.contract || 'TM').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10)}-${billingMonth.replace('-', '')}-${nanoid(6).toUpperCase()}`;
   const record = {
     id, projectId: project.id, projectLabel: tmProjectLabel(project), customJob: !!project.custom,

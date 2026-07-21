@@ -2777,22 +2777,15 @@ async function tmJson(url,opts={}){const res=await fetch(url,{...opts,headers:{.
 function tmFieldView(){
   tmSelectedFiles=[];
   app.innerHTML=`<div class="container tmShell">
-    <section class="tmBrand"><img src="/assets/jagd-logo.png" alt="JAGD Construction"><div><h1>JAGD T&amp;M Cost Tracker</h1><p>Receipt Capture &amp; Billing Support</p></div></section>
+    <section class="tmBrand"><img src="/assets/jagd-logo.png" alt="JAGD Construction"><div><h1>JAGD T&amp;M Cost Tracker</h1><p>Receipt Capture</p></div></section>
     <section id="tmFormPanel" class="panel tmPanel">
-      <div class="tmTitle"><div><span class="formTag">No login required</span><h2>Submit Receipt</h2><p>Choose the job and category, add all pages, review them, and submit once.</p></div></div>
+      <div class="tmTitle"><div><span class="formTag">No login required</span><h2>Submit Receipt</h2><p>Select the job and category, add all receipt pages, review them, and submit.</p></div></div>
       <div class="tmGrid">
         ${tmSelectField('tmProject','Project / Job *','<option value="">Loading jobs...</option>')}
-        <div id="tmCustomBox" class="tmCustom hidden">${tmInputField('tmCustomContract','Contract number or job name *')}${tmInputField('tmCustomName','Job nickname / location')}</div>
-        ${tmInputField('tmVendor','Vendor / Company *')}
-        ${tmInputField('tmDate','Purchase / service date *','date')}
-        ${tmInputField('tmAmount','Total amount','number')}
-        ${tmSelectField('tmCategory','Category *','<option value="Material">Material</option><option value="Equipment">Equipment</option>')}
-        ${tmInputField('tmPurchaser','Purchased by')}
-        ${tmInputField('tmSubmitter','Submitted by *')}
-        <label class="full">What was purchased, rented, or used? *<textarea id="tmDescription" rows="3"></textarea></label>
+        ${tmSelectField('tmCategory','Category *','<option value="">Choose category...</option><option value="Material">Material</option><option value="Equipment">Equipment</option>')}
       </div>
       <section class="tmFiles">
-        <h3>Receipt Photos / PDFs *</h3><p>Take a clear photo, scan a PDF, or add multiple pages. Nothing is submitted until you press the final button.</p>
+        <h3>Receipt Photos / PDFs *</h3><p>Take a photo, scan a PDF, or add multiple pages. Review every file before submitting.</p>
         <div class="tmFileButtons"><label class="btn primary">Take Photo<input id="tmCamera" class="hiddenFileInput" type="file" accept="image/*" capture="environment"></label><label class="btn">Choose Photos / PDFs<input id="tmFiles" class="hiddenFileInput" type="file" accept="image/*,.pdf" multiple></label></div>
         <div id="tmFilePreview" class="tmFilePreview"><p class="tiny">No files added yet.</p></div>
       </section>
@@ -2800,9 +2793,7 @@ function tmFieldView(){
       <p class="tmOfficeLink"><a href="#/tm-office">Office Login</a></p>
     </section>
   </div>`;
-  document.getElementById('tmDate').value=new Date().toISOString().slice(0,10);
-  fetch('/api/tm/projects',{cache:'no-store'}).then(r=>r.json()).then(j=>{document.getElementById('tmProject').innerHTML='<option value="">Choose project...</option>'+j.rows.map(p=>`<option value="${esc(p.id)}">${esc(tmProjectText(p))}</option>`).join('')+'<option value="CUSTOM">Other / Custom Job</option>';}).catch(e=>document.getElementById('tmProject').innerHTML='<option value="">Could not load jobs</option>');
-  document.getElementById('tmProject').onchange=e=>document.getElementById('tmCustomBox').classList.toggle('hidden',e.target.value!=='CUSTOM');
+  fetch('/api/tm/projects',{cache:'no-store'}).then(r=>r.json()).then(j=>{document.getElementById('tmProject').innerHTML='<option value="">Choose project...</option>'+j.rows.map(p=>`<option value="${esc(p.id)}">${esc(tmProjectText(p))}</option>`).join('');}).catch(e=>document.getElementById('tmProject').innerHTML='<option value="">Could not load jobs</option>');
   document.getElementById('tmCamera').onchange=e=>tmAddFiles(e.target.files);document.getElementById('tmFiles').onchange=e=>tmAddFiles(e.target.files);
   document.getElementById('tmSubmitBtn').onclick=tmSubmit;
 }
@@ -2811,13 +2802,14 @@ function tmRenderFiles(){const box=document.getElementById('tmFilePreview');if(!
 function tmRemoveFile(i){tmSelectedFiles.splice(i,1);tmRenderFiles();}
 async function tmSubmit(){
  const btn=document.getElementById('tmSubmitBtn'),msg=document.getElementById('tmSubmitMsg');
- const projectId=val('tmProject'),vendor=val('tmVendor'),transactionDate=val('tmDate'),description=val('tmDescription'),submitter=val('tmSubmitter');
- if(!projectId||!vendor||!transactionDate||!description||!submitter){msg.innerHTML='<div class="notice">Complete all required fields.</div>';return;}if(!tmSelectedFiles.length){msg.innerHTML='<div class="notice">Add at least one receipt photo or PDF.</div>';return;}
- const category=val('tmCategory');const data={projectId,customContract:val('tmCustomContract'),customName:val('tmCustomName'),type:category, vendor,transactionDate,amount:val('tmAmount'),category,paymentMethod:'Not entered',purchaser:val('tmPurchaser'),submitter,description,rental:null,owned:null};
+ const projectId=val('tmProject'),category=val('tmCategory');
+ if(!projectId||!category){msg.innerHTML='<div class="notice">Choose a project and category.</div>';return;}
+ if(!tmSelectedFiles.length){msg.innerHTML='<div class="notice">Add at least one receipt photo or PDF.</div>';return;}
+ const data={projectId,type:category,category};
  const fd=new FormData();fd.append('data',JSON.stringify(data));tmSelectedFiles.forEach(f=>fd.append('files',f));btn.disabled=true;btn.textContent='Submitting — do not close this page';msg.innerHTML='<div class="notice">Uploading all files and saving the record...</div>';
- try{const res=await fetch('/api/tm/submissions',{method:'POST',body:fd});const j=await res.json();if(!res.ok)throw new Error(j.error||'Submission failed');tmSuccess(j);}catch(e){msg.innerHTML=`<div class="notice">Submission was not completed: ${esc(e.message)}. Your information is still on this screen; correct the problem and try again.</div>`;btn.disabled=false;btn.textContent='Submit Receipt';}
+ try{const res=await fetch('/api/tm/submissions',{method:'POST',body:fd});const j=await res.json();if(!res.ok)throw new Error(j.error||'Submission failed');tmSuccess(j);}catch(e){msg.innerHTML=`<div class="notice">Submission was not completed: ${esc(e.message)}. Your files are still on this screen; correct the problem and try again.</div>`;btn.disabled=false;btn.textContent='Submit Receipt';}
 }
-function tmSuccess(j){app.innerHTML=`<div class="container tmShell"><section class="tmBrand"><img src="/assets/jagd-logo.png" alt="JAGD Construction"></section><section class="panel tmSuccess"><div class="tmCheck">✓</div><h1>Receipt Submitted Successfully</h1><p class="tmLead">Your receipt and all attached files were submitted to the JAGD T&amp;M Cost Tracker.</p><dl><dt>Project</dt><dd>${esc(j.project)}</dd><dt>Vendor</dt><dd>${esc(j.vendor)}</dd><dt>Amount</dt><dd>${tmMoney(j.amount)}</dd><dt>Record Number</dt><dd><strong>${esc(j.id)}</strong></dd><dt>Files Received</dt><dd>${j.attachmentCount}</dd></dl><div class="notice success"><strong>Please save or screenshot this record number.</strong></div><div class="notice"><strong>If you selected the wrong job, entered incorrect information, or attached the wrong document, call the JAGD office or an administrator.</strong> Do not submit the same receipt again unless instructed.</div><div class="tmDropbox"><strong>Please add all receipts and supporting documents to the correct JAGD Dropbox folder as well.</strong></div><div class="tmSuccessButtons"><button class="btn primary" onclick="tmFieldView()">Submit Another Receipt</button><a class="btn" href="#/">Finished</a></div></section></div>`;}
+function tmSuccess(j){app.innerHTML=`<div class="container tmShell"><section class="tmBrand"><img src="/assets/jagd-logo.png" alt="JAGD Construction"></section><section class="panel tmSuccess"><div class="tmCheck">✓</div><h1>Receipt Submitted Successfully</h1><p class="tmLead">Your receipt and all attached files were submitted to the JAGD T&amp;M Cost Tracker.</p><dl><dt>Project</dt><dd>${esc(j.project)}</dd><dt>Category</dt><dd>${esc(j.category||'')}</dd><dt>Record Number</dt><dd><strong>${esc(j.id)}</strong></dd><dt>Files Received</dt><dd>${j.attachmentCount}</dd></dl><div class="notice success"><strong>Please save or screenshot this record number.</strong></div><div class="notice"><strong>If you selected the wrong job or category, or attached the wrong document, call the JAGD office or an administrator.</strong> Do not submit the same receipt again unless instructed.</div><div class="tmDropbox"><strong>Please add all receipts and supporting documents to the correct JAGD Dropbox folder as well.</strong></div><div class="tmSuccessButtons"><button class="btn primary" onclick="tmFieldView()">Submit Another Receipt</button><a class="btn" href="#/">Finished</a></div></section></div>`;}
 function tmOfficeView(){
  if(!tmOfficePin){app.innerHTML=`<div class="container tmShell"><section class="tmBrand"><img src="/assets/jagd-logo.png" alt="JAGD Construction"><div><h1>T&amp;M Office Login</h1><p>Protected receipts and billing records</p></div></section><section class="panel tmLogin"><label>Office / Admin Password<input id="tmPin" type="password" autocomplete="current-password"></label><div id="tmLoginMsg"></div><button id="tmLoginBtn" class="btn primary">Open Office Dashboard</button><p><a href="#/tm">Back to Field Submission</a></p></section></div>`;document.getElementById('tmLoginBtn').onclick=async()=>{tmOfficePin=val('tmPin');try{await tmJson('/api/admin/tm/projects');sessionStorage.setItem('tmOfficePin',tmOfficePin);tmOfficeDashboard();}catch(e){tmOfficePin='';document.getElementById('tmLoginMsg').innerHTML=`<div class="notice">${esc(e.message)}</div>`;}};return;}tmOfficeDashboard();
 }
