@@ -34,7 +34,8 @@ const TM_UPLOAD_DIR = path.join(DATA_DIR, 'tm-uploads');
 const TM_RECORDS_FILE = path.join(DATA_DIR, 'tm-records.json');
 const TM_PROJECTS_FILE = path.join(DATA_DIR, 'tm-projects.json');
 const TM_DEFAULT_PROJECTS = [
-  { id: 'BRX9579', contract: 'BRX9579', name: '8 Bridges', active: true },
+  { id: 'BRX9579', contract: 'BRX9579', name: 'Boston Road', active: true },
+  { id: 'D265495', contract: 'D265495', name: '8 Bridges', active: true },
   { id: 'D265307', contract: 'D265307', name: 'D265307', active: true },
   { id: 'D265343', contract: 'D265343', name: 'D265343', active: true },
   { id: 'HB1070MD', contract: 'HB1070MD', name: 'Macombs Dam Bridge', active: false }
@@ -45,7 +46,22 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(DWL_GENERATED_PDF_DIR, { recursive: true });
 fs.mkdirSync(TM_UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(TM_RECORDS_FILE)) fs.writeFileSync(TM_RECORDS_FILE, '[]');
-if (!fs.existsSync(TM_PROJECTS_FILE)) fs.writeFileSync(TM_PROJECTS_FILE, JSON.stringify(TM_DEFAULT_PROJECTS, null, 2));
+if (!fs.existsSync(TM_PROJECTS_FILE)) {
+  fs.writeFileSync(TM_PROJECTS_FILE, JSON.stringify(TM_DEFAULT_PROJECTS, null, 2));
+} else {
+  // Keep the persistent project list accurate after tracker updates.
+  try {
+    const existing = JSON.parse(fs.readFileSync(TM_PROJECTS_FILE, 'utf8'));
+    if (Array.isArray(existing)) {
+      const byId = new Map(existing.map(p => [String(p.id || p.contract || '').toUpperCase(), p]));
+      byId.set('BRX9579', { ...(byId.get('BRX9579') || {}), id: 'BRX9579', contract: 'BRX9579', name: 'Boston Road', active: true });
+      byId.set('D265495', { ...(byId.get('D265495') || {}), id: 'D265495', contract: 'D265495', name: '8 Bridges', active: true });
+      fs.writeFileSync(TM_PROJECTS_FILE, JSON.stringify(Array.from(byId.values()), null, 2));
+    }
+  } catch (e) {
+    console.error('Could not normalize T&M projects:', e.message);
+  }
+}
 if (!fs.existsSync(SUBMISSIONS_FILE)) fs.writeFileSync(SUBMISSIONS_FILE, '[]');
 if (!fs.existsSync(WEEKLY_MEETINGS_FILE)) fs.writeFileSync(WEEKLY_MEETINGS_FILE, '[]');
 if (!fs.existsSync(FORM_LOGS_FILE)) fs.writeFileSync(FORM_LOGS_FILE, '[]');
