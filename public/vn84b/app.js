@@ -186,14 +186,18 @@ function renderOfficialAreas() {
 }
 
 function renderAreaSelects() {
-  const current = document.getElementById('areaSelect').value;
-  const noteCurrent = document.getElementById('noteAreaSelect').value;
-  const activeOptions = activeAreas(trackerData).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-  const allOptions = trackerData.areas.map(a => `<option value="${a.id}">${a.name}${a.trackingActive === false ? ' (future/not started)' : ''}</option>`).join('');
-  document.getElementById('areaSelect').innerHTML = activeOptions;
-  document.getElementById('noteAreaSelect').innerHTML = `<option value="">General</option>${allOptions}`;
-  if (current && activeAreas(trackerData).some(a => a.id === current)) document.getElementById('areaSelect').value = current;
-  if (noteCurrent) document.getElementById('noteAreaSelect').value = noteCurrent;
+  const areaSelect = document.getElementById('areaSelect');
+  const noteSelect = document.getElementById('noteAreaSelect');
+  const current = areaSelect.value;
+  const noteCurrent = noteSelect.value;
+  const allOptions = trackerData.areas.map(a => {
+    const status = a.trackingActive === false ? ` — ${a.trackingStatus || 'Future / Not Started'}` : '';
+    return `<option value="${a.id}">${a.name}${status}</option>`;
+  }).join('');
+  areaSelect.innerHTML = allOptions;
+  noteSelect.innerHTML = `<option value="">General</option>${allOptions}`;
+  if (current && trackerData.areas.some(a => a.id === current)) areaSelect.value = current;
+  if (noteCurrent) noteSelect.value = noteCurrent;
   renderStageSelect();
 }
 
@@ -235,7 +239,8 @@ function renderCompletedLimit() {
   completedInput.classList.toggle('prefilled-progress', current > 0);
   if (help) {
     const locationText = sub ? `${sub.name} — ` : '';
-    help.textContent = `${locationText}${stage}: ${current} of ${max} ${area.unitLabel} already entered. Change the box only if the total to date is different.`;
+    const statusText = area.trackingActive === false ? ` Scope is currently marked ${area.trackingStatus || 'Future / Not Started'}; saving progress will open it for tracking.` : '';
+    help.textContent = `${locationText}${stage}: ${current} of ${max} ${area.unitLabel} already entered. Change the box only if the total to date is different.${statusText}`;
   }
 }
 

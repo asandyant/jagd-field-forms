@@ -2232,7 +2232,7 @@ const defaultEmergencySteelRepairs = {
 const defaultData = {
   contract: 'VN84-B',
   bridge: 'Verrazzano-Narrows Bridge',
-  trackerVersion: 'V18 Official Area Rebuild',
+  trackerVersion: 'V19 Official Area Full Dropdown',
   updatedAt: null,
   officialAreas: safeClone(officialAreas),
   areas: [
@@ -2340,7 +2340,7 @@ function migrateData(data) {
   if (!Array.isArray(data.dailyLog)) data.dailyLog = [];
   if (!Array.isArray(data.notes)) data.notes = [];
   data.officialAreas = safeClone(officialAreas);
-  data.trackerVersion = 'V18 Official Area Rebuild';
+  data.trackerVersion = 'V19 Official Area Full Dropdown';
 
   for (const defaultArea of defaultData.areas) {
     let area = data.areas.find(a => a.id === defaultArea.id);
@@ -2845,7 +2845,7 @@ router.post('/api/vn84b/progress', express.json({ limit: '2mb' }), async (req, r
     const data = await readData();
     const area = data.areas.find(a => a.id === areaId);
     if (!area) return res.status(404).json({ error: 'Area not found.' });
-    if (area.trackingActive === false) return res.status(400).json({ error: 'This scope is marked Future / Not Started and is not open for field progress yet.' });
+    const wasFutureScope = area.trackingActive === false;
     if (!area.stages.includes(stage)) return res.status(400).json({ error: 'Stage not found for this area.' });
 
     const subArea = area.subAreas && subAreaId ? area.subAreas.find(s => s.id === subAreaId) : null;
@@ -2870,6 +2870,12 @@ router.post('/api/vn84b/progress', express.json({ limit: '2mb' }), async (req, r
         enteredBy: enteredBy || '',
         updatedAt: new Date().toISOString()
       });
+    }
+
+    if (wasFutureScope && safeCompleted > 0) {
+      area.trackingActive = true;
+      area.trackingStatus = 'Active Field Tracking';
+      area.quantityNote = `${area.quantityNote || ''} Opened from future/not-started status when field progress was entered.`.trim();
     }
 
     const areaLogName = subArea ? `${area.name} — ${subArea.name}` : area.name;
