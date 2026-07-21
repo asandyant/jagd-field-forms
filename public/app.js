@@ -2784,6 +2784,10 @@ function tmFieldView(){
         ${tmSelectField('tmProject','Project / Job *','<option value="">Loading jobs...</option>')}
         ${tmSelectField('tmCategory','Category *','<option value="">Choose category...</option><option value="Material">Material</option><option value="Equipment">Equipment</option>')}
       </div>
+      <div id="tmCustomJobWrap" class="hidden">
+        ${tmInputField('tmCustomContract','Enter contract number or job name *')}
+        <p class="tiny">This will be flagged for Office/Admin review.</p>
+      </div>
       <section class="tmFiles">
         <h3>Receipt Photos / PDFs *</h3><p>Take a photo, scan a PDF, or add multiple pages. Review every file before submitting.</p>
         <div class="tmFileButtons"><label class="btn primary">Take Photo<input id="tmCamera" class="hiddenFileInput" type="file" accept="image/*" capture="environment"></label><label class="btn">Choose Photos / PDFs<input id="tmFiles" class="hiddenFileInput" type="file" accept="image/*,.pdf" multiple></label></div>
@@ -2793,7 +2797,8 @@ function tmFieldView(){
       <p class="tmOfficeLink"><a href="#/tm-office">Office Login</a></p>
     </section>
   </div>`;
-  fetch('/api/tm/projects',{cache:'no-store'}).then(r=>r.json()).then(j=>{document.getElementById('tmProject').innerHTML='<option value="">Choose project...</option>'+j.rows.map(p=>`<option value="${esc(p.id)}">${esc(tmProjectText(p))}</option>`).join('');}).catch(e=>document.getElementById('tmProject').innerHTML='<option value="">Could not load jobs</option>');
+  fetch('/api/tm/projects',{cache:'no-store'}).then(r=>r.json()).then(j=>{document.getElementById('tmProject').innerHTML='<option value="">Choose project...</option>'+j.rows.map(p=>`<option value="${esc(p.id)}">${esc(tmProjectText(p))}</option>`).join('')+'<option value="CUSTOM">Other / Custom Job</option>';}).catch(e=>document.getElementById('tmProject').innerHTML='<option value="">Could not load jobs</option>');
+  document.getElementById('tmProject').onchange=()=>{const custom=document.getElementById('tmProject').value==='CUSTOM';document.getElementById('tmCustomJobWrap').classList.toggle('hidden',!custom);if(!custom)document.getElementById('tmCustomContract').value='';};
   document.getElementById('tmCamera').onchange=e=>tmAddFiles(e.target.files);document.getElementById('tmFiles').onchange=e=>tmAddFiles(e.target.files);
   document.getElementById('tmSubmitBtn').onclick=tmSubmit;
 }
@@ -2802,10 +2807,11 @@ function tmRenderFiles(){const box=document.getElementById('tmFilePreview');if(!
 function tmRemoveFile(i){tmSelectedFiles.splice(i,1);tmRenderFiles();}
 async function tmSubmit(){
  const btn=document.getElementById('tmSubmitBtn'),msg=document.getElementById('tmSubmitMsg');
- const projectId=val('tmProject'),category=val('tmCategory');
+ const projectId=val('tmProject'),category=val('tmCategory'),customContract=val('tmCustomContract');
  if(!projectId||!category){msg.innerHTML='<div class="notice">Choose a project and category.</div>';return;}
+ if(projectId==='CUSTOM'&&!customContract){msg.innerHTML='<div class="notice">Enter the contract number or job name.</div>';return;}
  if(!tmSelectedFiles.length){msg.innerHTML='<div class="notice">Add at least one receipt photo or PDF.</div>';return;}
- const data={projectId,type:category,category};
+ const data={projectId,type:category,category,customContract};
  const fd=new FormData();fd.append('data',JSON.stringify(data));tmSelectedFiles.forEach(f=>fd.append('files',f));btn.disabled=true;btn.textContent='Submitting — do not close this page';msg.innerHTML='<div class="notice">Uploading all files and saving the record...</div>';
  try{const res=await fetch('/api/tm/submissions',{method:'POST',body:fd});const j=await res.json();if(!res.ok)throw new Error(j.error||'Submission failed');tmSuccess(j);}catch(e){msg.innerHTML=`<div class="notice">Submission was not completed: ${esc(e.message)}. Your files are still on this screen; correct the problem and try again.</div>`;btn.disabled=false;btn.textContent='Submit Receipt';}
 }
