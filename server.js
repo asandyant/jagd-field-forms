@@ -17,7 +17,7 @@ const WORKERS_VERSION_FILE = path.join(DATA_DIR, 'workers-source-version.json');
 const JOBS_FILE = path.join(DATA_DIR, 'portal-jobs.json');
 const BUILT_IN_WORKERS_VERSION_FILE = path.join(__dirname, 'public', 'data', 'active-workers-version.json');
 const MATERIALS_FILE = path.join(DATA_DIR, 'materials.json');
-const ADMIN_PIN = process.env.ADMIN_PIN || process.env.ADMIN_PASSWORD || 'JadgForms123!!!';
+const ADMIN_PIN = process.env.ADMIN_PIN || process.env.ADMIN_PASSWORD || 'Jagd123!!!';
 const PORTAL_ACTIVE_WORKERS_URL = process.env.PORTAL_ACTIVE_WORKERS_URL || 'https://portal.jagdapps.com/api/forms/active-workers';
 const PORTAL_JOBS_URL = process.env.PORTAL_JOBS_URL || 'https://portal.jagdapps.com/api/forms/jobs';
 const PORTAL_SYNC_TOKEN = process.env.PORTAL_SYNC_TOKEN || process.env.FORMS_SYNC_TOKEN || '';
@@ -656,11 +656,14 @@ app.post('/api/tm/submissions', tmUpload.array('files', 24), (req, res) => {
   if (!project) { cleanup(); return res.status(400).json({ error: 'Choose a valid project.' }); }
   if (!files.length) return res.status(400).json({ error: 'Add at least one receipt photo or PDF.' });
   const now = new Date();
-  const transactionDate = now.toISOString().slice(0, 10);
+  const transactionDate = cleanText(data.transactionDate) || now.toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(transactionDate)) { cleanup(); return res.status(400).json({ error: 'Enter a valid receipt date.' }); }
   const billingMonth = transactionDate.slice(0, 7);
   const category = cleanText(data.category);
   if (!['Material', 'Equipment'].includes(category)) { cleanup(); return res.status(400).json({ error: 'Choose Material or Equipment.' }); }
-  const vendor = '', description = '', submitter = 'Field Submission', purchaser = '';
+  const vendor = cleanText(data.vendor), description = cleanText(data.description), purchaser = cleanText(data.purchaser), submitter = cleanText(data.submitter) || purchaser || 'Field Submission';
+  const paymentMethod = cleanText(data.paymentMethod) || 'Unknown';
+  if (!vendor || !purchaser) { cleanup(); return res.status(400).json({ error: 'Vendor and purchased by are required.' }); }
   const fileRows = files.map(f => ({ originalName: f.originalname, filename: f.filename, size: f.size, mimetype: f.mimetype, hash: tmFileHash(f.path) }));
   const existing = readTmRows();
   const exactDuplicateIds = [...new Set(fileRows.flatMap(f => existing.filter(r => (r.files || []).some(old => old.hash === f.hash)).map(r => r.id)))];
@@ -670,8 +673,8 @@ app.post('/api/tm/submissions', tmUpload.array('files', 24), (req, res) => {
   const record = {
     id, projectId: project.id, projectLabel: tmProjectLabel(project), customJob: !!project.custom,
     type: cleanText(data.type) || 'Receipt / Materials', vendor, transactionDate, billingMonth, amount,
-    description, category: cleanText(data.category) || 'Other', paymentMethod: cleanText(data.paymentMethod) || 'Unknown',
-    purchaser: purchaser || submitter, submitter, status: project.custom ? 'Missing Information' : 'New',
+    description, category: cleanText(data.category) || 'Other', paymentMethod,
+    purchaser: purchaser || submitter, submitter, status: project.custom ? 'Missing Information' : 'Reviewed',
     notes: '', exactDuplicateIds, likelyDuplicateIds, files: fileRows,
     rental: data.rental && typeof data.rental === 'object' ? data.rental : null,
     owned: data.owned && typeof data.owned === 'object' ? data.owned : null,
