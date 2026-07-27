@@ -2254,6 +2254,11 @@ function validateDwlBeforeSave(data){
     }
   }
 
+  const localDuplicate=getDwlSubmittedLocally(data);
+  if(localDuplicate){
+    addWarning('duplicate-local',`A DWL was already saved on this phone/browser for the same project, date, crew, and revision. If this is a correction, go back and increase the Revision number. Continue only if this is a separate valid DWL.`);
+  }
+
   return {errors,warnings,firstInvalid};
 }
 function showDwlBlockingErrors(result){
@@ -2307,7 +2312,7 @@ async function confirmDwlWarnings(warnings){
 async function confirmDwlPrintAndSign(){
   return showDwlMobileDialog({
     title:'Final DWL Check',
-    bodyHtml:`<p><b>The official DWL PDF will open next.</b></p><p>Make sure it is printed and signed as required before the final signed copy is filed with the office.</p>`,
+    bodyHtml:`<p><b>The official DWL PDF will open next and the DWL will be sent to the office portal.</b></p><p>Make sure it is printed and signed as required before the final signed copy is filed with the office.</p>`,
     confirmText:'Continue to Print & Sign',
     cancelText:'Go Back',
     tone:'final'
@@ -2350,7 +2355,6 @@ async function dwlForm(){
       if(!(await confirmDwlWarnings(validation.warnings))) return;
       const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
       const dwlFileTitle=dwlFileTitleWithRevision(baseTitle, data.revision);
-      if(!confirmDwlSaveAndSend(data,dwlFileTitle)) return;
       if(!(await confirmDwlPrintAndSign())) return;
       setNextPdfFileTitle(dwlFileTitle);
       markDwlSubmittedLocally(data,dwlFileTitle);
@@ -2429,7 +2433,7 @@ async function saveDwlDirectPdf(data, msgId){
   const pageW=612, pageH=792;
   const dateSlash=dateToSlashYYYY(data.reportDate);
   const m=21, w=pageW-m*2;
-  const cols=[16,176,43,40,40,42,46,43,52,40,32];
+  const cols=[20,172,43,40,40,42,46,43,52,40,32];
   const headers=['#','Employee','Location','Activity','Class','Local','Straight','Over','No Lunch','P.T.','R.T.'];
 
   function drawActivityGrid(startY){
@@ -2507,7 +2511,7 @@ async function saveDwlDirectPdf(data, msgId){
         let size=13.8;
         let style='bold';
         let align='center';
-        if(c===0){ size=10.2; }
+        if(c===0){ size=8.6; }
         if(c===1){ size=13.6; align='left'; }
         if(c===2){ size=10.8; style='normal'; }
         if(c===3){ size=11.2; }
@@ -2524,9 +2528,11 @@ async function saveDwlDirectPdf(data, msgId){
     dwlPdfText(doc,'Sign:',m+235,y+10,{size:11,style:'normal'});
     doc.line(m+268,y+13,m+440,y+13);
     if(data.signatureData){ try{ doc.addImage(data.signatureData,'PNG',m+275,y-10,130,30); }catch(e){} }
-    dwlPdfText(doc,'Date:',pageW-m-80,y+10,{size:11,style:'normal'});
-    dwlPdfText(doc,dateSlash,pageW-m,y+10,{size:12.5,style:'bold',align:'right',maxWidth:70});
-    doc.line(pageW-m-72,y+13,pageW-m,y+13);
+    const footerDateLineStart=pageW-m-76;
+    const footerDateLineEnd=pageW-m;
+    dwlPdfText(doc,'Date:',footerDateLineStart-36,y+10,{size:11,style:'normal'});
+    dwlPdfText(doc,dateSlash,(footerDateLineStart+footerDateLineEnd)/2,y+10,{size:11.5,style:'bold',align:'center',maxWidth:72});
+    doc.line(footerDateLineStart,y+13,footerDateLineEnd,y+13);
     if(needed>1) dwlPdfText(doc,`Page ${p+1} of ${needed}`,pageW/2,pageH-12,{size:8.5,align:'center',maxWidth:100});
   }
 
