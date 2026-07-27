@@ -1116,3 +1116,20 @@
   .dwlDialogActions [data-dwl-dialog-confirm]{order:1;}
   .dwlDialogActions [data-dwl-dialog-cancel]{order:2;}
 }
+
+
+/* DWL required Day/Night shift + printable payroll notice */
+#dwlShiftNotice{grid-column:1/-1;margin-top:10px;}
+.dwlShiftBanner{display:flex;flex-direction:column;gap:3px;border:2px solid #b16800;background:#fff4cc;color:#6d3900;border-radius:12px;padding:11px 13px;font-size:15px;line-height:1.3;}
+.dwlShiftBanner b{font-size:16px;}
+.dwlShiftBanner span{font-size:12px;color:#594319;}
+.dwlShiftBanner.nightReview{border-color:#9b5b00;background:#fff1d8;}
+.dwlPrintShiftNote{border:2px solid #b16800;background:#fff4cc;color:#4f2b00;font-weight:800;text-align:center;padding:6px 8px;margin:4px 0;font-size:14px;letter-spacing:.1px;}
+@media(max-width:700px){
+  #dwlShiftNotice{margin-top:4px;}
+  .dwlShiftBanner{padding:12px;font-size:15px;}
+  .dwlShiftBanner b{font-size:17px;}
+}
+@media print{
+  .dwlPrintShiftNote{display:block!important;break-inside:avoid;}
+}

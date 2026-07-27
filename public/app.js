@@ -2008,11 +2008,63 @@ function makeDwlSyncId(data, title){
   const parts=[data?.reportDate||'', data?.project||'', data?.crew||'', cleanDwlRevision(data?.revision||'0')||'0', title||'', Date.now(), Math.random().toString(36).slice(2,8)];
   return 'forms-dwl-' + parts.join('|').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80);
 }
+function dwlNightDifferentialProject(project=''){
+  const p=String(project||'').toLowerCase().replace(/[^a-z0-9]+/g,' ');
+  return [
+    /\bdevon\b/,
+    /\bgold star\b/,
+    /\bsimon kenton\b/,
+    /\bmass dot\b/,
+    /\bmassdot\b/,
+    /\bgordie howe\b/
+  ].some(rx=>rx.test(p));
+}
+function dwlShiftNote(project='',shift=''){
+  if(String(shift||'').toLowerCase()!=='night') return '';
+  if(dwlNightDifferentialProject(project)) return 'NIGHT SHIFT — 10% DIFFERENTIAL APPLIES';
+  if(/warehouse/i.test(String(project||''))) return 'NIGHT SHIFT — OFFICE REVIEW';
+  return 'NEW YORK NIGHT SHIFT — REVIEW FOR ALL OT';
+}
+function applyDwlAllWorkedHoursAsOt(){
+  let changed=0;
+  for(let i=1;i<=40;i++){
+    const stEl=document.getElementById('dwlStraight'+i);
+    const otEl=document.getElementById('dwlOver'+i);
+    if(!stEl || !otEl) continue;
+    const st=dwlNumber(stEl.value);
+    const ot=dwlNumber(otEl.value);
+    if(st>0){
+      stEl.value='';
+      otEl.value=String(Math.round((st+ot)*100)/100);
+      changed++;
+    }
+  }
+  const msg=document.getElementById('dwlMsg');
+  if(msg) msg.innerHTML=changed ? `<div class="success">Moved Straight hours to OT for ${changed} worker${changed===1?'':'s'}.</div>` : '<div class="notice">No Straight hours were entered to move.</div>';
+}
+function updateDwlShiftNotice(){
+  const box=document.getElementById('dwlShiftNotice');
+  if(!box) return;
+  const project=projectValue('dwlProject');
+  const shift=val('dwlShift');
+  const note=dwlShiftNote(project,shift);
+  const nyNight=String(shift).toLowerCase()==='night' && !dwlNightDifferentialProject(project) && !/warehouse/i.test(String(project||''));
+  box.innerHTML=note ? `<div class="dwlShiftBanner ${dwlNightDifferentialProject(project)?'differential':'nightReview'}"><b>${esc(note)}</b><span>This note will print on the DWL and be sent to the office portal.</span>${nyNight?'<button class="btn small" type="button" id="dwlApplyAllOtBtn">Apply All Worked Hours as OT</button>':''}</div>` : '';
+  const btn=document.getElementById('dwlApplyAllOtBtn');
+  if(btn) btn.onclick=applyDwlAllWorkedHoursAsOt;
+}
+
 function normalizeDwlDataForSave(data={}){
-  const notes = String(data.notes ?? data.additionalNotes ?? data.dwlNotes ?? '').trim();
+  const fieldNotes = String(data.fieldNotes ?? data.notes ?? data.additionalNotes ?? data.dwlNotes ?? '').trim();
+  const shift = String(data.shift || '').trim();
+  const shiftNote = String(data.shiftNote || dwlShiftNote(data.project,shift) || '').trim();
+  const notes = [shiftNote,fieldNotes].filter(Boolean).join(' — ');
   const safetyTopic = String(data.safetyTopic ?? data.safetyHuddleTopic ?? data.safetyHuddle ?? data.dwlSafetyTopic ?? '').trim();
   return {
     ...data,
+    shift,
+    shiftNote,
+    fieldNotes,
     notes,
     additionalNotes: notes,
     safetyTopic,
@@ -2113,6 +2165,7 @@ function validateDwlBeforeSave(data){
 
   if(!String(data.project || '').trim()) addError('Select a project.','dwlProject');
   if(!String(data.reportDate || '').trim()) addError('Enter the report date.','dwlReportDate');
+  if(!['Day','Night'].includes(String(data.shift || '').trim())) addError('Select Day or Night.','dwlShift');
   const selectedProject=String(data.project || '').trim();
   const crewRequired=/c\s*-?\s*35311|dyer\s*ave|dyre\s*ave/i.test(selectedProject);
   if(crewRequired && !String(data.crew || '').trim()) addError('Select or enter a crew for the Dyre Ave job.','dwlCrew');
@@ -2130,6 +2183,7 @@ function validateDwlBeforeSave(data){
     const day=d.getDay();
     return day===0 || day===6;
   })();
+  const nyNightAllOt=String(data.shift||'').toLowerCase()==='night' && !dwlNightDifferentialProject(data.project) && !/warehouse/i.test(String(data.project||''));
 
   rows.forEach((row,idx)=>{
     const i=idx+1;
@@ -2161,6 +2215,7 @@ function validateDwlBeforeSave(data){
 
     if(employee){
       if(st>8) addWarning(`st-${i}`,`${employee} has ${st} Straight hours. Straight time over 8 is unusual; confirm it is correct.`);
+      if(nyNightAllOt && st>0) addWarning(`nynight-st-${i}`,`${employee} still has ${st} Straight hours on a New York night shift. Night work is normally all OT; use the All OT button or confirm the hours are correct.`);
       if(worked>=16) addWarning(`high-${i}`,`${employee} has ${worked} total worked hours. Confirm the high hours are correct.`);
       if(ot>0 && st===0 && !isWeekend) addWarning(`otonly-${i}`,`${employee} has OT but no Straight time on a weekday. Confirm this is correct.`);
       if(noLunch>0 && worked>0 && worked<6) addWarning(`nolunch-${i}`,`${employee} has No Lunch entered with only ${worked} worked hours. Confirm this is correct.`);
@@ -2262,13 +2317,20 @@ async function confirmDwlPrintAndSign(){
 async function dwlForm(){
   await loadActiveWorkers(true);
   app.innerHTML=`<div class="container printOnly dwlContainer"><h1>Daily Work Log</h1><datalist id="dwlWorkerList"></datalist>${dwlDataList('dwlClassList',DWL_CLASS_OPTIONS)}${dwlDataList('dwlLocalList',DWL_LOCAL_OPTIONS)}${dwlDataList('dwlActivityList',DWL_ACTIVITY_NUMBERS)}${dwlDataList('dwlOverList',DWL_OVER_OPTIONS)}${dwlDataList('dwlSmallHourList',DWL_SMALL_HOUR_OPTIONS)}
-    <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')}</div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
+    <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${selectField('dwlShift','Shift',['Select Shift','Day','Night'])} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')}</div><div id="dwlShiftNotice" aria-live="polite"></div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
     <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project + Crew on this phone.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew for This Job/Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
     <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the official DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the phone share/save screen should open with the PDF attached. Choose Messages, Mail, Files, or Dropbox from that screen.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
+  const dwlProjectEl=document.getElementById('dwlProject');
+  const dwlProjectOtherEl=document.getElementById('dwlProjectOther');
+  const dwlShiftEl=document.getElementById('dwlShift');
+  dwlProjectEl?.addEventListener('change',updateDwlShiftNotice);
+  dwlProjectOtherEl?.addEventListener('input',updateDwlShiftNotice);
+  dwlShiftEl?.addEventListener('change',updateDwlShiftNotice);
+  updateDwlShiftNotice();
   const dateEl=document.getElementById('dwlReportDate'), dayEl=document.getElementById('dwlDay');
   const updateDay=()=>{ if(!dateEl.value){dayEl.value='';return;} const d=new Date(dateEl.value+'T00:00:00'); dayEl.value=d.toLocaleDateString(undefined,{weekday:'long'}); };
   dateEl.value=new Date().toISOString().slice(0,10); updateDay(); dateEl.addEventListener('change',updateDay);
@@ -2406,19 +2468,27 @@ async function saveDwlDirectPdf(data, msgId){
     y += 38;
 
     dwlPdfText(doc,'Weather:',m,y+12,{size:12,style:'bold'});
-    dwlPdfText(doc,data.weather,m+58,y+12,{size:13,style:'bold',maxWidth:230});
-    dwlPdfText(doc,'Day:',m+345,y+12,{size:12,style:'bold'});
-    dwlPdfText(doc,data.day,m+382,y+12,{size:13,style:'bold',maxWidth:100});
-    dwlPdfText(doc,'Crew:',m+492,y+12,{size:12,style:'bold'});
-    dwlPdfText(doc,data.crew,m+535,y+12,{size:13,style:'bold',maxWidth:45});
+    dwlPdfText(doc,data.weather,m+58,y+12,{size:12.2,style:'bold',maxWidth:230});
+    dwlPdfText(doc,'Day:',m+300,y+12,{size:12,style:'bold'});
+    dwlPdfText(doc,data.day,m+337,y+12,{size:12.2,style:'bold',maxWidth:75});
+    dwlPdfText(doc,'Shift:',m+414,y+12,{size:12,style:'bold'});
+    dwlPdfText(doc,data.shift,m+456,y+12,{size:12.5,style:'bold',maxWidth:48});
+    dwlPdfText(doc,'Crew:',m+506,y+12,{size:12,style:'bold'});
+    dwlPdfText(doc,data.crew,m+549,y+12,{size:12.2,style:'bold',maxWidth:30});
     doc.setLineWidth(1.25); doc.line(m,y+18,pageW-m,y+18);
     y += 20;
+    if(data.shiftNote){
+      doc.setFillColor(255,244,204); doc.setDrawColor(177,104,0); doc.setLineWidth(1.1);
+      doc.roundedRect(m,y,w,20,4,4,'FD');
+      dwlPdfText(doc,data.shiftNote,pageW/2,y+14,{size:12.5,style:'bold',align:'center',maxWidth:w-12});
+      y += 24;
+    }
 
     y = drawActivityGrid(y);
 
     // Narrative boxes: use the old larger typed-field sizing.
     dwlPdfBox(doc,m,y,w,84,'Location/Description of work',data.description,15.5); y += 84;
-    dwlPdfBox(doc,m,y,w,48,'Additional Notes',data.notes || data.additionalNotes,15.5); y += 48;
+    dwlPdfBox(doc,m,y,w,48,'Additional Notes',data.fieldNotes || '',15.5); y += 48;
     dwlPdfBox(doc,m,y,w,38,'Safety Huddle Topic',data.safetyTopic || data.safetyHuddleTopic,15.5); y += 38;
 
     // Worker table header and rows. Keep 20 rows per page like the boss DWL, but do not shrink the font.
@@ -2471,7 +2541,7 @@ function collectDwl(){
     const row={num:i, employee:val('dwlEmp'+i), location:val('dwlLoc'+i), activity:val('dwlAct'+i), class:val('dwlClass'+i), local:val('dwlLocal'+i), straight:val('dwlStraight'+i), over:val('dwlOver'+i), noLunch:val('dwlNoLunch'+i), pt:val('dwlPT'+i), rt:val('dwlRT'+i)};
     rows.push(row);
   }
-  return normalizeDwlDataForSave({project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),revision:cleanDwlRevision(val('dwlRevision')||'0')||'0',weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:[],description:val('dwlDescription'),notes:val('dwlNotes'),additionalNotes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),safetyHuddleTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows});
+  return normalizeDwlDataForSave({project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),shift:val('dwlShift'),crew:crewValue('dwlCrew'),revision:cleanDwlRevision(val('dwlRevision')||'0')||'0',weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:[],description:val('dwlDescription'),fieldNotes:val('dwlNotes'),notes:val('dwlNotes'),additionalNotes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),safetyHuddleTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows});
 }
 function dwlWorkerRowsPrint(rows, start, count){
   const slice=rows.slice(start,start+count);
@@ -2482,7 +2552,7 @@ function buildDwlSheet(data, pageIndex, totalPages){
   data = normalizeDwlDataForSave(data);
   const dateSlash=dateToSlashYYYY(data.reportDate); const dateDot=dateToDotMMDDYY(data.reportDate);
   const rowsPerPage=12; const start=(pageIndex-1)*rowsPerPage;
-  return `<div class="dwlPrintSheet ${totalPages===1?'dwlSinglePage':''}"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 4.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Crew:</b> ${esc(data.crew)}</div><div><b>Revision:</b> ${esc(cleanDwlRevision(data.revision||'0')||'0')}</div></div><table class="dwlActivitiesPrint"><tr><th colspan="2">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.notes || data.additionalNotes)}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic || data.safetyHuddleTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b> <span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
+  return `<div class="dwlPrintSheet ${totalPages===1?'dwlSinglePage':''}"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 4.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Shift:</b> ${esc(data.shift)}</div><div><b>Crew:</b> ${esc(data.crew)}</div><div><b>Revision:</b> ${esc(cleanDwlRevision(data.revision||'0')||'0')}</div></div>${data.shiftNote?`<div class="dwlPrintShiftNote">${esc(data.shiftNote)}</div>`:''}<table class="dwlActivitiesPrint"><tr><th colspan="2">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.fieldNotes || '')}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic || data.safetyHuddleTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b> <span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
 }
 function buildDwlPrint(data){
   data = normalizeDwlDataForSave(data);
