@@ -388,7 +388,20 @@ function dwlSubmitStorageKey(data){
   return `jagdDwlSubmitted:${reportDate}:${project}:${crew}:rev${rev}`;
 }
 function markDwlSubmittedLocally(data, title){
-  try{ localStorage.setItem(dwlSubmitStorageKey(data), JSON.stringify({title, savedAt:new Date().toISOString()})); }catch(e){}
+  try{
+    const workers = (Array.isArray(data?.rows) ? data.rows : [])
+      .filter(r => String(r?.employee || '').trim())
+      .map(r => String(r.employee || '').trim());
+    localStorage.setItem(dwlSubmitStorageKey(data), JSON.stringify({
+      title,
+      savedAt:new Date().toISOString(),
+      reportDate:String(data?.reportDate || ''),
+      project:String(data?.project || ''),
+      crew:String(data?.crew || ''),
+      revision:String(data?.revision || '0'),
+      workers
+    }));
+  }catch(e){}
 }
 function getDwlSubmittedLocally(data){
   try{ const raw=localStorage.getItem(dwlSubmitStorageKey(data)); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
@@ -1806,7 +1819,7 @@ function setupDwlWorkerAutofill(){
     if(st && st.dataset.ready!=='1'){
       st.dataset.ready='1';
       st.addEventListener('click',()=>{ if(!st.value.trim()){ st.value='8'; setTimeout(()=>{ try{ st.select(); }catch(e){} },0); } });
-      st.addEventListener('input',()=>{ const n=parseFloat(st.value); if(!isNaN(n) && n>8) st.value='8'; });
+      // Straight time over 8 is unusual, but it can be valid in rare cases. Validation warns instead of blocking/clamping it.
     }
     const nl=document.getElementById('dwlNoLunch'+i);
     if(nl && nl.dataset.ready!=='1'){
@@ -2038,6 +2051,168 @@ async function syncDwlToPortal(data, title, options = {}) {
   }
 }
 
+
+function dwlNumber(value){
+  const text=String(value ?? '').trim();
+  if(!text) return 0;
+  const n=Number(text);
+  return Number.isFinite(n) ? n : NaN;
+}
+function dwlNameKey(value){
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
+function dwlJobKey(value){
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g,'');
+}
+function dwlJobsLikelyMatch(a,b){
+  const x=dwlJobKey(a), y=dwlJobKey(b);
+  if(!x || !y) return true;
+  return x===y || x.includes(y) || y.includes(x);
+}
+function dwlWorkerCurrentJob(worker){
+  return String(worker?.currentJob || worker?.job || worker?.project || worker?.jobName || '').trim();
+}
+function clearDwlValidationMarks(){
+  document.querySelectorAll('.dwlValidationError').forEach(el=>el.classList.remove('dwlValidationError'));
+}
+function markDwlValidationField(id){
+  const el=document.getElementById(id);
+  if(el) el.classList.add('dwlValidationError');
+  return el;
+}
+function dwlPriorLocalSubmissions(){
+  const out=[];
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const key=localStorage.key(i);
+      if(!key || !key.startsWith('jagdDwlSubmitted:')) continue;
+      try{
+        const row=JSON.parse(localStorage.getItem(key) || '{}');
+        if(row && typeof row==='object') out.push(row);
+      }catch(e){}
+    }
+  }catch(e){}
+  return out;
+}
+function validateDwlBeforeSave(data){
+  clearDwlValidationMarks();
+  const errors=[];
+  const warnings=[];
+  const warningKeys=new Set();
+  let firstInvalid=null;
+  const addError=(message,id)=>{
+    errors.push(message);
+    const el=id ? markDwlValidationField(id) : null;
+    if(!firstInvalid && el) firstInvalid=el;
+  };
+  const addWarning=(key,message)=>{
+    if(warningKeys.has(key)) return;
+    warningKeys.add(key);
+    warnings.push(message);
+  };
+
+  if(!String(data.project || '').trim()) addError('Select a project.','dwlProject');
+  if(!String(data.reportDate || '').trim()) addError('Enter the report date.','dwlReportDate');
+  if(!String(data.crew || '').trim()) addError('Select or enter a crew.','dwlCrew');
+  if(!String(data.description || '').trim()) addError('Enter the work location / description.','dwlDescription');
+
+  const rows=Array.isArray(data.rows) ? data.rows : [];
+  const usedRows=rows.filter(r=>Object.entries(r || {}).some(([k,v])=>k!=='num' && String(v ?? '').trim()));
+  const namedRows=rows.filter(r=>String(r?.employee || '').trim());
+  if(!namedRows.length) addError('Add at least one worker to the DWL.','dwlEmp1');
+
+  const namesSeen=new Map();
+  const isWeekend=(()=>{
+    if(!data.reportDate) return false;
+    const d=new Date(String(data.reportDate)+'T00:00:00');
+    const day=d.getDay();
+    return day===0 || day===6;
+  })();
+
+  rows.forEach((row,idx)=>{
+    const i=idx+1;
+    const employee=String(row?.employee || '').trim();
+    const numericFields=[
+      ['straight','Straight'],['over','OT'],['noLunch','No Lunch'],['pt','P.T.'],['rt','R.T.']
+    ];
+    const nums={};
+    let hasAnyHourText=false;
+    numericFields.forEach(([key,label])=>{
+      const raw=String(row?.[key] ?? '').trim();
+      if(raw) hasAnyHourText=true;
+      const n=dwlNumber(raw);
+      nums[key]=n;
+      if(raw && Number.isNaN(n)) addError(`${employee || `Worker row ${i}`} has an invalid ${label} value.`,`dwl${key==='straight'?'Straight':key==='over'?'Over':key==='noLunch'?'NoLunch':key.toUpperCase()}${i}`);
+      else if(Number.isFinite(n) && n<0) addError(`${employee || `Worker row ${i}`} cannot have negative ${label}.`,`dwl${key==='straight'?'Straight':key==='over'?'Over':key==='noLunch'?'NoLunch':key.toUpperCase()}${i}`);
+    });
+    const st=Number.isFinite(nums.straight)?nums.straight:0;
+    const ot=Number.isFinite(nums.over)?nums.over:0;
+    const pt=Number.isFinite(nums.pt)?nums.pt:0;
+    const rt=Number.isFinite(nums.rt)?nums.rt:0;
+    const noLunch=Number.isFinite(nums.noLunch)?nums.noLunch:0;
+    const worked=st+ot;
+
+    if(!employee && hasAnyHourText) addError(`Worker row ${i} has hours or premiums but no employee selected.`,`dwlEmp${i}`);
+    if(employee && worked<=0) addError(`${employee} needs Straight or OT worked hours.`,`dwlStraight${i}`);
+    if(employee && pt>worked) addError(`${employee}'s P.T. cannot exceed worked hours (${worked || 0}).`,`dwlPT${i}`);
+    if(employee && rt>worked) addError(`${employee}'s R.T. cannot exceed worked hours (${worked || 0}).`,`dwlRT${i}`);
+
+    if(employee){
+      if(st>8) addWarning(`st-${i}`,`${employee} has ${st} Straight hours. Straight time over 8 is unusual; confirm it is correct.`);
+      if(worked>=16) addWarning(`high-${i}`,`${employee} has ${worked} total worked hours. Confirm the high hours are correct.`);
+      if(ot>0 && st===0 && !isWeekend) addWarning(`otonly-${i}`,`${employee} has OT but no Straight time on a weekday. Confirm this is correct.`);
+      if(noLunch>0 && worked>0 && worked<6) addWarning(`nolunch-${i}`,`${employee} has No Lunch entered with only ${worked} worked hours. Confirm this is correct.`);
+
+      const key=dwlNameKey(employee);
+      if(key){
+        if(namesSeen.has(key)) addWarning(`dupname-${key}`,`${employee} appears more than once on this DWL. This may be valid, but confirm before submitting.`);
+        else namesSeen.set(key,i);
+      }
+
+      const worker=findWorkerByName(employee);
+      if(!worker){
+        addWarning(`manual-${key || i}`,`${employee} did not match an active worker in the portal list. Check the spelling or confirm the manual worker.`);
+      }else{
+        const workerJob=dwlWorkerCurrentJob(worker);
+        if(workerJob && data.project && !dwlJobsLikelyMatch(workerJob,data.project)){
+          addWarning(`job-${key || i}`,`${employee} is assigned to ${workerJob}, but this DWL is for ${data.project}. Confirm the job is correct.`);
+        }
+      }
+    }
+  });
+
+  // Best-effort same-phone warning. Portal review remains the authority for submissions made from other devices.
+  if(data.reportDate && data.project){
+    const currentProject=dwlJobKey(data.project);
+    const currentNames=new Set(namedRows.map(r=>dwlNameKey(r.employee)).filter(Boolean));
+    for(const prior of dwlPriorLocalSubmissions()){
+      if(String(prior.reportDate || '')!==String(data.reportDate || '')) continue;
+      const priorProject=dwlJobKey(prior.project || '');
+      if(!priorProject || priorProject===currentProject) continue;
+      const priorNames=Array.isArray(prior.workers) ? prior.workers : [];
+      const overlaps=priorNames.filter(name=>currentNames.has(dwlNameKey(name)));
+      if(overlaps.length){
+        addWarning(`multijob-${priorProject}-${overlaps.map(dwlNameKey).join('-')}`,`${overlaps.join(', ')} also appear on a DWL saved from this phone for ${prior.project} on the same date. Confirm the multi-job entry is correct.`);
+      }
+    }
+  }
+
+  return {errors,warnings,firstInvalid};
+}
+function showDwlBlockingErrors(result){
+  const msg=document.getElementById('dwlMsg');
+  const items=result.errors.map(x=>`<li>${esc(x)}</li>`).join('');
+  if(msg) msg.innerHTML=`<div class="notice dwlValidationSummary"><b>DWL cannot be submitted yet</b><ul>${items}</ul></div>`;
+  if(result.firstInvalid){
+    result.firstInvalid.scrollIntoView({behavior:'smooth',block:'center'});
+    setTimeout(()=>{ try{ result.firstInvalid.focus({preventScroll:true}); }catch(e){ try{ result.firstInvalid.focus(); }catch(_){} } },250);
+  }else if(msg) msg.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function confirmDwlWarnings(warnings){
+  if(!warnings.length) return true;
+  return window.confirm(`Please review these DWL warnings:\n\n${warnings.map((w,i)=>`${i+1}. ${w}`).join('\n')}\n\nThese items may be valid. Click OK to confirm and continue, or Cancel to return to the DWL.`);
+}
+
 async function dwlForm(){
   await loadActiveWorkers(true);
   app.innerHTML=`<div class="container printOnly dwlContainer"><h1>Daily Work Log</h1><datalist id="dwlWorkerList"></datalist>${dwlDataList('dwlClassList',DWL_CLASS_OPTIONS)}${dwlDataList('dwlLocalList',DWL_LOCAL_OPTIONS)}${dwlDataList('dwlActivityList',DWL_ACTIVITY_NUMBERS)}${dwlDataList('dwlOverList',DWL_OVER_OPTIONS)}${dwlDataList('dwlSmallHourList',DWL_SMALL_HOUR_OPTIONS)}
@@ -2062,6 +2237,9 @@ async function dwlForm(){
     try{
       saveDwlLastCrewFromRows();
       const data=collectDwl();
+      const validation=validateDwlBeforeSave(data);
+      if(validation.errors.length){ showDwlBlockingErrors(validation); return; }
+      if(!confirmDwlWarnings(validation.warnings)) return;
       const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
       const dwlFileTitle=dwlFileTitleWithRevision(baseTitle, data.revision);
       if(!confirmDwlSaveAndSend(data,dwlFileTitle)) return;
