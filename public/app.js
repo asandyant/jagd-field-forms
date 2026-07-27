@@ -388,20 +388,7 @@ function dwlSubmitStorageKey(data){
   return `jagdDwlSubmitted:${reportDate}:${project}:${crew}:rev${rev}`;
 }
 function markDwlSubmittedLocally(data, title){
-  try{
-    const workers = (Array.isArray(data?.rows) ? data.rows : [])
-      .filter(r => String(r?.employee || '').trim())
-      .map(r => String(r.employee || '').trim());
-    localStorage.setItem(dwlSubmitStorageKey(data), JSON.stringify({
-      title,
-      savedAt:new Date().toISOString(),
-      reportDate:String(data?.reportDate || ''),
-      project:String(data?.project || ''),
-      crew:String(data?.crew || ''),
-      revision:String(data?.revision || '0'),
-      workers
-    }));
-  }catch(e){}
+  try{ localStorage.setItem(dwlSubmitStorageKey(data), JSON.stringify({title, savedAt:new Date().toISOString()})); }catch(e){}
 }
 function getDwlSubmittedLocally(data){
   try{ const raw=localStorage.getItem(dwlSubmitStorageKey(data)); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
@@ -1819,7 +1806,7 @@ function setupDwlWorkerAutofill(){
     if(st && st.dataset.ready!=='1'){
       st.dataset.ready='1';
       st.addEventListener('click',()=>{ if(!st.value.trim()){ st.value='8'; setTimeout(()=>{ try{ st.select(); }catch(e){} },0); } });
-      // Straight time over 8 is unusual, but it can be valid in rare cases. Validation warns instead of blocking/clamping it.
+      st.addEventListener('input',()=>{ const n=parseFloat(st.value); if(!isNaN(n) && n>8) st.value='8'; });
     }
     const nl=document.getElementById('dwlNoLunch'+i);
     if(nl && nl.dataset.ready!=='1'){
@@ -2008,63 +1995,11 @@ function makeDwlSyncId(data, title){
   const parts=[data?.reportDate||'', data?.project||'', data?.crew||'', cleanDwlRevision(data?.revision||'0')||'0', title||'', Date.now(), Math.random().toString(36).slice(2,8)];
   return 'forms-dwl-' + parts.join('|').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80);
 }
-function dwlNightDifferentialProject(project=''){
-  const p=String(project||'').toLowerCase().replace(/[^a-z0-9]+/g,' ');
-  return [
-    /\bdevon\b/,
-    /\bgold star\b/,
-    /\bsimon kenton\b/,
-    /\bmass dot\b/,
-    /\bmassdot\b/,
-    /\bgordie howe\b/
-  ].some(rx=>rx.test(p));
-}
-function dwlShiftNote(project='',shift=''){
-  if(String(shift||'').toLowerCase()!=='night') return '';
-  if(dwlNightDifferentialProject(project)) return 'NIGHT SHIFT — 10% DIFFERENTIAL APPLIES';
-  if(/warehouse/i.test(String(project||''))) return 'NIGHT SHIFT — OFFICE REVIEW';
-  return 'NEW YORK NIGHT SHIFT — REVIEW FOR ALL OT';
-}
-function applyDwlAllWorkedHoursAsOt(){
-  let changed=0;
-  for(let i=1;i<=40;i++){
-    const stEl=document.getElementById('dwlStraight'+i);
-    const otEl=document.getElementById('dwlOver'+i);
-    if(!stEl || !otEl) continue;
-    const st=dwlNumber(stEl.value);
-    const ot=dwlNumber(otEl.value);
-    if(st>0){
-      stEl.value='';
-      otEl.value=String(Math.round((st+ot)*100)/100);
-      changed++;
-    }
-  }
-  const msg=document.getElementById('dwlMsg');
-  if(msg) msg.innerHTML=changed ? `<div class="success">Moved Straight hours to OT for ${changed} worker${changed===1?'':'s'}.</div>` : '<div class="notice">No Straight hours were entered to move.</div>';
-}
-function updateDwlShiftNotice(){
-  const box=document.getElementById('dwlShiftNotice');
-  if(!box) return;
-  const project=projectValue('dwlProject');
-  const shift=val('dwlShift');
-  const note=dwlShiftNote(project,shift);
-  const nyNight=String(shift).toLowerCase()==='night' && !dwlNightDifferentialProject(project) && !/warehouse/i.test(String(project||''));
-  box.innerHTML=note ? `<div class="dwlShiftBanner ${dwlNightDifferentialProject(project)?'differential':'nightReview'}"><b>${esc(note)}</b><span>This note will print on the DWL and be sent to the office portal.</span>${nyNight?'<button class="btn small" type="button" id="dwlApplyAllOtBtn">Apply All Worked Hours as OT</button>':''}</div>` : '';
-  const btn=document.getElementById('dwlApplyAllOtBtn');
-  if(btn) btn.onclick=applyDwlAllWorkedHoursAsOt;
-}
-
 function normalizeDwlDataForSave(data={}){
-  const fieldNotes = String(data.fieldNotes ?? data.notes ?? data.additionalNotes ?? data.dwlNotes ?? '').trim();
-  const shift = String(data.shift || '').trim();
-  const shiftNote = String(data.shiftNote || dwlShiftNote(data.project,shift) || '').trim();
-  const notes = [shiftNote,fieldNotes].filter(Boolean).join(' — ');
+  const notes = String(data.notes ?? data.additionalNotes ?? data.dwlNotes ?? '').trim();
   const safetyTopic = String(data.safetyTopic ?? data.safetyHuddleTopic ?? data.safetyHuddle ?? data.dwlSafetyTopic ?? '').trim();
   return {
     ...data,
-    shift,
-    shiftNote,
-    fieldNotes,
     notes,
     additionalNotes: notes,
     safetyTopic,
@@ -2103,239 +2038,16 @@ async function syncDwlToPortal(data, title, options = {}) {
   }
 }
 
-
-function dwlNumber(value){
-  const text=String(value ?? '').trim();
-  if(!text) return 0;
-  const n=Number(text);
-  return Number.isFinite(n) ? n : NaN;
-}
-function dwlNameKey(value){
-  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-}
-function dwlJobKey(value){
-  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g,'');
-}
-function dwlJobsLikelyMatch(a,b){
-  const x=dwlJobKey(a), y=dwlJobKey(b);
-  if(!x || !y) return true;
-  return x===y || x.includes(y) || y.includes(x);
-}
-function dwlWorkerCurrentJob(worker){
-  return String(worker?.currentJob || worker?.job || worker?.project || worker?.jobName || '').trim();
-}
-function clearDwlValidationMarks(){
-  document.querySelectorAll('.dwlValidationError').forEach(el=>el.classList.remove('dwlValidationError'));
-}
-function markDwlValidationField(id){
-  const el=document.getElementById(id);
-  if(el) el.classList.add('dwlValidationError');
-  return el;
-}
-function dwlPriorLocalSubmissions(){
-  const out=[];
-  try{
-    for(let i=0;i<localStorage.length;i++){
-      const key=localStorage.key(i);
-      if(!key || !key.startsWith('jagdDwlSubmitted:')) continue;
-      try{
-        const row=JSON.parse(localStorage.getItem(key) || '{}');
-        if(row && typeof row==='object') out.push(row);
-      }catch(e){}
-    }
-  }catch(e){}
-  return out;
-}
-function validateDwlBeforeSave(data){
-  clearDwlValidationMarks();
-  const errors=[];
-  const warnings=[];
-  const warningKeys=new Set();
-  let firstInvalid=null;
-  const addError=(message,id)=>{
-    errors.push(message);
-    const el=id ? markDwlValidationField(id) : null;
-    if(!firstInvalid && el) firstInvalid=el;
-  };
-  const addWarning=(key,message)=>{
-    if(warningKeys.has(key)) return;
-    warningKeys.add(key);
-    warnings.push(message);
-  };
-
-  if(!String(data.project || '').trim()) addError('Select a project.','dwlProject');
-  if(!String(data.reportDate || '').trim()) addError('Enter the report date.','dwlReportDate');
-  if(!['Day','Night'].includes(String(data.shift || '').trim())) addError('Select Day or Night.','dwlShift');
-  const selectedProject=String(data.project || '').trim();
-  const crewRequired=/c\s*-?\s*35311|dyer\s*ave|dyre\s*ave/i.test(selectedProject);
-  if(crewRequired && !String(data.crew || '').trim()) addError('Select or enter a crew for the Dyre Ave job.','dwlCrew');
-  if(!String(data.description || '').trim()) addError('Enter the work location / description.','dwlDescription');
-
-  const rows=Array.isArray(data.rows) ? data.rows : [];
-  const usedRows=rows.filter(r=>Object.entries(r || {}).some(([k,v])=>k!=='num' && String(v ?? '').trim()));
-  const namedRows=rows.filter(r=>String(r?.employee || '').trim());
-  if(!namedRows.length) addError('Add at least one worker to the DWL.','dwlEmp1');
-
-  const namesSeen=new Map();
-  const isWeekend=(()=>{
-    if(!data.reportDate) return false;
-    const d=new Date(String(data.reportDate)+'T00:00:00');
-    const day=d.getDay();
-    return day===0 || day===6;
-  })();
-  const nyNightAllOt=String(data.shift||'').toLowerCase()==='night' && !dwlNightDifferentialProject(data.project) && !/warehouse/i.test(String(data.project||''));
-
-  rows.forEach((row,idx)=>{
-    const i=idx+1;
-    const employee=String(row?.employee || '').trim();
-    const numericFields=[
-      ['straight','Straight'],['over','OT'],['noLunch','No Lunch'],['pt','P.T.'],['rt','R.T.']
-    ];
-    const nums={};
-    let hasAnyHourText=false;
-    numericFields.forEach(([key,label])=>{
-      const raw=String(row?.[key] ?? '').trim();
-      if(raw) hasAnyHourText=true;
-      const n=dwlNumber(raw);
-      nums[key]=n;
-      if(raw && Number.isNaN(n)) addError(`${employee || `Worker row ${i}`} has an invalid ${label} value.`,`dwl${key==='straight'?'Straight':key==='over'?'Over':key==='noLunch'?'NoLunch':key.toUpperCase()}${i}`);
-      else if(Number.isFinite(n) && n<0) addError(`${employee || `Worker row ${i}`} cannot have negative ${label}.`,`dwl${key==='straight'?'Straight':key==='over'?'Over':key==='noLunch'?'NoLunch':key.toUpperCase()}${i}`);
-    });
-    const st=Number.isFinite(nums.straight)?nums.straight:0;
-    const ot=Number.isFinite(nums.over)?nums.over:0;
-    const pt=Number.isFinite(nums.pt)?nums.pt:0;
-    const rt=Number.isFinite(nums.rt)?nums.rt:0;
-    const noLunch=Number.isFinite(nums.noLunch)?nums.noLunch:0;
-    const worked=st+ot;
-
-    if(!employee && hasAnyHourText) addError(`Worker row ${i} has hours or premiums but no employee selected.`,`dwlEmp${i}`);
-    if(employee && worked<=0) addError(`${employee} needs Straight or OT worked hours.`,`dwlStraight${i}`);
-    if(employee && pt>worked) addError(`${employee}'s P.T. cannot exceed worked hours (${worked || 0}).`,`dwlPT${i}`);
-    if(employee && rt>worked) addError(`${employee}'s R.T. cannot exceed worked hours (${worked || 0}).`,`dwlRT${i}`);
-
-    if(employee){
-      if(st>8) addWarning(`st-${i}`,`${employee} has ${st} Straight hours. Straight time over 8 is unusual; confirm it is correct.`);
-      if(nyNightAllOt && st>0) addWarning(`nynight-st-${i}`,`${employee} still has ${st} Straight hours on a New York night shift. Night work is normally all OT; use the All OT button or confirm the hours are correct.`);
-      if(worked>=16) addWarning(`high-${i}`,`${employee} has ${worked} total worked hours. Confirm the high hours are correct.`);
-      if(ot>0 && st===0 && !isWeekend) addWarning(`otonly-${i}`,`${employee} has OT but no Straight time on a weekday. Confirm this is correct.`);
-      if(noLunch>0 && worked>0 && worked<6) addWarning(`nolunch-${i}`,`${employee} has No Lunch entered with only ${worked} worked hours. Confirm this is correct.`);
-
-      const key=dwlNameKey(employee);
-      if(key){
-        if(namesSeen.has(key)) addWarning(`dupname-${key}`,`${employee} appears more than once on this DWL. This may be valid, but confirm before submitting.`);
-        else namesSeen.set(key,i);
-      }
-
-      const worker=findWorkerByName(employee);
-      if(!worker){
-        addWarning(`manual-${key || i}`,`${employee} did not match an active worker in the portal list. Check the spelling or confirm the manual worker.`);
-      }else{
-        const workerJob=dwlWorkerCurrentJob(worker);
-        if(workerJob && data.project && !dwlJobsLikelyMatch(workerJob,data.project)){
-          addWarning(`job-${key || i}`,`${employee} is assigned to ${workerJob}, but this DWL is for ${data.project}. Confirm the job is correct.`);
-        }
-      }
-    }
-  });
-
-  // Best-effort same-phone warning. Portal review remains the authority for submissions made from other devices.
-  if(data.reportDate && data.project){
-    const currentProject=dwlJobKey(data.project);
-    const currentNames=new Set(namedRows.map(r=>dwlNameKey(r.employee)).filter(Boolean));
-    for(const prior of dwlPriorLocalSubmissions()){
-      if(String(prior.reportDate || '')!==String(data.reportDate || '')) continue;
-      const priorProject=dwlJobKey(prior.project || '');
-      if(!priorProject || priorProject===currentProject) continue;
-      const priorNames=Array.isArray(prior.workers) ? prior.workers : [];
-      const overlaps=priorNames.filter(name=>currentNames.has(dwlNameKey(name)));
-      if(overlaps.length){
-        addWarning(`multijob-${priorProject}-${overlaps.map(dwlNameKey).join('-')}`,`${overlaps.join(', ')} also appear on a DWL saved from this phone for ${prior.project} on the same date. Confirm the multi-job entry is correct.`);
-      }
-    }
-  }
-
-  const localDuplicate=getDwlSubmittedLocally(data);
-  if(localDuplicate){
-    addWarning('duplicate-local',`A DWL was already saved on this phone/browser for the same project, date, crew, and revision. If this is a correction, go back and increase the Revision number. Continue only if this is a separate valid DWL.`);
-  }
-
-  return {errors,warnings,firstInvalid};
-}
-function showDwlBlockingErrors(result){
-  const msg=document.getElementById('dwlMsg');
-  const items=result.errors.map(x=>`<li>${esc(x)}</li>`).join('');
-  if(msg) msg.innerHTML=`<div class="notice dwlValidationSummary"><b>DWL cannot be submitted yet</b><ul>${items}</ul></div>`;
-  if(result.firstInvalid){
-    result.firstInvalid.scrollIntoView({behavior:'smooth',block:'center'});
-    setTimeout(()=>{ try{ result.firstInvalid.focus({preventScroll:true}); }catch(e){ try{ result.firstInvalid.focus(); }catch(_){} } },250);
-  }else if(msg) msg.scrollIntoView({behavior:'smooth',block:'center'});
-}
-function showDwlMobileDialog({title,bodyHtml,confirmText='Continue',cancelText='Go Back',tone='warning'}){
-  return new Promise(resolve=>{
-    const old=document.getElementById('dwlMobileDialog');
-    if(old) old.remove();
-    const overlay=document.createElement('div');
-    overlay.id='dwlMobileDialog';
-    overlay.className='modalOverlay dwlMobileDialogOverlay';
-    overlay.setAttribute('role','dialog');
-    overlay.setAttribute('aria-modal','true');
-    overlay.setAttribute('aria-labelledby','dwlMobileDialogTitle');
-    overlay.innerHTML=`<div class="modalBox dwlMobileDialog ${tone==='final'?'dwlFinalDialog':''}">
-      <div class="dwlDialogIcon" aria-hidden="true">${tone==='final'?'✓':'!'}</div>
-      <h2 id="dwlMobileDialogTitle">${esc(title)}</h2>
-      <div class="dwlDialogBody">${bodyHtml}</div>
-      <div class="dwlDialogActions">
-        <button class="btn light" type="button" data-dwl-dialog-cancel>${esc(cancelText)}</button>
-        <button class="btn" type="button" data-dwl-dialog-confirm>${esc(confirmText)}</button>
-      </div>
-    </div>`;
-    const finish=value=>{ overlay.remove(); document.removeEventListener('keydown',onKey); resolve(value); };
-    const onKey=e=>{ if(e.key==='Escape') finish(false); };
-    overlay.querySelector('[data-dwl-dialog-cancel]').onclick=()=>finish(false);
-    overlay.querySelector('[data-dwl-dialog-confirm]').onclick=()=>finish(true);
-    overlay.addEventListener('click',e=>{ if(e.target===overlay) finish(false); });
-    document.addEventListener('keydown',onKey);
-    document.body.appendChild(overlay);
-    setTimeout(()=>overlay.querySelector('[data-dwl-dialog-confirm]')?.focus(),50);
-  });
-}
-async function confirmDwlWarnings(warnings){
-  if(!warnings.length) return true;
-  const items=warnings.map(w=>`<li>${esc(w)}</li>`).join('');
-  return showDwlMobileDialog({
-    title:'Please Review DWL Warnings',
-    bodyHtml:`<p>These items may be valid, but please check them before submitting.</p><ul class="dwlDialogList">${items}</ul>`,
-    confirmText:'Confirm & Continue',
-    cancelText:'Go Back and Fix'
-  });
-}
-async function confirmDwlPrintAndSign(){
-  return showDwlMobileDialog({
-    title:'Final DWL Check',
-    bodyHtml:`<p><b>The official DWL PDF will open next and the DWL will be sent to the office portal.</b></p><p>Make sure it is printed and signed as required before the final signed copy is filed with the office.</p>`,
-    confirmText:'Continue to Print & Sign',
-    cancelText:'Go Back',
-    tone:'final'
-  });
-}
-
 async function dwlForm(){
   await loadActiveWorkers(true);
   app.innerHTML=`<div class="container printOnly dwlContainer"><h1>Daily Work Log</h1><datalist id="dwlWorkerList"></datalist>${dwlDataList('dwlClassList',DWL_CLASS_OPTIONS)}${dwlDataList('dwlLocalList',DWL_LOCAL_OPTIONS)}${dwlDataList('dwlActivityList',DWL_ACTIVITY_NUMBERS)}${dwlDataList('dwlOverList',DWL_OVER_OPTIONS)}${dwlDataList('dwlSmallHourList',DWL_SMALL_HOUR_OPTIONS)}
-    <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${selectField('dwlShift','Shift',['Select Shift','Day','Night'])} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')}</div><div id="dwlShiftNotice" aria-live="polite"></div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
+    <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')}</div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
     <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project + Crew on this phone.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew for This Job/Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
     <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the official DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the phone share/save screen should open with the PDF attached. Choose Messages, Mail, Files, or Dropbox from that screen.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
-  const dwlProjectEl=document.getElementById('dwlProject');
-  const dwlProjectOtherEl=document.getElementById('dwlProjectOther');
-  const dwlShiftEl=document.getElementById('dwlShift');
-  dwlProjectEl?.addEventListener('change',updateDwlShiftNotice);
-  dwlProjectOtherEl?.addEventListener('input',updateDwlShiftNotice);
-  dwlShiftEl?.addEventListener('change',updateDwlShiftNotice);
-  updateDwlShiftNotice();
   const dateEl=document.getElementById('dwlReportDate'), dayEl=document.getElementById('dwlDay');
   const updateDay=()=>{ if(!dateEl.value){dayEl.value='';return;} const d=new Date(dateEl.value+'T00:00:00'); dayEl.value=d.toLocaleDateString(undefined,{weekday:'long'}); };
   dateEl.value=new Date().toISOString().slice(0,10); updateDay(); dateEl.addEventListener('change',updateDay);
@@ -2350,12 +2062,9 @@ async function dwlForm(){
     try{
       saveDwlLastCrewFromRows();
       const data=collectDwl();
-      const validation=validateDwlBeforeSave(data);
-      if(validation.errors.length){ showDwlBlockingErrors(validation); return; }
-      if(!(await confirmDwlWarnings(validation.warnings))) return;
       const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
       const dwlFileTitle=dwlFileTitleWithRevision(baseTitle, data.revision);
-      if(!(await confirmDwlPrintAndSign())) return;
+      if(!confirmDwlSaveAndSend(data,dwlFileTitle)) return;
       setNextPdfFileTitle(dwlFileTitle);
       markDwlSubmittedLocally(data,dwlFileTitle);
       logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle);
@@ -2433,7 +2142,7 @@ async function saveDwlDirectPdf(data, msgId){
   const pageW=612, pageH=792;
   const dateSlash=dateToSlashYYYY(data.reportDate);
   const m=21, w=pageW-m*2;
-  const cols=[20,172,43,40,40,42,46,43,52,40,32];
+  const cols=[16,176,43,40,40,42,46,43,52,40,32];
   const headers=['#','Employee','Location','Activity','Class','Local','Straight','Over','No Lunch','P.T.','R.T.'];
 
   function drawActivityGrid(startY){
@@ -2472,27 +2181,19 @@ async function saveDwlDirectPdf(data, msgId){
     y += 38;
 
     dwlPdfText(doc,'Weather:',m,y+12,{size:12,style:'bold'});
-    dwlPdfText(doc,data.weather,m+58,y+12,{size:12.2,style:'bold',maxWidth:230});
-    dwlPdfText(doc,'Day:',m+300,y+12,{size:12,style:'bold'});
-    dwlPdfText(doc,data.day,m+337,y+12,{size:12.2,style:'bold',maxWidth:75});
-    dwlPdfText(doc,'Shift:',m+414,y+12,{size:12,style:'bold'});
-    dwlPdfText(doc,data.shift,m+456,y+12,{size:12.5,style:'bold',maxWidth:48});
-    dwlPdfText(doc,'Crew:',m+506,y+12,{size:12,style:'bold'});
-    dwlPdfText(doc,data.crew,m+549,y+12,{size:12.2,style:'bold',maxWidth:30});
+    dwlPdfText(doc,data.weather,m+58,y+12,{size:13,style:'bold',maxWidth:230});
+    dwlPdfText(doc,'Day:',m+345,y+12,{size:12,style:'bold'});
+    dwlPdfText(doc,data.day,m+382,y+12,{size:13,style:'bold',maxWidth:100});
+    dwlPdfText(doc,'Crew:',m+492,y+12,{size:12,style:'bold'});
+    dwlPdfText(doc,data.crew,m+535,y+12,{size:13,style:'bold',maxWidth:45});
     doc.setLineWidth(1.25); doc.line(m,y+18,pageW-m,y+18);
     y += 20;
-    if(data.shiftNote){
-      doc.setFillColor(255,244,204); doc.setDrawColor(177,104,0); doc.setLineWidth(1.1);
-      doc.roundedRect(m,y,w,20,4,4,'FD');
-      dwlPdfText(doc,data.shiftNote,pageW/2,y+14,{size:12.5,style:'bold',align:'center',maxWidth:w-12});
-      y += 24;
-    }
 
     y = drawActivityGrid(y);
 
     // Narrative boxes: use the old larger typed-field sizing.
     dwlPdfBox(doc,m,y,w,84,'Location/Description of work',data.description,15.5); y += 84;
-    dwlPdfBox(doc,m,y,w,48,'Additional Notes',data.fieldNotes || '',15.5); y += 48;
+    dwlPdfBox(doc,m,y,w,48,'Additional Notes',data.notes || data.additionalNotes,15.5); y += 48;
     dwlPdfBox(doc,m,y,w,38,'Safety Huddle Topic',data.safetyTopic || data.safetyHuddleTopic,15.5); y += 38;
 
     // Worker table header and rows. Keep 20 rows per page like the boss DWL, but do not shrink the font.
@@ -2511,7 +2212,7 @@ async function saveDwlDirectPdf(data, msgId){
         let size=13.8;
         let style='bold';
         let align='center';
-        if(c===0){ size=8.6; }
+        if(c===0){ size=10.2; }
         if(c===1){ size=13.6; align='left'; }
         if(c===2){ size=10.8; style='normal'; }
         if(c===3){ size=11.2; }
@@ -2528,11 +2229,9 @@ async function saveDwlDirectPdf(data, msgId){
     dwlPdfText(doc,'Sign:',m+235,y+10,{size:11,style:'normal'});
     doc.line(m+268,y+13,m+440,y+13);
     if(data.signatureData){ try{ doc.addImage(data.signatureData,'PNG',m+275,y-10,130,30); }catch(e){} }
-    const footerDateLineStart=pageW-m-76;
-    const footerDateLineEnd=pageW-m;
-    dwlPdfText(doc,'Date:',footerDateLineStart-36,y+10,{size:11,style:'normal'});
-    dwlPdfText(doc,dateSlash,(footerDateLineStart+footerDateLineEnd)/2,y+10,{size:11.5,style:'bold',align:'center',maxWidth:72});
-    doc.line(footerDateLineStart,y+13,footerDateLineEnd,y+13);
+    dwlPdfText(doc,'Date:',pageW-m-80,y+10,{size:11,style:'normal'});
+    dwlPdfText(doc,dateSlash,pageW-m,y+10,{size:12.5,style:'bold',align:'right',maxWidth:70});
+    doc.line(pageW-m-72,y+13,pageW-m,y+13);
     if(needed>1) dwlPdfText(doc,`Page ${p+1} of ${needed}`,pageW/2,pageH-12,{size:8.5,align:'center',maxWidth:100});
   }
 
@@ -2547,7 +2246,7 @@ function collectDwl(){
     const row={num:i, employee:val('dwlEmp'+i), location:val('dwlLoc'+i), activity:val('dwlAct'+i), class:val('dwlClass'+i), local:val('dwlLocal'+i), straight:val('dwlStraight'+i), over:val('dwlOver'+i), noLunch:val('dwlNoLunch'+i), pt:val('dwlPT'+i), rt:val('dwlRT'+i)};
     rows.push(row);
   }
-  return normalizeDwlDataForSave({project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),shift:val('dwlShift'),crew:crewValue('dwlCrew'),revision:cleanDwlRevision(val('dwlRevision')||'0')||'0',weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:[],description:val('dwlDescription'),fieldNotes:val('dwlNotes'),notes:val('dwlNotes'),additionalNotes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),safetyHuddleTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows});
+  return normalizeDwlDataForSave({project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),revision:cleanDwlRevision(val('dwlRevision')||'0')||'0',weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:[],description:val('dwlDescription'),notes:val('dwlNotes'),additionalNotes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),safetyHuddleTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows});
 }
 function dwlWorkerRowsPrint(rows, start, count){
   const slice=rows.slice(start,start+count);
@@ -2558,7 +2257,7 @@ function buildDwlSheet(data, pageIndex, totalPages){
   data = normalizeDwlDataForSave(data);
   const dateSlash=dateToSlashYYYY(data.reportDate); const dateDot=dateToDotMMDDYY(data.reportDate);
   const rowsPerPage=12; const start=(pageIndex-1)*rowsPerPage;
-  return `<div class="dwlPrintSheet ${totalPages===1?'dwlSinglePage':''}"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 4.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Shift:</b> ${esc(data.shift)}</div><div><b>Crew:</b> ${esc(data.crew)}</div><div><b>Revision:</b> ${esc(cleanDwlRevision(data.revision||'0')||'0')}</div></div>${data.shiftNote?`<div class="dwlPrintShiftNote">${esc(data.shiftNote)}</div>`:''}<table class="dwlActivitiesPrint"><tr><th colspan="2">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.fieldNotes || '')}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic || data.safetyHuddleTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b> <span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
+  return `<div class="dwlPrintSheet ${totalPages===1?'dwlSinglePage':''}"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 4.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Crew:</b> ${esc(data.crew)}</div><div><b>Revision:</b> ${esc(cleanDwlRevision(data.revision||'0')||'0')}</div></div><table class="dwlActivitiesPrint"><tr><th colspan="2">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.notes || data.additionalNotes)}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic || data.safetyHuddleTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b> <span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
 }
 function buildDwlPrint(data){
   data = normalizeDwlDataForSave(data);
@@ -3080,23 +2779,14 @@ function tmFieldView(){
   app.innerHTML=`<div class="container tmShell">
     <section class="tmBrand"><img src="/assets/jagd-logo.png" alt="JAGD Construction"><div><h1>JAGD T&amp;M Cost Tracker</h1><p>Receipt Capture</p></div></section>
     <section id="tmFormPanel" class="panel tmPanel">
-      <div class="tmTitle"><div><span class="formTag">No login required</span><h2>Submit Receipt</h2><p>Select the job and category, enter the receipt details, review every attached page, and submit.</p></div></div>
+      <div class="tmTitle"><div><span class="formTag">No login required</span><h2>Submit Receipt</h2><p>Select the job and category, add all receipt pages, review them, and submit.</p></div></div>
       <div class="tmGrid">
         ${tmSelectField('tmProject','Project / Job *','<option value="">Loading jobs...</option>')}
         ${tmSelectField('tmCategory','Category *','<option value="">Choose category...</option><option value="Material">Material</option><option value="Equipment">Equipment</option>')}
       </div>
-      <div id="tmCustomJobWrap" hidden>
-        <label for="tmCustomContract">Enter contract number or job name *</label>
-        <input id="tmCustomContract" type="text">
+      <div id="tmCustomJobWrap" class="hidden">
+        ${tmInputField('tmCustomContract','Enter contract number or job name *')}
         <p class="tiny">This will be flagged for Office/Admin review.</p>
-      </div>
-      <div class="grid two">
-        <div><label for="tmVendor">Vendor / Company *</label><input id="tmVendor" type="text"></div>
-        <div><label for="tmReceiptDate">Receipt Date *</label><input id="tmReceiptDate" type="date"></div>
-        <div><label for="tmAmount">Amount *</label><input id="tmAmount" type="number" min="0.01" step="0.01" inputmode="decimal"></div>
-        <div><label for="tmPurchaser">Purchased By *</label><input id="tmPurchaser" type="text"></div>
-        <div><label for="tmDescription">Description / Notes</label><input id="tmDescription" type="text"></div>
-        <label>Payment Method *<select id="tmPaymentMethod"><option value="">Choose payment method...</option><option>Company AmEx</option><option>Company Credit Card</option><option>Personal Card - Reimbursement</option><option>Cash</option><option>Vendor Account</option><option>Unknown</option></select></label>
       </div>
       <section class="tmFiles">
         <h3>Receipt Photos / PDFs *</h3><p>Take a photo, scan a PDF, or add multiple pages. Review every file before submitting.</p>
@@ -3107,53 +2797,23 @@ function tmFieldView(){
       <p class="tmOfficeLink"><a href="#/tm-office">Office Login</a></p>
     </section>
   </div>`;
-  document.getElementById('tmReceiptDate').value=new Date().toISOString().slice(0,10);
   fetch('/api/tm/projects',{cache:'no-store'}).then(r=>r.json()).then(j=>{document.getElementById('tmProject').innerHTML='<option value="">Choose project...</option>'+j.rows.map(p=>`<option value="${esc(p.id)}">${esc(tmProjectText(p))}</option>`).join('')+'<option value="CUSTOM">Other / Custom Job</option>';}).catch(e=>document.getElementById('tmProject').innerHTML='<option value="">Could not load jobs</option>');
-  document.getElementById('tmProject').onchange=()=>{const custom=document.getElementById('tmProject').value==='CUSTOM';const wrap=document.getElementById('tmCustomJobWrap');wrap.hidden=!custom;if(!custom)document.getElementById('tmCustomContract').value='';};
+  document.getElementById('tmProject').onchange=()=>{const custom=document.getElementById('tmProject').value==='CUSTOM';document.getElementById('tmCustomJobWrap').classList.toggle('hidden',!custom);if(!custom)document.getElementById('tmCustomContract').value='';};
   document.getElementById('tmCamera').onchange=e=>tmAddFiles(e.target.files);document.getElementById('tmFiles').onchange=e=>tmAddFiles(e.target.files);
   document.getElementById('tmSubmitBtn').onclick=tmSubmit;
 }
-const TM_MAX_FILE_BYTES=50*1024*1024,TM_MAX_TOTAL_BYTES=100*1024*1024;
-function tmFormatSize(bytes){if(bytes>=1024*1024)return `${(bytes/(1024*1024)).toFixed(bytes>=10*1024*1024?1:2)} MB`;return `${Math.ceil(bytes/1024)} KB`;}
-function tmCompressReceiptImage(file){
- return new Promise(resolve=>{
-  if(!file||!String(file.type||'').startsWith('image/')||file.size<1400*1024){resolve(file);return;}
-  const img=new Image(),url=URL.createObjectURL(file);
-  img.onload=()=>{try{const max=2200,scale=Math.min(1,max/Math.max(img.width,img.height)),w=Math.max(1,Math.round(img.width*scale)),h=Math.max(1,Math.round(img.height*scale));const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);c.toBlob(blob=>{URL.revokeObjectURL(url);if(!blob||blob.size>=file.size){resolve(file);return;}const base=String(file.name||'receipt').replace(/\.[^.]+$/,'');resolve(new File([blob],`${base}.jpg`,{type:'image/jpeg',lastModified:Date.now()}));},'image/jpeg',0.84);}catch(e){URL.revokeObjectURL(url);resolve(file);}};
-  img.onerror=()=>{URL.revokeObjectURL(url);resolve(file);};img.src=url;
- });
-}
-async function tmAddFiles(list){
- const msg=document.getElementById('tmSubmitMsg');
- const incoming=Array.from(list||[]);
- if(incoming.length)msg.innerHTML='<div class="notice">Preparing selected files...</div>';
- for(const original of incoming){
-  if(tmSelectedFiles.length>=24){msg.innerHTML='<div class="notice">A maximum of 24 files can be submitted at once.</div>';break;}
-  if(original.size>TM_MAX_FILE_BYTES){msg.innerHTML=`<div class="notice"><strong>${esc(original.name)}</strong> is ${tmFormatSize(original.size)}. Each file must be 50 MB or smaller.</div>`;continue;}
-  const f=await tmCompressReceiptImage(original);
-  const total=tmSelectedFiles.reduce((n,x)=>n+x.size,0)+f.size;
-  if(total>TM_MAX_TOTAL_BYTES){msg.innerHTML='<div class="notice">The selected files total more than 100 MB. Submit them in two separate records or reduce the PDF size.</div>';break;}
-  tmSelectedFiles.push(f);
- }
- tmRenderFiles();
- if(msg&&(!msg.textContent||msg.textContent.includes('Preparing selected files')))msg.innerHTML='';
- document.getElementById('tmCamera').value='';document.getElementById('tmFiles').value='';
-}
-function tmRenderFiles(){const box=document.getElementById('tmFilePreview');if(!tmSelectedFiles.length){box.innerHTML='<p class="tiny">No files added yet.</p>';return;}box.innerHTML=tmSelectedFiles.map((f,i)=>{const isPdf=f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf');const url=URL.createObjectURL(f);return `<article class="tmFileCard">${isPdf?`<div class="tmPdfIcon">PDF</div>`:`<img src="${url}" alt="Preview">`}<div><strong>${esc(f.name)}</strong><small>${tmFormatSize(f.size)}</small></div><div class="tmFileActions"><button class="btn small" type="button" onclick="window.open('${url}','_blank')">View</button><button class="btn small danger" type="button" onclick="tmRemoveFile(${i})">Remove</button></div></article>`;}).join('')+'<p class="notice">Review every page. Make sure the vendor, date, and total are readable before submitting.</p>';}
+function tmAddFiles(list){for(const f of Array.from(list||[])){if(tmSelectedFiles.length>=24)break;tmSelectedFiles.push(f);}tmRenderFiles();document.getElementById('tmCamera').value='';document.getElementById('tmFiles').value='';}
+function tmRenderFiles(){const box=document.getElementById('tmFilePreview');if(!tmSelectedFiles.length){box.innerHTML='<p class="tiny">No files added yet.</p>';return;}box.innerHTML=tmSelectedFiles.map((f,i)=>{const isPdf=f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf');const url=URL.createObjectURL(f);return `<article class="tmFileCard">${isPdf?`<div class="tmPdfIcon">PDF</div>`:`<img src="${url}" alt="Preview">`}<div><strong>${esc(f.name)}</strong><small>${Math.ceil(f.size/1024)} KB</small></div><div class="tmFileActions"><button class="btn small" type="button" onclick="window.open('${url}','_blank')">View</button><button class="btn small danger" type="button" onclick="tmRemoveFile(${i})">Remove</button></div></article>`;}).join('')+'<p class="notice">Review every page. Make sure the vendor, date, and total are readable before submitting.</p>';}
 function tmRemoveFile(i){tmSelectedFiles.splice(i,1);tmRenderFiles();}
-function tmUploadWithProgress(fd,onProgress){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('POST','/api/tm/submissions');xhr.timeout=240000;xhr.upload.onprogress=e=>{if(e.lengthComputable&&onProgress)onProgress(Math.max(1,Math.round((e.loaded/e.total)*100)));};xhr.onload=()=>{let json={};try{json=JSON.parse(xhr.responseText||'{}');}catch(e){json={error:xhr.status===413?'The selected upload is too large. Reduce the PDF size or submit fewer files.':'The server returned an unreadable response.'};}if(xhr.status>=200&&xhr.status<300)resolve(json);else reject(new Error(json.error||`Upload failed (${xhr.status}).`));};xhr.onerror=()=>reject(new Error('Network connection lost during upload. Your files are still on this screen; try again.'));xhr.ontimeout=()=>reject(new Error('The upload took too long. Try a stronger connection or a smaller PDF.'));xhr.send(fd);});}
 async function tmSubmit(){
  const btn=document.getElementById('tmSubmitBtn'),msg=document.getElementById('tmSubmitMsg');
  const projectId=val('tmProject'),category=val('tmCategory'),customContract=val('tmCustomContract');
- const vendor=val('tmVendor'),transactionDate=val('tmReceiptDate'),amount=Number(val('tmAmount')),purchaser=val('tmPurchaser'),description=val('tmDescription'),paymentMethod=val('tmPaymentMethod');
  if(!projectId||!category){msg.innerHTML='<div class="notice">Choose a project and category.</div>';return;}
  if(projectId==='CUSTOM'&&!customContract){msg.innerHTML='<div class="notice">Enter the contract number or job name.</div>';return;}
- if(!vendor||!transactionDate||!Number.isFinite(amount)||amount<=0||!purchaser||!paymentMethod){msg.innerHTML='<div class="notice">Complete the vendor, receipt date, amount, purchased by, and payment method.</div>';return;}
  if(!tmSelectedFiles.length){msg.innerHTML='<div class="notice">Add at least one receipt photo or PDF.</div>';return;}
- const data={projectId,type:category,category,customContract,vendor,transactionDate,amount,purchaser,description,paymentMethod,submitter:purchaser};
- const totalBytes=tmSelectedFiles.reduce((n,f)=>n+f.size,0);if(totalBytes>TM_MAX_TOTAL_BYTES){msg.innerHTML='<div class="notice">The selected files total more than 100 MB. Submit fewer files or reduce the PDF size.</div>';return;}
- const fd=new FormData();fd.append('data',JSON.stringify(data));tmSelectedFiles.forEach(f=>fd.append('files',f));btn.disabled=true;btn.textContent='Submitting — do not close this page';msg.innerHTML='<div class="notice">Starting upload...</div>';
- try{const j=await tmUploadWithProgress(fd,p=>{msg.innerHTML=`<div class="notice"><strong>Uploading ${p}%</strong><br>Do not close this page.</div>`;});msg.innerHTML='<div class="notice">Upload complete. Saving receipt record...</div>';tmSuccess(j);}catch(e){msg.innerHTML=`<div class="notice">Submission was not completed: ${esc(e.message)}. Your files are still on this screen; correct the problem and try again.</div>`;btn.disabled=false;btn.textContent='Submit Receipt';}
+ const data={projectId,type:category,category,customContract};
+ const fd=new FormData();fd.append('data',JSON.stringify(data));tmSelectedFiles.forEach(f=>fd.append('files',f));btn.disabled=true;btn.textContent='Submitting — do not close this page';msg.innerHTML='<div class="notice">Uploading all files and saving the record...</div>';
+ try{const res=await fetch('/api/tm/submissions',{method:'POST',body:fd});const j=await res.json();if(!res.ok)throw new Error(j.error||'Submission failed');tmSuccess(j);}catch(e){msg.innerHTML=`<div class="notice">Submission was not completed: ${esc(e.message)}. Your files are still on this screen; correct the problem and try again.</div>`;btn.disabled=false;btn.textContent='Submit Receipt';}
 }
 function tmSuccess(j){app.innerHTML=`<div class="container tmShell"><section class="tmBrand"><img src="/assets/jagd-logo.png" alt="JAGD Construction"></section><section class="panel tmSuccess"><div class="tmCheck">✓</div><h1>Receipt Submitted Successfully</h1><p class="tmLead">Your receipt and all attached files were submitted to the JAGD T&amp;M Cost Tracker.</p><dl><dt>Project</dt><dd>${esc(j.project)}</dd><dt>Category</dt><dd>${esc(j.category||'')}</dd><dt>Record Number</dt><dd><strong>${esc(j.id)}</strong></dd><dt>Files Received</dt><dd>${j.attachmentCount}</dd></dl><div class="notice success"><strong>Please save or screenshot this record number.</strong></div><div class="notice"><strong>If you selected the wrong job or category, or attached the wrong document, call the JAGD office or an administrator.</strong> Do not submit the same receipt again unless instructed.</div><div class="tmDropbox"><strong>Please add all receipts and supporting documents to the correct JAGD Dropbox folder as well.</strong></div><div class="tmSuccessButtons"><button class="btn primary" onclick="tmFieldView()">Submit Another Receipt</button><a class="btn" href="#/">Finished</a></div></section></div>`;}
 function tmOfficeView(){
@@ -3165,12 +2825,9 @@ async function tmOfficeDashboard(){
  try{const j=await tmJson('/api/admin/tm/projects');window.tmProjects=j.rows;document.getElementById('tmOfficeProject').innerHTML='<option value="">Choose project...</option>'+j.rows.map(p=>`<option value="${esc(p.id)}">${esc(tmProjectText(p))}${p.active?'':' (Inactive / Custom)'}</option>`).join('');document.getElementById('tmOfficeMonth').value=new Date().toISOString().slice(0,7);document.getElementById('tmLoad').onclick=tmLoadOffice;}catch(e){document.getElementById('tmOfficeContent').innerHTML=`<div class="notice">${esc(e.message)}</div>`;}
 }
 async function tmLoadOffice(){const projectId=val('tmOfficeProject'),month=val('tmOfficeMonth'),status=val('tmOfficeStatus'),box=document.getElementById('tmOfficeContent');if(!projectId||!month){box.innerHTML='<div class="notice">Choose one project and one billing month.</div>';return;}box.innerHTML='<div class="notice">Loading...</div>';try{const j=await tmJson(`/api/admin/tm/records?projectId=${encodeURIComponent(projectId)}&month=${encodeURIComponent(month)}&status=${encodeURIComponent(status)}`);window.tmOfficeRows=j.rows;tmRenderOfficeRows(projectId,month,j.rows);}catch(e){box.innerHTML=`<div class="notice">${esc(e.message)}</div>`;}}
-function tmRenderOfficeRows(projectId,month,rows){const review=rows.filter(r=>['New','Missing Information'].includes(r.status)||r.customJob),complete=rows.filter(r=>String(r.vendor||'').trim()&&Number(r.amount||0)>0);document.getElementById('tmOfficeContent').innerHTML=`<section class="tmMetrics"><div><span>Records</span><strong>${rows.length}</strong></div><div><span>Details Complete</span><strong>${complete.length} / ${rows.length}</strong></div><div><span>Material</span><strong>${rows.filter(r=>r.category==='Material').length}</strong></div><div><span>Needs Review</span><strong>${review.length}</strong></div></section><section class="panel"><div class="tmOfficeHead"><div><h2>${esc(tmProjectText((window.tmProjects||[]).find(p=>p.id===projectId)||{contract:projectId,name:projectId}))}</h2><p>${tmMonthLabel(month)}</p></div><button class="btn" onclick="tmExportCsv()">Export CSV</button></div><div class="tmTabs"><button class="btn small" onclick="tmOfficeFilter('all')">All</button><button class="btn small" onclick="tmOfficeFilter('review')">New / Missing</button><button class="btn small" onclick="tmOfficeFilter('materials')">Material</button><button class="btn small" onclick="tmOfficeFilter('equipment')">Equipment</button></div><div id="tmOfficeRows">${tmOfficeRowsHtml(rows)}</div></section><section class="panel"><h2>Add Project</h2><div class="tmProjectAdd">${tmInputField('tmNewContract','Contract number')}${tmInputField('tmNewName','Job name / nickname')}<button class="btn primary" onclick="tmAddProject()">Add Project</button></div></section>`;}
-function tmOfficeRowsHtml(rows){return rows.length?rows.map(r=>{const hasDetails=String(r.vendor||'').trim()&&Number(r.amount||0)>0;return `<article class="tmOfficeRecord"><div><span class="formTag">${esc(r.category||r.type)}</span><h3>${hasDetails?`${esc(r.vendor)} — ${tmMoney(r.amount)}`:'Office Details Needed'}</h3><p>${esc(r.transactionDate)} · ${esc(r.category)}${r.paymentMethod&&r.paymentMethod!=='Unknown'?` · ${esc(r.paymentMethod)}`:''}</p>${r.description?`<p>${esc(r.description)}</p>`:''}<p class="tiny">Record ${esc(r.id)}</p>${r.exactDuplicateIds?.length||r.likelyDuplicateIds?.length?`<div class="notice">Possible duplicate: ${esc([...(r.exactDuplicateIds||[]),...(r.likelyDuplicateIds||[])].join(', '))}</div>`:''}</div><div class="tmRecordFiles">${(r.files||[]).map(f=>`<a class="btn small" target="_blank" href="/api/admin/tm/files/${encodeURIComponent(f.filename)}?pin=${encodeURIComponent(tmOfficePin)}">Open ${esc(f.originalName)}</a>`).join('')}<button class="btn small primary" onclick="tmEditRecord('${esc(r.id)}')">Edit Details</button></div><div><select onchange="tmSetStatus('${esc(r.id)}',this.value)">${['New','Missing Information','Reviewed','Ready for Billing','Included in Billing','Duplicate / Rejected'].map(s=>`<option ${r.status===s?'selected':''}>${s}</option>`).join('')}</select></div></article>`}).join(''):'<p>No records found for this project and month.</p>';}
+function tmRenderOfficeRows(projectId,month,rows){const receiptTotal=rows.reduce((s,r)=>s+Number(r.amount||0),0),openRentals=rows.filter(r=>r.type==='Rental'&&r.rental?.open),review=rows.filter(r=>['New','Missing Information'].includes(r.status)||r.customJob);document.getElementById('tmOfficeContent').innerHTML=`<section class="tmMetrics"><div><span>Records</span><strong>${rows.length}</strong></div><div><span>Cost Total</span><strong>${tmMoney(receiptTotal)}</strong></div><div><span>Open Rentals</span><strong>${openRentals.length}</strong></div><div><span>Needs Review</span><strong>${review.length}</strong></div></section><section class="panel"><div class="tmOfficeHead"><div><h2>${esc(tmProjectText((window.tmProjects||[]).find(p=>p.id===projectId)||{contract:projectId,name:projectId}))}</h2><p>${tmMonthLabel(month)}</p></div><button class="btn" onclick="tmExportCsv()">Export CSV</button></div><div class="tmTabs"><button class="btn small" onclick="tmOfficeFilter('all')">All</button><button class="btn small" onclick="tmOfficeFilter('review')">New / Missing</button><button class="btn small" onclick="tmOfficeFilter('materials')">Material</button><button class="btn small" onclick="tmOfficeFilter('equipment')">Equipment</button></div><div id="tmOfficeRows">${tmOfficeRowsHtml(rows)}</div></section><section class="panel"><div class="tmOfficeHead"><div><h2>Rental Carry-Forward</h2><p>Select active equipment to load into the following month. Old invoice totals and files are not copied.</p></div><button class="btn primary" onclick="tmCarryRentals()">Load Selected into Next Month</button></div><div>${openRentals.length?openRentals.map(r=>`<label class="tmRentalCarry"><input type="checkbox" class="tmCarryCheck" value="${esc(r.id)}" checked><span><strong>${esc(r.rental?.equipment||r.description)}</strong><small>${esc(r.vendor)} · ${esc(r.rental?.unit||'No unit #')} · Last confirmed onsite: ${esc(r.rental?.lastConfirmedOnsite||'Not entered')}</small></span></label>`).join(''):'<p>No active rentals in this month.</p>'}</div></section><section class="panel"><h2>Add Project</h2><div class="tmProjectAdd">${tmInputField('tmNewContract','Contract number')}${tmInputField('tmNewName','Job name / nickname')}<button class="btn primary" onclick="tmAddProject()">Add Project</button></div></section>`;}
+function tmOfficeRowsHtml(rows){return rows.length?rows.map(r=>`<article class="tmOfficeRecord"><div><span class="formTag">${esc(r.type)}</span><h3>${esc(r.vendor)} — ${tmMoney(r.amount)}</h3><p>${esc(r.transactionDate)} · ${esc(r.category)} · ${esc(r.paymentMethod)}</p><p>${esc(r.description)}</p><p class="tiny">Purchased by ${esc(r.purchaser)} · Submitted by ${esc(r.submitter)} · Record ${esc(r.id)}</p>${r.exactDuplicateIds?.length||r.likelyDuplicateIds?.length?`<div class="notice">Possible duplicate: ${esc([...(r.exactDuplicateIds||[]),...(r.likelyDuplicateIds||[])].join(', '))}</div>`:''}</div><div class="tmRecordFiles">${(r.files||[]).map(f=>`<a class="btn small" target="_blank" href="/api/admin/tm/files/${encodeURIComponent(f.filename)}?pin=${encodeURIComponent(tmOfficePin)}">Open ${esc(f.originalName)}</a>`).join('')}</div><div><select onchange="tmSetStatus('${esc(r.id)}',this.value)">${['New','Missing Information','Reviewed','Ready for Billing','Included in Billing','Duplicate / Rejected'].map(s=>`<option ${r.status===s?'selected':''}>${s}</option>`).join('')}</select></div></article>`).join(''):'<p>No records found for this project and month.</p>';}
 function tmOfficeFilter(kind){let rows=window.tmOfficeRows||[];if(kind==='review')rows=rows.filter(r=>['New','Missing Information'].includes(r.status)||r.customJob);if(kind==='materials')rows=rows.filter(r=>r.category==='Material'||r.type==='Material');if(kind==='equipment')rows=rows.filter(r=>r.category==='Equipment'||r.type==='Equipment');document.getElementById('tmOfficeRows').innerHTML=tmOfficeRowsHtml(rows);}
-function tmEditRecord(id){const r=(window.tmOfficeRows||[]).find(x=>x.id===id);if(!r)return;const existing=document.getElementById('tmEditDetailsPanel');if(existing)existing.remove();const panel=document.createElement('section');panel.id='tmEditDetailsPanel';panel.className='panel';panel.innerHTML=`<div class="tmOfficeHead"><div><h2>Edit Receipt Details</h2><p>${esc(r.id)}</p></div><button class="btn" type="button" id="tmCloseEdit">Close</button></div><div class="grid two">${tmInputField('tmEditVendor','Vendor / Company','text',r.vendor||'')}${tmInputField('tmEditDate','Receipt Date','date',r.transactionDate||'')}${tmInputField('tmEditAmount','Amount','number',Number(r.amount||0)>0?r.amount:'')}${tmInputField('tmEditPurchaser','Purchased By','text',r.purchaser&&r.purchaser!=='Field Submission'?r.purchaser:'')}${tmInputField('tmEditDescription','Description / Notes','text',r.description||'')}<label>Payment Method<select id="tmEditPayment">${['Unknown','Company AmEx','Company Credit Card','Personal Card - Reimbursement','Cash','Vendor Account'].map(v=>`<option ${r.paymentMethod===v?'selected':''}>${v}</option>`).join('')}</select></label></div><div class="actions"><button class="btn primary" type="button" id="tmSaveEdit">Save Details</button></div><div id="tmEditMsg"></div>`;document.getElementById('tmOfficeContent').prepend(panel);document.getElementById('tmCloseEdit').onclick=()=>panel.remove();document.getElementById('tmSaveEdit').onclick=()=>tmSaveRecordDetails(id);panel.scrollIntoView({behavior:'smooth',block:'start'});}
-async function tmSaveRecordDetails(id){const amount=Number(val('tmEditAmount'));if(!val('tmEditVendor'))return alert('Enter the vendor or company.');if(!val('tmEditDate'))return alert('Enter the receipt date.');if(!Number.isFinite(amount)||amount<=0)return alert('Enter the receipt amount.');try{await tmJson('/api/admin/tm/records/'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({vendor:val('tmEditVendor'),transactionDate:val('tmEditDate'),billingMonth:val('tmEditDate').slice(0,7),amount,description:val('tmEditDescription'),purchaser:val('tmEditPurchaser'),paymentMethod:val('tmEditPayment'),status:'Reviewed'})});await tmLoadOffice();}catch(e){alert(e.message);}}
-
 async function tmSetStatus(id,status){try{await tmJson('/api/admin/tm/records/'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});await tmLoadOffice();}catch(e){alert(e.message);}}
 async function tmCarryRentals(){const ids=Array.from(document.querySelectorAll('.tmCarryCheck:checked')).map(x=>x.value),month=val('tmOfficeMonth');if(!ids.length)return alert('Select at least one rental.');const [y,m]=month.split('-').map(Number),d=new Date(y,m,1),targetMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;try{const j=await tmJson('/api/admin/tm/rentals/carry-forward',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,targetMonth})});alert(`${j.rows.length} rental(s) loaded into ${tmMonthLabel(targetMonth)}. New invoices are required.`);}catch(e){alert(e.message);}}
 async function tmAddProject(){try{await tmJson('/api/admin/tm/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contract:val('tmNewContract'),name:val('tmNewName'),active:true})});alert('Project added.');tmOfficeDashboard();}catch(e){alert(e.message);}}

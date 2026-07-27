@@ -17,7 +17,7 @@ const WORKERS_VERSION_FILE = path.join(DATA_DIR, 'workers-source-version.json');
 const JOBS_FILE = path.join(DATA_DIR, 'portal-jobs.json');
 const BUILT_IN_WORKERS_VERSION_FILE = path.join(__dirname, 'public', 'data', 'active-workers-version.json');
 const MATERIALS_FILE = path.join(DATA_DIR, 'materials.json');
-const ADMIN_PIN = process.env.ADMIN_PIN || process.env.ADMIN_PASSWORD || 'Jagd123!!!';
+const ADMIN_PIN = process.env.ADMIN_PIN || process.env.ADMIN_PASSWORD || 'JadgForms123!!!';
 const PORTAL_ACTIVE_WORKERS_URL = process.env.PORTAL_ACTIVE_WORKERS_URL || 'https://portal.jagdapps.com/api/forms/active-workers';
 const PORTAL_JOBS_URL = process.env.PORTAL_JOBS_URL || 'https://portal.jagdapps.com/api/forms/jobs';
 const PORTAL_SYNC_TOKEN = process.env.PORTAL_SYNC_TOKEN || process.env.FORMS_SYNC_TOKEN || '';
@@ -102,7 +102,7 @@ const tmStorage = multer.diskStorage({
 });
 const tmUpload = multer({
   storage: tmStorage,
-  limits: { fileSize: 50 * 1024 * 1024, files: 24 },
+  limits: { fileSize: 15 * 1024 * 1024, files: 24 },
   fileFilter: (req, file, cb) => {
     const ok = file.mimetype === 'application/pdf' || String(file.mimetype || '').startsWith('image/');
     cb(ok ? null : new Error('Only images and PDF files are allowed.'), ok);
@@ -656,14 +656,11 @@ app.post('/api/tm/submissions', tmUpload.array('files', 24), (req, res) => {
   if (!project) { cleanup(); return res.status(400).json({ error: 'Choose a valid project.' }); }
   if (!files.length) return res.status(400).json({ error: 'Add at least one receipt photo or PDF.' });
   const now = new Date();
-  const transactionDate = cleanText(data.transactionDate) || now.toISOString().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(transactionDate)) { cleanup(); return res.status(400).json({ error: 'Enter a valid receipt date.' }); }
+  const transactionDate = now.toISOString().slice(0, 10);
   const billingMonth = transactionDate.slice(0, 7);
   const category = cleanText(data.category);
   if (!['Material', 'Equipment'].includes(category)) { cleanup(); return res.status(400).json({ error: 'Choose Material or Equipment.' }); }
-  const vendor = cleanText(data.vendor), description = cleanText(data.description), purchaser = cleanText(data.purchaser), submitter = cleanText(data.submitter) || purchaser || 'Field Submission';
-  const paymentMethod = cleanText(data.paymentMethod) || 'Unknown';
-  if (!vendor || !purchaser) { cleanup(); return res.status(400).json({ error: 'Vendor and purchased by are required.' }); }
+  const vendor = '', description = '', submitter = 'Field Submission', purchaser = '';
   const fileRows = files.map(f => ({ originalName: f.originalname, filename: f.filename, size: f.size, mimetype: f.mimetype, hash: tmFileHash(f.path) }));
   const existing = readTmRows();
   const exactDuplicateIds = [...new Set(fileRows.flatMap(f => existing.filter(r => (r.files || []).some(old => old.hash === f.hash)).map(r => r.id)))];
@@ -673,8 +670,8 @@ app.post('/api/tm/submissions', tmUpload.array('files', 24), (req, res) => {
   const record = {
     id, projectId: project.id, projectLabel: tmProjectLabel(project), customJob: !!project.custom,
     type: cleanText(data.type) || 'Receipt / Materials', vendor, transactionDate, billingMonth, amount,
-    description, category: cleanText(data.category) || 'Other', paymentMethod,
-    purchaser: purchaser || submitter, submitter, status: project.custom ? 'Missing Information' : 'Reviewed',
+    description, category: cleanText(data.category) || 'Other', paymentMethod: cleanText(data.paymentMethod) || 'Unknown',
+    purchaser: purchaser || submitter, submitter, status: project.custom ? 'Missing Information' : 'New',
     notes: '', exactDuplicateIds, likelyDuplicateIds, files: fileRows,
     rental: data.rental && typeof data.rental === 'object' ? data.rental : null,
     owned: data.owned && typeof data.owned === 'object' ? data.owned : null,
@@ -1285,17 +1282,7 @@ app.use('/api', (req, res) => {
 app.use((err, req, res, next) => {
   console.error(err);
   if (req.path && req.path.startsWith('/api/')) {
-    // Multer errors should be understandable to field users instead of appearing as a generic server failure.
-    if (err && err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ ok: false, error: 'One of the selected files is larger than 50 MB. Reduce the file size or split the PDF and try again.' });
-    }
-    if (err && err.code === 'LIMIT_FILE_COUNT') {
-      return res.status(413).json({ ok: false, error: 'Too many files were selected. Upload no more than 24 files in one submission.' });
-    }
-    if (err && /Only images and PDF files/i.test(String(err.message || ''))) {
-      return res.status(400).json({ ok: false, error: err.message });
-    }
-    return res.status(500).json({ ok: false, error: 'The upload could not be completed. Please try again or call the JAGD office.' });
+    return res.status(500).json({ ok: false, error: 'Server error while handling API request.' });
   }
   next(err);
 });

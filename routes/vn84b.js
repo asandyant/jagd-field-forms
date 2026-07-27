@@ -108,6 +108,7 @@ function areaMeta(areaId, overrides = {}) {
     billingQuantity: overrides.billingQuantity ?? null,
     fieldQuantity: overrides.fieldQuantity ?? null,
     quantityNote: overrides.quantityNote || '',
+    reminderNote: overrides.reminderNote || '',
     paymentItemRefs: overrides.paymentItemRefs || []
   };
 }
@@ -2219,12 +2220,22 @@ const defaultEmergencySteelRepairs = {
   activityLog: []
 };
 
+function spanSubAreas(count) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `span-${index + 1}`,
+    name: `Span ${index + 1}`,
+    total: 1
+  }));
+}
+
 const V20_WORKFLOWS = {
   bearings: ['Prep for Bearing Removal', 'Faying Surfaces'],
   blastPaint: ['Blast', 'Zinc', 'Midcoat', 'Stripe Coat', 'Finish Coat'],
   standardPaint: ['Power Tool', 'Zinc', 'Midcoat', 'Finish'],
   keim: ['Surface Prep', 'Sealer', 'Coat 1', 'Finish'],
   access: ['Installed', 'Active', 'Removed'],
+  accessInstallRemove: ['Installed', 'Removed'],
+  bearingReturn: ['Prep for Bearing Removal', 'Return Coating'],
   localized: ['Localized Paint Removal'],
   antiGraffiti: ['Surface Prep', 'Anti-Graffiti Coat'],
   workPlan: ['Complete']
@@ -2245,6 +2256,7 @@ function v20Area(id, item, officialAreaId, name, description, unitLabel, total, 
       billingQuantity: options.billingQuantity ?? total,
       fieldQuantity: options.fieldQuantity ?? total,
       quantityNote: options.quantityNote || '',
+      reminderNote: options.reminderNote || '',
       paymentItemRefs: [item]
     }),
     ...(options.subAreas ? { subAreas: safeClone(options.subAreas) } : {}),
@@ -2255,41 +2267,49 @@ function v20Area(id, item, officialAreaId, name, description, unitLabel, total, 
 const defaultData = {
   contract: 'VN84-B',
   bridge: 'Verrazzano-Narrows Bridge',
-  trackerVersion: 'V20 Contract Production Model',
+  trackerVersion: 'V21 Boss Span Breakdown',
   updatedAt: null,
   officialAreas: safeClone(officialAreas),
   areas: [
-    v20Area('item-1-work-plans', 1, 'general', 'Item 1 — Work Plans', 'Contract-wide work plans.', 'LS', 1, 'workPlan'),
-    v20Area('item-2-new-belt-connections', 2, 'area-b', 'Item 2 — New Belt Ramp Connection Points', 'Clean and paint all new connection points.', 'LS', 1, 'standardPaint'),
-    v20Area('item-3-h8-antigraffiti', 3, 'area-b', 'Item 3 — H8 Anti-Graffiti', 'Anti-graffiti coating at H8.', 'LS', 1, 'antiGraffiti'),
-    v20Area('item-4-fire-hose-valves', 4, 'area-b', 'Item 4 — Fire Hose Valve Stations', 'Clean, prepare, and paint fire hose valve stations.', 'LS', 1, 'standardPaint'),
-    v20Area('item-5-fire-dept-connections', 5, 'area-b', 'Item 5 — Fire Department Connections', 'Clean, prepare, and paint fire department connections.', 'LS', 1, 'standardPaint'),
-    v20Area('item-6-tangent-holes', 6, 'area-c', 'Item 6 — Belt Parkway Tangent Holes', 'Holes installed by ironworkers; JAGD prepares and coats.', 'LS', 1, 'standardPaint'),
-    v20Area('item-7-tangent-keim', 7, 'area-c', 'Item 7 — Belt Parkway Tangent KEIM', 'KEIM system tracked separately from standard paint.', 'LS', 1, 'keim'),
-    v20Area('item-8-sp-antigraffiti', 8, 'area-c', 'Item 8 — SP Pier Anti-Graffiti', 'Anti-graffiti coating at SP piers.', 'LS', 1, 'antiGraffiti'),
-    v20Area('blue-bridge-87', 9, 'area-c', 'Item 9 — Tangent Steel Repair Painting', 'Steel repairs: power tool preparation and coating.', 'locations', 87, 'standardPaint', { trackingActive: true, trackingStatus: 'Active Field Tracking', fieldQuantity: 87 }),
-    v20Area('belt-parkway-bearings', 10, 'area-c', 'Item 10 — Belt Parkway Tangent Bearings', 'JAGD scope only: preparation for bearing removal and return coating of faying surfaces.', 'bearings', 230, 'bearings', { trackingActive: true, trackingStatus: 'Active Field Tracking', billingQuantity: 190, fieldQuantity: 230, subAreas: bearingSubAreas, stageWeights: [50, 50], quantityNote: 'Drawing-based field quantity: 230 bearings. Billing comparison quantity: 190 EA.' }),
-    v20Area('belt-parkway-jacking', 11, 'area-d', 'Item 11 — Jacking Locations', 'Localized paint removal at 13 jacking locations. Moved to Area D per V20 direction.', 'locations', 13, 'localized', { billingQuantity: 2500, fieldQuantity: 13, quantityNote: 'Field quantity is 13 locations; office billing quantity is 2,500 SF.' }),
-    v20Area('item-12-tangent-widening', 12, 'area-c', 'Item 12 — Tangent Widening Connections', 'Localized paint removal at widening connections.', 'LS', 1, 'localized'),
-    v20Area('blue-bridge-237-crosses', 13, 'area-c', 'Item 13 — Belt Parkway Tangent Blast & Paint', 'Blast and paint workflow includes stripe coat.', 'crosses', 237, 'blastPaint', { trackingActive: true, trackingStatus: 'Active Field Tracking', fieldQuantity: 237 }),
-    v20Area('item-14-tangent-access', 14, 'area-c', 'Item 14 — Belt Parkway Tangent Access Platform', 'Access platform lifecycle.', 'LS', 1, 'access'),
+    // Area B / Yellow — item-number order
+    v20Area('item-2-new-belt-connections', 2, 'area-b', 'Item 2 — New Belt Ramp Connection Points', 'Clean and paint all new connection points.', 'spans', 15, 'standardPaint', { fieldQuantity: 15, subAreas: spanSubAreas(15) }),
+    v20Area('item-3-h8-antigraffiti', 3, 'area-b', 'Item 3 — H8 Anti-Graffiti', 'Anti-graffiti coating at one location.', 'location', 1, 'antiGraffiti', { fieldQuantity: 1 }),
+    v20Area('item-4-fire-hose-valves', 4, 'area-b', 'Item 4 — Fire Hose Valve Stations', 'Clean, prepare, and paint fire hose valve stations.', 'locations', 1, 'standardPaint', { reminderNote: '❓ Confirm total locations with GL.' }),
+    v20Area('item-5-fire-dept-connections', 5, 'area-b', 'Item 5 — Fire Department Connections', 'Clean, prepare, and paint fire department connections.', 'locations', 1, 'standardPaint', { reminderNote: '❓ Confirm total locations with GL.' }),
+
+    // Area C / Blue — item-number order
+    v20Area('item-6-tangent-holes', 6, 'area-c', 'Item 6 — Belt Parkway Tangent Holes', 'Holes installed by ironworkers; JAGD prepares and coats.', 'spans', 13, 'standardPaint', { fieldQuantity: 13, subAreas: spanSubAreas(13) }),
+    v20Area('item-7-tangent-keim', 7, 'area-c', 'Item 7 — Belt Parkway Tangent KEIM', 'KEIM system tracked separately from standard paint.', 'spans', 13, 'keim', { fieldQuantity: 13, subAreas: spanSubAreas(13) }),
+    v20Area('item-8-sp-antigraffiti', 8, 'area-c', 'Item 8 — SP Pier Anti-Graffiti', 'Anti-graffiti coating at SP piers.', 'locations', 1, 'antiGraffiti', { reminderNote: '❓ Need more information from GL.' }),
+    v20Area('blue-bridge-87', 9, 'area-c', 'Item 9 — Tangent Steel Repair Painting', 'Steel repairs: power tool preparation and coating.', 'spans', 9, 'standardPaint', { trackingActive: true, trackingStatus: 'Active Field Tracking', fieldQuantity: 9, subAreas: spanSubAreas(9) }),
+    v20Area('belt-parkway-bearings', 10, 'area-c', 'Item 10 — Belt Parkway Tangent Bearings', 'JAGD scope: preparation for bearing removal and return coating.', 'spans', 13, 'bearingReturn', { trackingActive: true, trackingStatus: 'Active Field Tracking', billingQuantity: 190, fieldQuantity: 13, subAreas: spanSubAreas(13), stageWeights: [50, 50], quantityNote: 'Field production is tracked by 13 spans. Separate office billing quantity remains available.' }),
+    v20Area('item-12-tangent-widening', 12, 'area-c', 'Item 12 — Tangent Widening Connections', 'Localized paint removal at widening connections.', 'spans', 13, 'localized', { fieldQuantity: 13, subAreas: spanSubAreas(13) }),
+    v20Area('blue-bridge-237-crosses', 13, 'area-c', 'Item 13 — Belt Parkway Tangent Blast & Paint', 'Blast and paint workflow includes stripe coat.', 'spans', 13, 'blastPaint', { trackingActive: true, trackingStatus: 'Active Field Tracking', fieldQuantity: 13, subAreas: spanSubAreas(13) }),
+    v20Area('item-14-tangent-access', 14, 'area-c', 'Item 14 — Belt Parkway Tangent Access Platform', 'Access platform installation and removal.', 'spans', 13, 'accessInstallRemove', { fieldQuantity: 13, subAreas: spanSubAreas(13) }),
+
+    // Area D / Orange — item-number order
+    v20Area('belt-parkway-jacking', 11, 'area-d', 'Item 11 — Jacking Locations / Faying Surface', 'Jacking locations and faying surface work.', 'spans', 21, 'bearings', { billingQuantity: 2500, fieldQuantity: 21, subAreas: spanSubAreas(21), stageWeights: [50, 50], reminderNote: '❓ Ask GL to confirm this breakdown.' }),
     v20Area('item-15-horseshoe-holes', 15, 'area-d', 'Item 15 — Belt Parkway Horseshoe Holes', 'Holes installed by ironworkers; JAGD prepares and coats.', 'LS', 1, 'standardPaint'),
     v20Area('orange-bridge-piers', 16, 'area-d', 'Item 16 — Belt Parkway Horseshoe KEIM', 'KEIM system across 25,200 square feet and 9 piers.', 'sq ft', 25200, 'keim', { billingQuantity: 25200, fieldQuantity: 25200, pierCount: 9 }),
-    v20Area('area-d-horseshoe-bearings', 17, 'area-d', 'Item 17 — Belt Parkway Horseshoe Bearings', 'JAGD bearing preparation and faying surface coating.', 'bearings', 144, 'bearings', { billingQuantity: 144, fieldQuantity: 144, stageWeights: [50, 50] }),
-    v20Area('item-18-horseshoe-widening', 18, 'area-d', 'Item 18 — Horseshoe Widening Connections', 'Localized paint removal at widening connections.', 'LS', 1, 'localized'),
-    v20Area('item-19-horseshoe-blast', 19, 'area-d', 'Item 19 — Belt Parkway Horseshoe Blast & Paint', 'Blast and paint workflow includes stripe coat.', 'LS', 1, 'blastPaint'),
-    v20Area('item-20-horseshoe-access', 20, 'area-d', 'Item 20 — Belt Parkway Horseshoe Access Platform', 'Access platform lifecycle.', 'LS', 1, 'access'),
-    v20Area('item-21-ebu-holes', 21, 'area-a', 'Item 21 — EBU Mainline Upper Holes', 'Prepare and coat holes.', 'LS', 1, 'standardPaint'),
-    v20Area('item-22-92nd-holes', 22, 'area-a', 'Item 22 — 92nd Street Exit Holes', 'Prepare and coat holes.', 'LS', 1, 'standardPaint'),
-    v20Area('area-a-ebu-bearings', 23, 'area-a', 'Item 23 — EBU / 92nd Street / Ramp F Bearings', 'JAGD bearing preparation and faying surface coating.', 'bearings', 97, 'bearings', { billingQuantity: 97, fieldQuantity: 97, stageWeights: [50, 50] }),
-    v20Area('item-24-area-a-jacking', 24, 'area-a', 'Item 24 — Area A Jacking Locations', 'Localized paint removal at jacking locations.', 'LS', 1, 'localized'),
-    v20Area('item-25-floorbeam-touchup', 25, 'area-a', 'Item 25 — Floorbeam Extension Touch-Up', 'Power tool preparation and coating.', 'LS', 1, 'standardPaint'),
-    v20Area('item-26-area-a-widening', 26, 'area-a', 'Item 26 — Area A Widening Connections', 'Localized paint removal at widening connections.', 'LS', 1, 'localized'),
-    v20Area('item-27-jack-ped-access', 27, 'area-a', 'Item 27 — Jack & Ped Access Platform', 'Access platform lifecycle.', 'LS', 1, 'access'),
-    v20Area('item-29-ramp-n-touchup', 29, 'area-e', 'Item 29 — Ramp N Connection Touch-Up', 'Power tool preparation and coating.', 'LS', 1, 'standardPaint'),
+    v20Area('area-d-horseshoe-bearings', 17, 'area-d', 'Item 17 — Belt Parkway Horseshoe Bearings', 'JAGD bearing preparation and return coating.', 'spans', 9, 'bearingReturn', { billingQuantity: 144, fieldQuantity: 9, subAreas: spanSubAreas(9), stageWeights: [50, 50] }),
+    v20Area('item-18-horseshoe-widening', 18, 'area-d', 'Item 18 — Horseshoe Widening Connections', 'Localized paint removal at widening connections.', 'locations', 1, 'localized', { reminderNote: '❓ Ask QC how many spans apply to this item.' }),
+    v20Area('item-19-horseshoe-blast', 19, 'area-d', 'Item 19 — Belt Parkway Horseshoe Blast & Paint', 'Blast and paint workflow includes stripe coat.', 'spans', 9, 'blastPaint', { fieldQuantity: 9, subAreas: spanSubAreas(9) }),
+    v20Area('item-20-horseshoe-access', 20, 'area-d', 'Item 20 — Belt Parkway Horseshoe Access Platform', 'Access platform installation and removal.', 'spans', 9, 'accessInstallRemove', { fieldQuantity: 9, subAreas: spanSubAreas(9) }),
+
+    // Area A / Green — item-number order
+    v20Area('item-21-ebu-holes', 21, 'area-a', 'Item 21 — EBU Mainline Upper Holes', 'Prepare and coat holes.', 'spans', 15, 'standardPaint', { fieldQuantity: 15, subAreas: spanSubAreas(15) }),
+    v20Area('item-22-92nd-holes', 22, 'area-a', 'Item 22 — 92nd Street Exit Holes', 'Prepare and coat holes.', 'spans', 15, 'standardPaint', { fieldQuantity: 15, subAreas: spanSubAreas(15) }),
+    v20Area('area-a-ebu-bearings', 23, 'area-a', 'Item 23 — EBU / 92nd Street / Ramp F Bearings', 'Bearing work tracked 50/50 by span.', 'spans', 15, 'bearings', { billingQuantity: 97, fieldQuantity: 15, subAreas: spanSubAreas(15), stageWeights: [50, 50] }),
+    v20Area('item-24-area-a-jacking', 24, 'area-a', 'Item 24 — Area A Jacking Locations', 'Localized paint removal at jacking locations.', 'spans', 15, 'localized', { fieldQuantity: 15, subAreas: spanSubAreas(15) }),
+    v20Area('item-25-floorbeam-touchup', 25, 'area-a', 'Item 25 — Prep and Faying Surface', 'Preparation and faying surface work.', 'spans', 15, 'bearings', { fieldQuantity: 15, subAreas: spanSubAreas(15), stageWeights: [50, 50] }),
+    v20Area('item-26-area-a-widening', 26, 'area-a', 'Item 26 — Area A Widening Connections', 'Localized paint removal at widening connections.', 'spans', 15, 'localized', { fieldQuantity: 15, subAreas: spanSubAreas(15) }),
+
+    // Area E / Pink — item-number order. Item 30 remains because no removal was requested.
+    v20Area('item-29-ramp-n-touchup', 29, 'area-e', 'Item 29 — Ramp N Connection Touch-Up', 'Power tool preparation and coating.', 'spans', 3, 'standardPaint', { fieldQuantity: 3, subAreas: spanSubAreas(3) }),
     v20Area('item-30-ramp-n-cutlines', 30, 'area-e', 'Item 30 — Ramp N Cut Lines', 'Localized paint removal at cut lines.', 'LS', 1, 'localized'),
-    v20Area('area-e-yard-ramp-bearings', 31, 'area-e', 'Item 31 — Ramp N De-Lead Bearings', 'Bearing preparation and faying surface coating.', 'bearings', 50, 'bearings', { billingQuantity: 50, fieldQuantity: 50, stageWeights: [50, 50] })
+    v20Area('area-e-yard-ramp-bearings', 31, 'area-e', 'Item 31 — Ramp N De-Lead Bearings', 'Bearing preparation and faying surface coating.', 'spans', 3, 'bearings', { billingQuantity: 50, fieldQuantity: 3, subAreas: spanSubAreas(3), stageWeights: [50, 50] })
   ],
+
   emergencySteelRepairs: { ...safeClone(defaultEmergencySteelRepairs), archived: true, hiddenFromNavigation: true },
   dailyLog: [],
   notes: []
@@ -2330,7 +2350,8 @@ function migrateData(data) {
   if (!Array.isArray(data.dailyLog)) data.dailyLog = [];
   if (!Array.isArray(data.notes)) data.notes = [];
   data.officialAreas = safeClone(officialAreas);
-  data.trackerVersion = 'V20 Contract Production Model';
+  data.areas = data.areas.filter(a => !['item-1-work-plans', 'item-27-jack-ped-access'].includes(a.id));
+  data.trackerVersion = 'V21 Boss Span Breakdown';
 
   for (const defaultArea of defaultData.areas) {
     let area = data.areas.find(a => a.id === defaultArea.id);
@@ -2354,6 +2375,7 @@ function migrateData(data) {
     area.billingQuantity = defaultArea.billingQuantity;
     area.fieldQuantity = defaultArea.fieldQuantity;
     area.quantityNote = defaultArea.quantityNote;
+    area.reminderNote = defaultArea.reminderNote || '';
     area.paymentItemRefs = Array.isArray(defaultArea.paymentItemRefs) ? safeClone(defaultArea.paymentItemRefs) : [];
     if (defaultArea.subAreas) area.subAreas = safeClone(defaultArea.subAreas);
     else delete area.subAreas;
