@@ -102,7 +102,7 @@ const tmStorage = multer.diskStorage({
 });
 const tmUpload = multer({
   storage: tmStorage,
-  limits: { fileSize: 15 * 1024 * 1024, files: 24 },
+  limits: { fileSize: 50 * 1024 * 1024, files: 24 },
   fileFilter: (req, file, cb) => {
     const ok = file.mimetype === 'application/pdf' || String(file.mimetype || '').startsWith('image/');
     cb(ok ? null : new Error('Only images and PDF files are allowed.'), ok);
@@ -1285,7 +1285,17 @@ app.use('/api', (req, res) => {
 app.use((err, req, res, next) => {
   console.error(err);
   if (req.path && req.path.startsWith('/api/')) {
-    return res.status(500).json({ ok: false, error: 'Server error while handling API request.' });
+    // Multer errors should be understandable to field users instead of appearing as a generic server failure.
+    if (err && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ ok: false, error: 'One of the selected files is larger than 50 MB. Reduce the file size or split the PDF and try again.' });
+    }
+    if (err && err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(413).json({ ok: false, error: 'Too many files were selected. Upload no more than 24 files in one submission.' });
+    }
+    if (err && /Only images and PDF files/i.test(String(err.message || ''))) {
+      return res.status(400).json({ ok: false, error: err.message });
+    }
+    return res.status(500).json({ ok: false, error: 'The upload could not be completed. Please try again or call the JAGD office.' });
   }
   next(err);
 });

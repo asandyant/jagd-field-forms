@@ -2812,9 +2812,35 @@ function tmFieldView(){
   document.getElementById('tmCamera').onchange=e=>tmAddFiles(e.target.files);document.getElementById('tmFiles').onchange=e=>tmAddFiles(e.target.files);
   document.getElementById('tmSubmitBtn').onclick=tmSubmit;
 }
-function tmAddFiles(list){for(const f of Array.from(list||[])){if(tmSelectedFiles.length>=24)break;tmSelectedFiles.push(f);}tmRenderFiles();document.getElementById('tmCamera').value='';document.getElementById('tmFiles').value='';}
-function tmRenderFiles(){const box=document.getElementById('tmFilePreview');if(!tmSelectedFiles.length){box.innerHTML='<p class="tiny">No files added yet.</p>';return;}box.innerHTML=tmSelectedFiles.map((f,i)=>{const isPdf=f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf');const url=URL.createObjectURL(f);return `<article class="tmFileCard">${isPdf?`<div class="tmPdfIcon">PDF</div>`:`<img src="${url}" alt="Preview">`}<div><strong>${esc(f.name)}</strong><small>${Math.ceil(f.size/1024)} KB</small></div><div class="tmFileActions"><button class="btn small" type="button" onclick="window.open('${url}','_blank')">View</button><button class="btn small danger" type="button" onclick="tmRemoveFile(${i})">Remove</button></div></article>`;}).join('')+'<p class="notice">Review every page. Make sure the vendor, date, and total are readable before submitting.</p>';}
+const TM_MAX_FILE_BYTES=50*1024*1024,TM_MAX_TOTAL_BYTES=100*1024*1024;
+function tmFormatSize(bytes){if(bytes>=1024*1024)return `${(bytes/(1024*1024)).toFixed(bytes>=10*1024*1024?1:2)} MB`;return `${Math.ceil(bytes/1024)} KB`;}
+function tmCompressReceiptImage(file){
+ return new Promise(resolve=>{
+  if(!file||!String(file.type||'').startsWith('image/')||file.size<1400*1024){resolve(file);return;}
+  const img=new Image(),url=URL.createObjectURL(file);
+  img.onload=()=>{try{const max=2200,scale=Math.min(1,max/Math.max(img.width,img.height)),w=Math.max(1,Math.round(img.width*scale)),h=Math.max(1,Math.round(img.height*scale));const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);c.toBlob(blob=>{URL.revokeObjectURL(url);if(!blob||blob.size>=file.size){resolve(file);return;}const base=String(file.name||'receipt').replace(/\.[^.]+$/,'');resolve(new File([blob],`${base}.jpg`,{type:'image/jpeg',lastModified:Date.now()}));},'image/jpeg',0.84);}catch(e){URL.revokeObjectURL(url);resolve(file);}};
+  img.onerror=()=>{URL.revokeObjectURL(url);resolve(file);};img.src=url;
+ });
+}
+async function tmAddFiles(list){
+ const msg=document.getElementById('tmSubmitMsg');
+ const incoming=Array.from(list||[]);
+ if(incoming.length)msg.innerHTML='<div class="notice">Preparing selected files...</div>';
+ for(const original of incoming){
+  if(tmSelectedFiles.length>=24){msg.innerHTML='<div class="notice">A maximum of 24 files can be submitted at once.</div>';break;}
+  if(original.size>TM_MAX_FILE_BYTES){msg.innerHTML=`<div class="notice"><strong>${esc(original.name)}</strong> is ${tmFormatSize(original.size)}. Each file must be 50 MB or smaller.</div>`;continue;}
+  const f=await tmCompressReceiptImage(original);
+  const total=tmSelectedFiles.reduce((n,x)=>n+x.size,0)+f.size;
+  if(total>TM_MAX_TOTAL_BYTES){msg.innerHTML='<div class="notice">The selected files total more than 100 MB. Submit them in two separate records or reduce the PDF size.</div>';break;}
+  tmSelectedFiles.push(f);
+ }
+ tmRenderFiles();
+ if(msg&&(!msg.textContent||msg.textContent.includes('Preparing selected files')))msg.innerHTML='';
+ document.getElementById('tmCamera').value='';document.getElementById('tmFiles').value='';
+}
+function tmRenderFiles(){const box=document.getElementById('tmFilePreview');if(!tmSelectedFiles.length){box.innerHTML='<p class="tiny">No files added yet.</p>';return;}box.innerHTML=tmSelectedFiles.map((f,i)=>{const isPdf=f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf');const url=URL.createObjectURL(f);return `<article class="tmFileCard">${isPdf?`<div class="tmPdfIcon">PDF</div>`:`<img src="${url}" alt="Preview">`}<div><strong>${esc(f.name)}</strong><small>${tmFormatSize(f.size)}</small></div><div class="tmFileActions"><button class="btn small" type="button" onclick="window.open('${url}','_blank')">View</button><button class="btn small danger" type="button" onclick="tmRemoveFile(${i})">Remove</button></div></article>`;}).join('')+'<p class="notice">Review every page. Make sure the vendor, date, and total are readable before submitting.</p>';}
 function tmRemoveFile(i){tmSelectedFiles.splice(i,1);tmRenderFiles();}
+function tmUploadWithProgress(fd,onProgress){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('POST','/api/tm/submissions');xhr.timeout=240000;xhr.upload.onprogress=e=>{if(e.lengthComputable&&onProgress)onProgress(Math.max(1,Math.round((e.loaded/e.total)*100)));};xhr.onload=()=>{let json={};try{json=JSON.parse(xhr.responseText||'{}');}catch(e){json={error:xhr.status===413?'The selected upload is too large. Reduce the PDF size or submit fewer files.':'The server returned an unreadable response.'};}if(xhr.status>=200&&xhr.status<300)resolve(json);else reject(new Error(json.error||`Upload failed (${xhr.status}).`));};xhr.onerror=()=>reject(new Error('Network connection lost during upload. Your files are still on this screen; try again.'));xhr.ontimeout=()=>reject(new Error('The upload took too long. Try a stronger connection or a smaller PDF.'));xhr.send(fd);});}
 async function tmSubmit(){
  const btn=document.getElementById('tmSubmitBtn'),msg=document.getElementById('tmSubmitMsg');
  const projectId=val('tmProject'),category=val('tmCategory'),customContract=val('tmCustomContract');
@@ -2824,8 +2850,9 @@ async function tmSubmit(){
  if(!vendor||!transactionDate||!Number.isFinite(amount)||amount<=0||!purchaser||!paymentMethod){msg.innerHTML='<div class="notice">Complete the vendor, receipt date, amount, purchased by, and payment method.</div>';return;}
  if(!tmSelectedFiles.length){msg.innerHTML='<div class="notice">Add at least one receipt photo or PDF.</div>';return;}
  const data={projectId,type:category,category,customContract,vendor,transactionDate,amount,purchaser,description,paymentMethod,submitter:purchaser};
- const fd=new FormData();fd.append('data',JSON.stringify(data));tmSelectedFiles.forEach(f=>fd.append('files',f));btn.disabled=true;btn.textContent='Submitting — do not close this page';msg.innerHTML='<div class="notice">Uploading all files and saving the record...</div>';
- try{const res=await fetch('/api/tm/submissions',{method:'POST',body:fd});const j=await res.json();if(!res.ok)throw new Error(j.error||'Submission failed');tmSuccess(j);}catch(e){msg.innerHTML=`<div class="notice">Submission was not completed: ${esc(e.message)}. Your files are still on this screen; correct the problem and try again.</div>`;btn.disabled=false;btn.textContent='Submit Receipt';}
+ const totalBytes=tmSelectedFiles.reduce((n,f)=>n+f.size,0);if(totalBytes>TM_MAX_TOTAL_BYTES){msg.innerHTML='<div class="notice">The selected files total more than 100 MB. Submit fewer files or reduce the PDF size.</div>';return;}
+ const fd=new FormData();fd.append('data',JSON.stringify(data));tmSelectedFiles.forEach(f=>fd.append('files',f));btn.disabled=true;btn.textContent='Submitting — do not close this page';msg.innerHTML='<div class="notice">Starting upload...</div>';
+ try{const j=await tmUploadWithProgress(fd,p=>{msg.innerHTML=`<div class="notice"><strong>Uploading ${p}%</strong><br>Do not close this page.</div>`;});msg.innerHTML='<div class="notice">Upload complete. Saving receipt record...</div>';tmSuccess(j);}catch(e){msg.innerHTML=`<div class="notice">Submission was not completed: ${esc(e.message)}. Your files are still on this screen; correct the problem and try again.</div>`;btn.disabled=false;btn.textContent='Submit Receipt';}
 }
 function tmSuccess(j){app.innerHTML=`<div class="container tmShell"><section class="tmBrand"><img src="/assets/jagd-logo.png" alt="JAGD Construction"></section><section class="panel tmSuccess"><div class="tmCheck">✓</div><h1>Receipt Submitted Successfully</h1><p class="tmLead">Your receipt and all attached files were submitted to the JAGD T&amp;M Cost Tracker.</p><dl><dt>Project</dt><dd>${esc(j.project)}</dd><dt>Category</dt><dd>${esc(j.category||'')}</dd><dt>Record Number</dt><dd><strong>${esc(j.id)}</strong></dd><dt>Files Received</dt><dd>${j.attachmentCount}</dd></dl><div class="notice success"><strong>Please save or screenshot this record number.</strong></div><div class="notice"><strong>If you selected the wrong job or category, or attached the wrong document, call the JAGD office or an administrator.</strong> Do not submit the same receipt again unless instructed.</div><div class="tmDropbox"><strong>Please add all receipts and supporting documents to the correct JAGD Dropbox folder as well.</strong></div><div class="tmSuccessButtons"><button class="btn primary" onclick="tmFieldView()">Submit Another Receipt</button><a class="btn" href="#/">Finished</a></div></section></div>`;}
 function tmOfficeView(){
