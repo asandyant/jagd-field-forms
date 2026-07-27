@@ -2113,7 +2113,9 @@ function validateDwlBeforeSave(data){
 
   if(!String(data.project || '').trim()) addError('Select a project.','dwlProject');
   if(!String(data.reportDate || '').trim()) addError('Enter the report date.','dwlReportDate');
-  if(!String(data.crew || '').trim()) addError('Select or enter a crew.','dwlCrew');
+  const selectedProject=String(data.project || '').trim();
+  const crewRequired=/c\s*-?\s*35311|dyer\s*ave|dyre\s*ave/i.test(selectedProject);
+  if(crewRequired && !String(data.crew || '').trim()) addError('Select or enter a crew for the Dyre Ave job.','dwlCrew');
   if(!String(data.description || '').trim()) addError('Enter the work location / description.','dwlDescription');
 
   const rows=Array.isArray(data.rows) ? data.rows : [];
@@ -2208,9 +2210,53 @@ function showDwlBlockingErrors(result){
     setTimeout(()=>{ try{ result.firstInvalid.focus({preventScroll:true}); }catch(e){ try{ result.firstInvalid.focus(); }catch(_){} } },250);
   }else if(msg) msg.scrollIntoView({behavior:'smooth',block:'center'});
 }
-function confirmDwlWarnings(warnings){
+function showDwlMobileDialog({title,bodyHtml,confirmText='Continue',cancelText='Go Back',tone='warning'}){
+  return new Promise(resolve=>{
+    const old=document.getElementById('dwlMobileDialog');
+    if(old) old.remove();
+    const overlay=document.createElement('div');
+    overlay.id='dwlMobileDialog';
+    overlay.className='modalOverlay dwlMobileDialogOverlay';
+    overlay.setAttribute('role','dialog');
+    overlay.setAttribute('aria-modal','true');
+    overlay.setAttribute('aria-labelledby','dwlMobileDialogTitle');
+    overlay.innerHTML=`<div class="modalBox dwlMobileDialog ${tone==='final'?'dwlFinalDialog':''}">
+      <div class="dwlDialogIcon" aria-hidden="true">${tone==='final'?'✓':'!'}</div>
+      <h2 id="dwlMobileDialogTitle">${esc(title)}</h2>
+      <div class="dwlDialogBody">${bodyHtml}</div>
+      <div class="dwlDialogActions">
+        <button class="btn light" type="button" data-dwl-dialog-cancel>${esc(cancelText)}</button>
+        <button class="btn" type="button" data-dwl-dialog-confirm>${esc(confirmText)}</button>
+      </div>
+    </div>`;
+    const finish=value=>{ overlay.remove(); document.removeEventListener('keydown',onKey); resolve(value); };
+    const onKey=e=>{ if(e.key==='Escape') finish(false); };
+    overlay.querySelector('[data-dwl-dialog-cancel]').onclick=()=>finish(false);
+    overlay.querySelector('[data-dwl-dialog-confirm]').onclick=()=>finish(true);
+    overlay.addEventListener('click',e=>{ if(e.target===overlay) finish(false); });
+    document.addEventListener('keydown',onKey);
+    document.body.appendChild(overlay);
+    setTimeout(()=>overlay.querySelector('[data-dwl-dialog-confirm]')?.focus(),50);
+  });
+}
+async function confirmDwlWarnings(warnings){
   if(!warnings.length) return true;
-  return window.confirm(`Please review these DWL warnings:\n\n${warnings.map((w,i)=>`${i+1}. ${w}`).join('\n')}\n\nThese items may be valid. Click OK to confirm and continue, or Cancel to return to the DWL.`);
+  const items=warnings.map(w=>`<li>${esc(w)}</li>`).join('');
+  return showDwlMobileDialog({
+    title:'Please Review DWL Warnings',
+    bodyHtml:`<p>These items may be valid, but please check them before submitting.</p><ul class="dwlDialogList">${items}</ul>`,
+    confirmText:'Confirm & Continue',
+    cancelText:'Go Back and Fix'
+  });
+}
+async function confirmDwlPrintAndSign(){
+  return showDwlMobileDialog({
+    title:'Final DWL Check',
+    bodyHtml:`<p><b>The official DWL PDF will open next.</b></p><p>Make sure it is printed and signed as required before the final signed copy is filed with the office.</p>`,
+    confirmText:'Continue to Print & Sign',
+    cancelText:'Go Back',
+    tone:'final'
+  });
 }
 
 async function dwlForm(){
@@ -2239,10 +2285,11 @@ async function dwlForm(){
       const data=collectDwl();
       const validation=validateDwlBeforeSave(data);
       if(validation.errors.length){ showDwlBlockingErrors(validation); return; }
-      if(!confirmDwlWarnings(validation.warnings)) return;
+      if(!(await confirmDwlWarnings(validation.warnings))) return;
       const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
       const dwlFileTitle=dwlFileTitleWithRevision(baseTitle, data.revision);
       if(!confirmDwlSaveAndSend(data,dwlFileTitle)) return;
+      if(!(await confirmDwlPrintAndSign())) return;
       setNextPdfFileTitle(dwlFileTitle);
       markDwlSubmittedLocally(data,dwlFileTitle);
       logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle);
