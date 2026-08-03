@@ -2091,7 +2091,7 @@ function dwlPdfText(doc, text, x, y, opts={}){
   doc.setFont('helvetica', style);
   doc.setFontSize(size);
   let out = value;
-  if (doc.getTextWidth(out) > maxWidth) {
+  if (!opts.noEllipsis && doc.getTextWidth(out) > maxWidth) {
     while(out.length > 3 && doc.getTextWidth(out + '…') > maxWidth) out = out.slice(0,-1);
     out = out.trim() + '…';
   }
@@ -2105,7 +2105,7 @@ function dwlPdfCell(doc, x, y, w, h, text, opts={}){
   const align=opts.align || 'left';
   const tx = align==='center' ? x+w/2 : align==='right' ? x+w-3 : x+3;
   const ty = y + h/2 + size*0.34;
-  dwlPdfText(doc, text, tx, ty, {maxWidth:w-6, size, style, align});
+  dwlPdfText(doc, text, tx, ty, {maxWidth:w-6, size, style, align, noEllipsis:!!opts.noEllipsis});
 }
 function dwlPdfWrapText(doc, text, x, y, w, h, opts={}){
   const size=opts.size || 8;
@@ -2142,7 +2142,7 @@ async function saveDwlDirectPdf(data, msgId){
   const pageW=612, pageH=792;
   const dateSlash=dateToSlashYYYY(data.reportDate);
   const m=21, w=pageW-m*2;
-  const cols=[16,176,43,40,40,42,46,43,52,40,32];
+  const cols=[22,170,43,40,40,42,46,43,52,40,32];
   const headers=['#','Employee','Location','Activity','Class','Local','Straight','Over','No Lunch','P.T.','R.T.'];
 
   function drawActivityGrid(startY){
@@ -2212,11 +2212,11 @@ async function saveDwlDirectPdf(data, msgId){
         let size=13.8;
         let style='bold';
         let align='center';
-        if(c===0){ size=10.2; }
+        if(c===0){ size=9.6; }
         if(c===1){ size=13.6; align='left'; }
         if(c===2){ size=10.8; style='normal'; }
         if(c===3){ size=11.2; }
-        dwlPdfCell(doc,x,y,cols[c],rowH,vals[c]||'',{size,style,align,lineWidth:1.0});
+        dwlPdfCell(doc,x,y,cols[c],rowH,vals[c]||'',{size,style,align,lineWidth:1.0,noEllipsis:c===0});
         x += cols[c];
       }
       y += rowH;
