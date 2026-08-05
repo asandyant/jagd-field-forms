@@ -640,7 +640,7 @@ async function openPrintNow(msgId){
 
 function printPdfHelp(type){
   const label = type === 'pir' ? 'PIR' : (type === 'dsif' ? 'DSIF' : 'MEWP');
-  return `<p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF / Print. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox. On Android, use Share or the browser menu, choose Print, select Save as PDF, then share/email/upload the saved PDF.</p>`;
+  return `<p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF / Print. On iPhone, the completed BOL opens through the PDF/print flow; use Share from that screen to text it, email it, or save/send to Dropbox. On Android, use Share or the browser menu, choose Print, select Save as PDF, then share/email/upload the saved PDF.</p>`;
 }
 
 const FORM_TYPE_META = {
@@ -1292,7 +1292,7 @@ function dailyEquipmentForm(){
     <h1>Daily Equipment Inspection</h1>
     <div class="panel"><h2>Project / Inspector Information</h2><div class="grid three">${projectField('dailyProject','Project')} ${field('dailyDate','Date','date')} ${field('dailyInspector','Filled By / Printed Name')}</div>${sigField('dailySignature','Signature')}<p class="tiny">Fill out only the equipment used today. Mark the rest as N/A. Photos can be attached to each checklist section.</p></div>
     ${DAILY_EQUIPMENT_CHECKLISTS.map((page,pi)=>`<div class="panel dailyChecklist" data-page="${pi}"><div class="dailySectionHead"><h2>${page.title}</h2><label class="naBox"><input type="checkbox" id="dailyNa${pi}"> N/A</label></div>${page.items.map((q,ii)=>`<div class="checkrow dailyItem"><div class="questionTitle">${q}</div>${dailyStatusButtons(pi,ii)}<label>Comments</label><textarea id="dailyComment_${pi}_${ii}"></textarea></div>`).join('')} ${photoInput('dailyPhotos'+pi,'Photo Documentation')} ${textarea('dailyAdditional'+pi,'Additional Comments')}</div>`).join('')}
-    <div class="panel"><div class="actions"><button class="btn light" id="dailyResetBtn" type="button">Reset</button><button class="btn" id="dailyPrintBtn" type="button">Save PDF / Print Daily Equipment Inspection</button></div><p class="tiny saveHelp"><b>Save / send:</b> Use Save PDF / Print, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p><div id="dailyMsg"></div></div>
+    <div class="panel"><div class="actions"><button class="btn light" id="dailyResetBtn" type="button">Reset</button><button class="btn" id="dailyPrintBtn" type="button">Save PDF / Print Daily Equipment Inspection</button></div><p class="tiny saveHelp"><b>Save / send:</b> Use Save PDF / Print, then choose Save as PDF. On iPhone, the completed BOL opens through the PDF/print flow; use Share from that screen to text it, email it, or save/send to Dropbox.</p><div id="dailyMsg"></div></div>
   </div>`;
   setupOtherProject('dailyProject');
   document.getElementById('dailyDate').value=new Date().toISOString().slice(0,10);
@@ -2059,6 +2059,7 @@ async function dwlForm(){
   setTimeout(()=>autoFillWeather(),350);
   document.getElementById('dwlPrintBtn').onclick=async(e)=>{
     e.preventDefault();
+    if(btn.disabled)return;
     try{
       saveDwlLastCrewFromRows();
       const data=collectDwl();
@@ -2364,6 +2365,11 @@ function setupBolInventoryAutocomplete(){
     if(activeBolProductInput) showBolInventoryPicker(activeBolProductInput);
     if(msg) msg.textContent=bolInventoryItems.length ? `Current stock list loaded from portal (${bolInventoryItems.length} items). Tap Product / Material to choose from stock.` : 'No current portal stock items yet. You can still type manually.';
   }).catch(()=>{ bolInventoryLoaded=true; if(msg) msg.textContent='Portal current stock list did not load. You can still type materials manually.'; });
+
+  document.querySelectorAll('.bolProduct').forEach(input=>{
+    input.addEventListener('change',()=>bolApplyCatalogSuggestion(input));
+    input.addEventListener('blur',()=>bolApplyCatalogSuggestion(input));
+  });
 }
 function bolItemRows(){
   return Array.from({length:EXTRA_FORM_ROWS},(_,idx)=>{
@@ -2401,6 +2407,29 @@ function bolData(){
     items: collectBolItems()
   };
 }
+
+function bolNormalizeItemText(value=''){return String(value||'').toLowerCase().replace(/\b(box|boxes|case|cases|pack|packs|of|the|a|an)\b/g,' ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();}
+function bolApplyCatalogSuggestion(input){
+  if(!input)return;
+  const typed=bolNormalizeItemText(input.value);
+  const list=Array.isArray(window.bolCatalogItems)?window.bolCatalogItems:[];
+  let match=list.find(x=>bolNormalizeItemText(x.item)===typed||(x.aliases||[]).some(a=>bolNormalizeItemText(a)===typed));
+  if(!match&&typed)match=list.find(x=>bolNormalizeItemText(x.item).includes(typed)||typed.includes(bolNormalizeItemText(x.item)));
+  if(!match)return;
+  input.value=match.item;
+  const row=input.closest('tr');
+  const unit=row?.querySelector('.bolUnit');
+  if(unit&&!unit.value)unit.value=match.unit||'';
+  input.dataset.catalogId=match.catalogId||'';
+  input.dataset.trackingType=match.trackingType||'';
+  input.title=`Official item: ${match.item}${match.trackingType?' · '+match.trackingType:''}`;
+}
+function bolLockAfterSave(btn){
+  btn.disabled=true;btn.classList.add('disabled');btn.textContent='BOL Saved';
+  document.querySelectorAll('#app input,#app select,#app textarea,#app button').forEach(el=>{if(el!==btn)el.disabled=true;});
+  const actions=btn.closest('.actions');if(actions&&!document.getElementById('bolStartNewBtn')){const n=document.createElement('button');n.id='bolStartNewBtn';n.className='btn';n.textContent='Start New BOL';n.onclick=()=>{location.hash='#bol';location.reload();};actions.appendChild(n);}
+}
+
 async function setupBolNumber(){
   const el=document.getElementById('bolNumber');
   const dateEl=document.getElementById('bolDate');
@@ -2435,7 +2464,7 @@ async function syncBolToPortal(){
     const json=await res.json().catch(()=>({}));
     if(!res.ok && res.status!==202) throw new Error(json.error || json.message || 'Portal sync failed');
     if(msg){
-      msg.innerHTML=json.ok ? '<div class="notice success">BOL synced to portal inventory.</div>' : `<div class="notice">BOL PDF can still save, but portal sync needs office review: ${esc(json.message||json.error||'sync failed')}</div>`;
+      msg.innerHTML=json.ok ? '<div class="notice success">BOL synced and Portal Inventory updated.</div>' : `<div class="notice">BOL PDF can still save, but portal sync needs office review: ${esc(json.message||json.error||'sync failed')}</div>`;
     }
     return json;
   }catch(err){
@@ -2444,7 +2473,7 @@ async function syncBolToPortal(){
   }
 }
 function bolForm(){
-  app.innerHTML=extraFormIntro('JAGD - Bill of Lading','Material transfer ticket. Inventory moves in the portal only after the receiver signs and the BOL is marked Received.')+`<div class="panel"><h2>Delivery Info</h2><div class="grid three">${field('bolNumber','BOL Number','text','readonly')} ${field('bolDate','Date','date')} ${bolLocationField('bolFromLocation','From Location / Job')} ${bolLocationField('bolToJob','To Location / Job')} ${field('bolPO','PO Number (optional)')} ${selectField('bolStatusPreview','Status',['In Transit','Received','Issue'])}</div><p class="tiny"><b>Inventory rule:</b> stock moves from the From location to the To location only when the receiver signs and this BOL is Received.</p></div><div class="panel"><h2>Materials</h2><p class="tiny" id="bolInventoryMsg">Loading portal inventory list...</p>${bolInventoryDatalist()}<div class="extraTableWrap"><table class="table extraEntryTable"><thead><tr><th>Quantity</th><th>Product / Material</th><th>Unit</th></tr></thead><tbody>${bolItemRows()}</tbody></table></div>${textarea('bolNotes','Delivery Notes')}</div><div class="panel"><h2>Signatures</h2><div class="grid two">${field('bolDeliveredBy','Delivered By')} ${sigField('bolDeliveredBySig','Delivered By Signature')} ${field('bolReceiver','Received By')} ${sigField('bolReceiverSig','Received By Signature')}</div><div class="actions"><button class="btn" id="bolPrintBtn">Save PDF / Print Bill of Lading</button></div>${printPdfHelp('bol')}<div id="bolMsg"></div></div></div>`;
+  app.innerHTML=extraFormIntro('JAGD - Bill of Lading','Material transfer ticket. Saving this BOL immediately updates warehouse and job inventory in the Portal.')+`<div class="panel"><h2>Delivery Info</h2><div class="grid three">${field('bolNumber','BOL Number','text','readonly')} ${field('bolDate','Date','date')} ${bolLocationField('bolFromLocation','From Location / Job')} ${bolLocationField('bolToJob','To Location / Job')} ${field('bolPO','PO Number (optional)')} ${selectField('bolStatusPreview','Status',['In Transit','Received','Issue'])}</div><p class="tiny"><b>Inventory rule:</b> whatever quantities are saved on this BOL immediately move from the From location to the To location. No approval is required.</p></div><div class="panel"><h2>Materials</h2><p class="tiny" id="bolInventoryMsg">Loading portal inventory list...</p>${bolInventoryDatalist()}<div class="extraTableWrap"><table class="table extraEntryTable"><thead><tr><th>Quantity</th><th>Product / Material</th><th>Unit</th></tr></thead><tbody>${bolItemRows()}</tbody></table></div>${textarea('bolNotes','Delivery Notes')}</div><div class="panel"><h2>Signatures</h2><div class="grid two">${field('bolDeliveredBy','Delivered By')} ${sigField('bolDeliveredBySig','Delivered By Signature')} ${field('bolReceiver','Received By')} ${sigField('bolReceiverSig','Received By Signature')}</div><div class="actions"><button class="btn" id="bolPrintBtn">Save PDF / Print Bill of Lading</button></div>${printPdfHelp('bol')}<div id="bolMsg"></div></div></div>`;
   setupToday('bolDate'); setupOtherBolLocation('bolFromLocation'); setupOtherBolLocation('bolToJob'); setupBolInventoryAutocomplete(); initSignatureButtons(); setupBolNumber();
   const status=document.getElementById('bolStatusPreview');
   const receiver=document.getElementById('bolReceiver');
@@ -2456,19 +2485,22 @@ function bolForm(){
     e.preventDefault();
     try{
       updateStatus();
-      const ok=confirm('This BOL will save/print and sync to Portal Inventory. Inventory will only move if the receiver signed and the BOL is Received. Continue?');
+      const ok=confirm('This BOL will save/print and immediately update Portal Inventory using the quantities entered. Continue?');
       if(!ok) return;
-      await syncBolToPortal();
+      btn.disabled=true;btn.textContent='Saving BOL...';
+      const syncResult=await syncBolToPortal();
+      if(!syncResult?.ok){btn.disabled=false;btn.textContent='Save PDF / Print Bill of Lading';throw new Error(syncResult?.error||'Portal sync failed');}
       logGeneratedForm('bol', bolLocationValue('bolToJob'), val('bolDate'), `Bill of Lading - ${val('bolNumber')} - ${cleanFilePart(bolLocationValue('bolToJob'))}`);
       buildBolPrint();
-      openPrintNow('bolMsg');
+      await openPrintNow('bolMsg');
+      bolLockAfterSave(btn);
     }catch(err){const m=document.getElementById('bolMsg'); if(m) m.innerHTML=`<div class="notice">Bill of Lading could not open: ${esc(err.message)}.</div>`; console.error(err);}
   };
 }
 function buildBolPrint(){
   const data=bolData();
   const rows=data.items.length ? data.items.map(r=>`<tr><td>${esc(r.quantity)}</td><td>${esc(r.product)}</td><td>${esc(r.unit)}</td></tr>`).join('') : `<tr><td colspan="3">No materials listed.</td></tr>`;
-  const html=`<div class="extraPrintSheet bolPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>JAGD - BILL OF LADING</h1></div><table class="extraPrintTable bolTop"><tr><th>BOL #</th><td>${esc(data.bolNumber)}</td><th>Date</th><td>${esc(dateToSlashYYYY(data.date))}</td></tr><tr><th>From Location / Job</th><td>${esc(data.fromLocation)}</td><th>To Location / Job</th><td>${esc(data.toJob)}</td></tr><tr><th>PO #</th><td>${esc(data.poNumber)}</td><th>Status</th><td>${esc(data.status)}</td></tr></table><table class="extraPrintTable bolItems"><tr><th>Quantity</th><th>Product / Material</th><th>Unit</th></tr>${rows}</table><div class="extraNotes"><b>Delivery Notes:</b><br>${esc(data.deliveryNotes)}</div><div class="extraSigGrid two"><div><b>Delivered By:</b> ${esc(data.deliveredBy)}<br><b>Signature:</b> ${sigPrint(data.deliveredBySignatureData,'')}</div><div><b>Received By:</b> ${esc(data.receivedBy)}<br><b>Signature:</b> ${sigPrint(data.receivedBySignatureData,'')}</div></div><div class="tiny"><b>Inventory rule:</b> Portal transfers inventory only after status is Received.</div></div>`;
+  const html=`<div class="extraPrintSheet bolPrintSheet"><div class="extraPrintHeader"><img src="${logo}"><h1>JAGD - BILL OF LADING</h1></div><table class="extraPrintTable bolTop"><tr><th>BOL #</th><td>${esc(data.bolNumber)}</td><th>Date</th><td>${esc(dateToSlashYYYY(data.date))}</td></tr><tr><th>From Location / Job</th><td>${esc(data.fromLocation)}</td><th>To Location / Job</th><td>${esc(data.toJob)}</td></tr><tr><th>PO #</th><td>${esc(data.poNumber)}</td><th>Status</th><td>${esc(data.status)}</td></tr></table><table class="extraPrintTable bolItems"><tr><th>Quantity</th><th>Product / Material</th><th>Unit</th></tr>${rows}</table><div class="extraNotes"><b>Delivery Notes:</b><br>${esc(data.deliveryNotes)}</div><div class="extraSigGrid two"><div><b>Delivered By:</b> ${esc(data.deliveredBy)}<br><b>Signature:</b> ${sigPrint(data.deliveredBySignatureData,'')}</div><div><b>Received By:</b> ${esc(data.receivedBy)}<br><b>Signature:</b> ${sigPrint(data.receivedBySignatureData,'')}</div></div><div class="tiny"><b>Inventory rule:</b> Portal Inventory updates immediately when this BOL is saved.</div></div>`;
   document.title=`Bill of Lading - ${data.bolNumber} - ${cleanFilePart(data.toJob)}`; setPrint(html);
 }
 

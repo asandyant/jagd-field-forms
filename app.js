@@ -640,7 +640,7 @@ async function openPrintNow(msgId){
 
 function printPdfHelp(type){
   const label = type === 'pir' ? 'PIR' : (type === 'dsif' ? 'DSIF' : 'MEWP');
-  return `<p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF / Print. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox. On Android, use Share or the browser menu, choose Print, select Save as PDF, then share/email/upload the saved PDF.</p>`;
+  return `<p class="tiny saveHelp"><b>Save / send:</b> Use this button, then choose Save as PDF / Print. On iPhone, the completed BOL opens through the PDF/print flow; use Share from that screen to text it, email it, or save/send to Dropbox. On Android, use Share or the browser menu, choose Print, select Save as PDF, then share/email/upload the saved PDF.</p>`;
 }
 
 const FORM_TYPE_META = {
@@ -1292,7 +1292,7 @@ function dailyEquipmentForm(){
     <h1>Daily Equipment Inspection</h1>
     <div class="panel"><h2>Project / Inspector Information</h2><div class="grid three">${projectField('dailyProject','Project')} ${field('dailyDate','Date','date')} ${field('dailyInspector','Filled By / Printed Name')}</div>${sigField('dailySignature','Signature')}<p class="tiny">Fill out only the equipment used today. Mark the rest as N/A. Photos can be attached to each checklist section.</p></div>
     ${DAILY_EQUIPMENT_CHECKLISTS.map((page,pi)=>`<div class="panel dailyChecklist" data-page="${pi}"><div class="dailySectionHead"><h2>${page.title}</h2><label class="naBox"><input type="checkbox" id="dailyNa${pi}"> N/A</label></div>${page.items.map((q,ii)=>`<div class="checkrow dailyItem"><div class="questionTitle">${q}</div>${dailyStatusButtons(pi,ii)}<label>Comments</label><textarea id="dailyComment_${pi}_${ii}"></textarea></div>`).join('')} ${photoInput('dailyPhotos'+pi,'Photo Documentation')} ${textarea('dailyAdditional'+pi,'Additional Comments')}</div>`).join('')}
-    <div class="panel"><div class="actions"><button class="btn light" id="dailyResetBtn" type="button">Reset</button><button class="btn" id="dailyPrintBtn" type="button">Save PDF / Print Daily Equipment Inspection</button></div><p class="tiny saveHelp"><b>Save / send:</b> Use Save PDF / Print, then choose Save as PDF. On iPhone, use Share from the print/PDF screen to text it, email it, or save/send to Dropbox.</p><div id="dailyMsg"></div></div>
+    <div class="panel"><div class="actions"><button class="btn light" id="dailyResetBtn" type="button">Reset</button><button class="btn" id="dailyPrintBtn" type="button">Save PDF / Print Daily Equipment Inspection</button></div><p class="tiny saveHelp"><b>Save / send:</b> Use Save PDF / Print, then choose Save as PDF. On iPhone, the completed BOL opens through the PDF/print flow; use Share from that screen to text it, email it, or save/send to Dropbox.</p><div id="dailyMsg"></div></div>
   </div>`;
   setupOtherProject('dailyProject');
   document.getElementById('dailyDate').value=new Date().toISOString().slice(0,10);
@@ -2059,6 +2059,7 @@ async function dwlForm(){
   setTimeout(()=>autoFillWeather(),350);
   document.getElementById('dwlPrintBtn').onclick=async(e)=>{
     e.preventDefault();
+    if(btn.disabled)return;
     try{
       saveDwlLastCrewFromRows();
       const data=collectDwl();
@@ -2364,6 +2365,11 @@ function setupBolInventoryAutocomplete(){
     if(activeBolProductInput) showBolInventoryPicker(activeBolProductInput);
     if(msg) msg.textContent=bolInventoryItems.length ? `Current stock list loaded from portal (${bolInventoryItems.length} items). Tap Product / Material to choose from stock.` : 'No current portal stock items yet. You can still type manually.';
   }).catch(()=>{ bolInventoryLoaded=true; if(msg) msg.textContent='Portal current stock list did not load. You can still type materials manually.'; });
+
+  document.querySelectorAll('.bolProduct').forEach(input=>{
+    input.addEventListener('change',()=>bolApplyCatalogSuggestion(input));
+    input.addEventListener('blur',()=>bolApplyCatalogSuggestion(input));
+  });
 }
 function bolItemRows(){
   return Array.from({length:EXTRA_FORM_ROWS},(_,idx)=>{
@@ -2401,6 +2407,29 @@ function bolData(){
     items: collectBolItems()
   };
 }
+
+function bolNormalizeItemText(value=''){return String(value||'').toLowerCase().replace(/\b(box|boxes|case|cases|pack|packs|of|the|a|an)\b/g,' ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();}
+function bolApplyCatalogSuggestion(input){
+  if(!input)return;
+  const typed=bolNormalizeItemText(input.value);
+  const list=Array.isArray(window.bolCatalogItems)?window.bolCatalogItems:[];
+  let match=list.find(x=>bolNormalizeItemText(x.item)===typed||(x.aliases||[]).some(a=>bolNormalizeItemText(a)===typed));
+  if(!match&&typed)match=list.find(x=>bolNormalizeItemText(x.item).includes(typed)||typed.includes(bolNormalizeItemText(x.item)));
+  if(!match)return;
+  input.value=match.item;
+  const row=input.closest('tr');
+  const unit=row?.querySelector('.bolUnit');
+  if(unit&&!unit.value)unit.value=match.unit||'';
+  input.dataset.catalogId=match.catalogId||'';
+  input.dataset.trackingType=match.trackingType||'';
+  input.title=`Official item: ${match.item}${match.trackingType?' · '+match.trackingType:''}`;
+}
+function bolLockAfterSave(btn){
+  btn.disabled=true;btn.classList.add('disabled');btn.textContent='BOL Saved';
+  document.querySelectorAll('#app input,#app select,#app textarea,#app button').forEach(el=>{if(el!==btn)el.disabled=true;});
+  const actions=btn.closest('.actions');if(actions&&!document.getElementById('bolStartNewBtn')){const n=document.createElement('button');n.id='bolStartNewBtn';n.className='btn';n.textContent='Start New BOL';n.onclick=()=>{location.hash='#bol';location.reload();};actions.appendChild(n);}
+}
+
 async function setupBolNumber(){
   const el=document.getElementById('bolNumber');
   const dateEl=document.getElementById('bolDate');
@@ -2458,10 +2487,13 @@ function bolForm(){
       updateStatus();
       const ok=confirm('This BOL will save/print and immediately update Portal Inventory using the quantities entered. Continue?');
       if(!ok) return;
-      await syncBolToPortal();
+      btn.disabled=true;btn.textContent='Saving BOL...';
+      const syncResult=await syncBolToPortal();
+      if(!syncResult?.ok){btn.disabled=false;btn.textContent='Save PDF / Print Bill of Lading';throw new Error(syncResult?.error||'Portal sync failed');}
       logGeneratedForm('bol', bolLocationValue('bolToJob'), val('bolDate'), `Bill of Lading - ${val('bolNumber')} - ${cleanFilePart(bolLocationValue('bolToJob'))}`);
       buildBolPrint();
-      openPrintNow('bolMsg');
+      await openPrintNow('bolMsg');
+      bolLockAfterSave(btn);
     }catch(err){const m=document.getElementById('bolMsg'); if(m) m.innerHTML=`<div class="notice">Bill of Lading could not open: ${esc(err.message)}.</div>`; console.error(err);}
   };
 }
