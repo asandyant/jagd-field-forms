@@ -2059,7 +2059,11 @@ async function dwlForm(){
   setTimeout(()=>autoFillWeather(),350);
   document.getElementById('dwlPrintBtn').onclick=async(e)=>{
     e.preventDefault();
-    if(btn.disabled)return;
+    const btn = e.currentTarget;
+    if(btn.disabled) return;
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Saving DWL...';
     try{
       saveDwlLastCrewFromRows();
       const data=collectDwl();
@@ -2074,9 +2078,12 @@ async function dwlForm(){
       const savedDirect = await saveDwlDirectPdf(data,'dwlMsg');
       if(!savedDirect){ buildDwlPrint(data); await openPrintNow('dwlMsg'); }
       portalSend.catch(()=>{});
+      btn.textContent = 'DWL Saved';
     }catch(err){
       document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`;
       console.error(err);
+      btn.disabled = false;
+      btn.textContent = originalText;
     }
   };
 }
