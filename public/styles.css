@@ -1083,3 +1083,14 @@
   overflow:visible!important;text-overflow:clip!important;white-space:nowrap!important;
   padding-left:1px!important;padding-right:1px!important;text-align:center!important;
 }
+
+
+/* DWL Day/Night shift and payroll notice */
+.dwlShiftOfficeNote{margin-top:12px;border:2px solid #17365d;border-radius:10px;padding:12px 14px;text-align:center;font-weight:900;font-size:17px;letter-spacing:.2px;background:#deebf7;color:#102a43}
+.dwlShiftOfficeNote.differential{background:#ffeb99;border-color:#b7791f;color:#6b3f00}
+.dwlShiftOfficeNote.allOt{background:#ffc7a8;border-color:#b42318;color:#7a140d}
+.dwlShiftPrintBanner{border:2px solid #17365d;padding:7px 10px;margin:5px 0;text-align:center;font-weight:900;background:#deebf7}
+.dwlShiftPrintBanner.differential{background:#ffeb99;border-color:#b7791f;color:#6b3f00}
+.dwlShiftPrintBanner.allOt{background:#ffc7a8;border-color:#b42318;color:#7a140d}
+.dwlStraightBox:disabled{background:#eceff3;color:#7a140d;font-weight:900;opacity:1}
+@media(max-width:700px){.dwlShiftOfficeNote{font-size:15px;padding:11px 8px}}
