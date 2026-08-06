@@ -2075,26 +2075,25 @@ function dwlShiftControlsHtml(){
       <label class="dwlShiftChoiceCard dayChoice">
         <input type="radio" name="dwlShiftChoice" value="Day" checked>
         <span class="dwlShiftCheckBox" aria-hidden="true"></span>
-        <span><b>Day Shift</b><small>Normal straight-time and overtime entry.</small></span>
+        <b>Day Shift</b>
       </label>
       <label class="dwlShiftChoiceCard nightChoice">
         <input type="radio" name="dwlShiftChoice" value="Night">
         <span class="dwlShiftCheckBox" aria-hidden="true"></span>
-        <span><b>Night Shift</b><small>Choose the correct night-pay rule below.</small></span>
+        <b>Night Shift</b>
       </label>
     </div>
     <div id="dwlNightTypeWrap" class="dwlNightTypeWrap" style="display:none">
-      <div class="dwlNightRuleHelp"><b>VN and GWB rule:</b> If a day crew also worked, choose <b>10% Differential</b>. If there was no day crew, choose <b>All OT</b>.</div>
-      <div class="dwlShiftChoiceRow" role="radiogroup" aria-label="Night work pay rule">
+      <div class="dwlShiftChoiceRow dwlNightChoiceRow" role="radiogroup" aria-label="Night work pay rule">
         <label class="dwlShiftChoiceCard differentialChoice">
           <input type="radio" name="dwlNightChoice" value="10_percent">
           <span class="dwlShiftCheckBox" aria-hidden="true"></span>
-          <span><b>10% Differential</b><small>Enter hours normally. Office adds the 10% night differential.</small></span>
+          <b>10% Differential</b>
         </label>
         <label class="dwlShiftChoiceCard allOtChoice">
           <input type="radio" name="dwlNightChoice" value="all_ot">
           <span class="dwlShiftCheckBox" aria-hidden="true"></span>
-          <span><b>All OT</b><small>All hours must be entered and paid as overtime.</small></span>
+          <b>All OT</b>
         </label>
       </div>
     </div>
@@ -2118,12 +2117,10 @@ function updateDwlShiftUi(){
   nightEl.value=nightType;
   const wrap=document.getElementById('dwlNightTypeWrap');
   if(wrap) wrap.style.display=shift === 'Night' ? '' : 'none';
-  const note=dwlShiftNoteForValues(shift, nightType);
   const box=document.getElementById('dwlShiftOfficeNote');
   if(box){
-    box.style.display=shift === 'Night' ? '' : 'none';
-    box.className=`dwlShiftOfficeNote ${note.mode}`;
-    box.textContent=note.text;
+    box.style.display='none';
+    box.textContent='';
   }
   const allOt=shift === 'Night' && nightType === 'all_ot';
   for(let i=1;i<=40;i++){
