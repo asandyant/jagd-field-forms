@@ -148,24 +148,33 @@ function savePirInstrumentSerials(data){
   try{
     const serials=(data&&data.instruments||[]).map(x=>String(x&&x.serial||'').trim());
     if(!serials.some(Boolean)) return;
-    localStorage.setItem('jagdPirLastInstrumentSerials', JSON.stringify({savedAt:new Date().toISOString(), project:data.project||'', reportDate:data.reportDate||'', serials}));
+    const saved={savedAt:new Date().toISOString(), project:data.project||'', reportDate:data.reportDate||'', serials};
+    localStorage.setItem('jagdPirLastInstrumentSerials', JSON.stringify(saved));
+    fetch('/api/pir/last-instrument-serials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(saved)}).catch(()=>{});
   }catch(e){console.warn('Could not save PIR instrument serials', e);}
 }
-function loadPirInstrumentSerials(){
+async function loadPirInstrumentSerials(){
   const msg=document.getElementById('pirSerialMsg');
+  if(msg) msg.innerHTML='<div class="tiny noticeInline">Loading the last saved PIR serial numbers...</div>';
+  let saved=null;
   try{
-    const raw=localStorage.getItem('jagdPirLastInstrumentSerials');
-    if(!raw){ if(msg) msg.innerHTML='<div class="tiny noticeInline">No prior PIR serial numbers found on this device.</div>'; return; }
-    const saved=JSON.parse(raw);
-    const serials=Array.isArray(saved.serials)?saved.serials:[];
-    let filled=0;
-    pirInstrumentNames().forEach((_,i)=>{
-      const el=document.getElementById('pirInstSerial'+i);
-      const v=String(serials[i]||'').trim();
-      if(el && v){ el.value=v; filled++; }
-    });
-    if(msg) msg.innerHTML=`<div class="tiny success">Loaded ${filled} serial number${filled===1?'':'s'} from last saved PIR${saved.reportDate?' ('+esc(saved.reportDate)+')':''}.</div>`;
-  }catch(e){ if(msg) msg.innerHTML='<div class="tiny noticeInline">Could not load prior serial numbers from this device.</div>'; console.warn(e); }
+    const res=await fetch('/api/pir/last-instrument-serials',{headers:{Accept:'application/json'}});
+    const json=await res.json().catch(()=>({}));
+    if(res.ok && Array.isArray(json.serials) && json.serials.some(Boolean)) saved=json;
+  }catch(e){}
+  if(!saved){
+    try{ const raw=localStorage.getItem('jagdPirLastInstrumentSerials'); if(raw) saved=JSON.parse(raw); }catch(e){}
+  }
+  if(!saved){ if(msg) msg.innerHTML='<div class="tiny noticeInline">No prior PIR serial numbers have been saved yet.</div>'; return; }
+  const serials=Array.isArray(saved.serials)?saved.serials:[];
+  let filled=0;
+  pirInstrumentNames().forEach((_,i)=>{
+    const el=document.getElementById('pirInstSerial'+i);
+    const v=String(serials[i]||'').trim();
+    if(el && v){ el.value=v; filled++; }
+  });
+  try{ localStorage.setItem('jagdPirLastInstrumentSerials',JSON.stringify(saved)); }catch(e){}
+  if(msg) msg.innerHTML=`<div class="tiny success">Loaded ${filled} serial number${filled===1?'':'s'} from last saved PIR${saved.reportDate?' ('+esc(saved.reportDate)+')':''}.</div>`;
 }
 
 function parsePirTemp(value){
@@ -1880,6 +1889,21 @@ function getDwlLastCrewStorageKey(project, crew){
   if(!p || !c) return '';
   return `jagdDwlLastCrewNames:${p}:${c}`;
 }
+
+async function saveDwlLastCrewToServer(project, crew, names){
+  if(!project || !crew || !Array.isArray(names) || !names.length) return;
+  try{
+    await fetch('/api/dwl/last-crew', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project, crew, names:names.slice(0,40)})});
+  }catch(e){ /* local browser copy remains the fallback */ }
+}
+async function loadDwlLastCrewFromServer(project, crew){
+  try{
+    const q=new URLSearchParams({project, crew});
+    const res=await fetch('/api/dwl/last-crew?'+q.toString(), {headers:{Accept:'application/json'}});
+    const json=await res.json().catch(()=>({}));
+    return res.ok && Array.isArray(json.names) ? json.names : [];
+  }catch(e){ return []; }
+}
 function saveDwlLastCrewFromRows(){
   try{
     const names=getDwlCrewNamesFromRows();
@@ -1890,6 +1914,7 @@ function saveDwlLastCrewFromRows(){
     const cleanNames=names.map(normalizeCrewName).filter(Boolean).slice(0,40);
     localStorage.setItem(key, JSON.stringify(cleanNames));
     localStorage.setItem('jagdDwlLastCrewLastKey', key);
+    saveDwlLastCrewToServer(selected.project, selected.crew, cleanNames);
   }catch(e){}
 }
 function ensureDwlRows(count){
@@ -1935,7 +1960,7 @@ function showDwlCrewUpload(){
     modal.remove();
   };
 }
-function loadDwlLastCrew(){
+async function loadDwlLastCrew(){
   const msg=document.getElementById('dwlMsg');
   const selected=getDwlSelectedProjectCrew();
   const key=getDwlLastCrewStorageKey(selected.project, selected.crew);
@@ -1943,10 +1968,17 @@ function loadDwlLastCrew(){
     if(msg) msg.innerHTML='<div class="notice">Choose the Project and Crew first, then tap Load Last Crew. Crews are saved separately by Project + Crew so the wrong job crew is not loaded.</div>';
     return;
   }
+  if(msg) msg.innerHTML='<div class="notice">Loading the last saved crew...</div>';
   let names=[];
   try{ names=JSON.parse(localStorage.getItem(key)||'[]'); }catch(e){ names=[]; }
   if(!Array.isArray(names) || !names.length){
-    if(msg) msg.innerHTML=`<div class="notice">No saved crew found for <b>${esc(selected.project)}</b> / <b>${esc(selected.crew)}</b> on this phone/browser yet. Use Upload Crew once for this job/crew, then it can be reloaded later.</div>`;
+    names=await loadDwlLastCrewFromServer(selected.project, selected.crew);
+    if(Array.isArray(names) && names.length){
+      try{ localStorage.setItem(key, JSON.stringify(names)); }catch(e){}
+    }
+  }
+  if(!Array.isArray(names) || !names.length){
+    if(msg) msg.innerHTML=`<div class="notice">No saved crew found yet for <b>${esc(selected.project)}</b> / <b>${esc(selected.crew)}</b>. Save or upload that crew once, then it can be reloaded from PC or mobile.</div>`;
     return;
   }
   applyDwlCrewNames(names);
@@ -1954,6 +1986,7 @@ function loadDwlLastCrew(){
 }
 function resetDwlForm(){
   if(!confirm('Reset this Daily Work Log? This clears the form on this screen.')) return;
+  try{ sessionStorage.removeItem(dwlReturnDraftKey()); }catch(e){}
   ['dwlProject','dwlProjectOther','dwlCrew','dwlCrewOther','dwlWeather','dwlForeman','dwlDescription','dwlNotes','dwlSafetyTopic','dwlPrintName'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
   const shiftEl=document.getElementById('dwlShift'), nightEl=document.getElementById('dwlNightWorkType');
   if(shiftEl) shiftEl.value='Day';
@@ -2149,6 +2182,45 @@ function validateDwlShiftSelection(){
   }
   return true;
 }
+
+function dwlReturnDraftKey(){ return 'jagdDwlReturnDraft'; }
+function saveDwlReturnDraft(data){
+  try{
+    const isMobile=/iPad|iPhone|iPod|Android/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+    if(!isMobile) return;
+    sessionStorage.setItem(dwlReturnDraftKey(), JSON.stringify({...data, savedAt:new Date().toISOString()}));
+  }catch(e){}
+}
+function restoreDwlReturnDraft(){
+  let data=null;
+  try{
+    const raw=sessionStorage.getItem(dwlReturnDraftKey());
+    if(raw) data=JSON.parse(raw);
+    sessionStorage.removeItem(dwlReturnDraftKey());
+  }catch(e){ data=null; }
+  if(!data || !Array.isArray(data.rows)) return false;
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v==null?'':String(v); };
+  const projectSel=document.getElementById('dwlProject');
+  if(projectSel){
+    const option=Array.from(projectSel.options).find(o=>o.value===data.project);
+    if(option) projectSel.value=data.project; else if(data.project){ projectSel.value='Other'; set('dwlProjectOther',data.project); }
+    setupOtherProject('dwlProject');
+  }
+  set('dwlReportDate',data.reportDate); set('dwlDay',data.day); set('dwlWeather',data.weather); set('dwlForeman',data.foreman);
+  set('dwlRevision',data.revision||'0'); set('dwlDescription',data.description); set('dwlNotes',data.notes||data.additionalNotes); set('dwlSafetyTopic',data.safetyTopic||data.safetyHuddleTopic); set('dwlPrintName',data.printName);
+  const crewSel=document.getElementById('dwlCrew');
+  if(crewSel){ const opt=Array.from(crewSel.options).find(o=>o.value===data.crew); if(opt) crewSel.value=data.crew; else if(data.crew){ crewSel.value='Other'; set('dwlCrewOther',data.crew); } setupOtherCrew('dwlCrew'); }
+  const shift=data.shift==='Night'?'Night':'Day';
+  document.querySelectorAll('input[name="dwlShiftChoice"]').forEach(el=>el.checked=el.value===shift);
+  document.querySelectorAll('input[name="dwlNightChoice"]').forEach(el=>el.checked=shift==='Night' && el.value===data.nightWorkType);
+  const needed=Math.min(40, Math.max(20, data.rows.length)); ensureDwlRows(needed);
+  data.rows.slice(0,40).forEach((r,idx)=>{ const i=idx+1; set('dwlEmp'+i,r.employee); set('dwlLoc'+i,r.location); set('dwlAct'+i,r.activity); set('dwlClass'+i,r.class); set('dwlLocal'+i,r.local); set('dwlStraight'+i,r.straight); set('dwlOver'+i,r.over); set('dwlNoLunch'+i,r.noLunch); set('dwlPT'+i,r.pt); set('dwlRT'+i,r.rt); });
+  if(data.signatureData){ signatureStore.dwlSignature=data.signatureData; const sig=document.getElementById('dwlSignaturePreview'); if(sig) sig.innerHTML=`<img src="${data.signatureData}" alt="Signature">`; }
+  updateDwlShiftUi();
+  const msg=document.getElementById('dwlMsg'); if(msg) msg.innerHTML='<div class="notice success">Your DWL was restored so you can correct it. Increase the Revision number before saving a corrected DWL.</div>';
+  return true;
+}
+
 async function dwlForm(){
   await loadActiveWorkers(true);
   app.innerHTML=`<div class="container printOnly dwlContainer"><h1>Daily Work Log</h1><datalist id="dwlWorkerList"></datalist>${dwlDataList('dwlClassList',DWL_CLASS_OPTIONS)}${dwlDataList('dwlLocalList',DWL_LOCAL_OPTIONS)}${dwlDataList('dwlActivityList',DWL_ACTIVITY_NUMBERS)}${dwlDataList('dwlOverList',DWL_OVER_OPTIONS)}${dwlDataList('dwlSmallHourList',DWL_SMALL_HOUR_OPTIONS)}
@@ -2169,7 +2241,8 @@ async function dwlForm(){
   document.getElementById('dwlUploadCrewBtn').onclick=showDwlCrewUpload;
   document.getElementById('dwlLoadLastCrewBtn').onclick=loadDwlLastCrew;
   document.getElementById('dwlResetBtn').onclick=resetDwlForm;
-  setTimeout(()=>autoFillWeather(),350);
+  const restoredDwl=restoreDwlReturnDraft();
+  if(!restoredDwl) setTimeout(()=>autoFillWeather(),350);
   document.getElementById('dwlPrintBtn').onclick=async(e)=>{
     e.preventDefault();
     const btn = e.currentTarget;
@@ -2185,6 +2258,7 @@ async function dwlForm(){
       }
       saveDwlLastCrewFromRows();
       const data=collectDwl();
+      saveDwlReturnDraft(data);
       const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
       const dwlFileTitle=dwlFileTitleWithRevision(baseTitle, data.revision);
       if(!confirmDwlSaveAndSend(data,dwlFileTitle)) {

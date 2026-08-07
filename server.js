@@ -29,6 +29,8 @@ const PORTAL_BOL_SUBMIT_URL = process.env.PORTAL_BOL_SUBMIT_URL || 'https://port
 const PORTAL_BOL_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_BOL_SYNC_TIMEOUT_MS || 6000);
 const BOL_PORTAL_SYNC_LOG_FILE = path.join(DATA_DIR, 'bol-portal-sync-log.json');
 const BOL_COUNTERS_FILE = path.join(DATA_DIR, 'bol-counters.json');
+const DWL_LAST_CREWS_FILE = path.join(DATA_DIR, 'dwl-last-crews.json');
+const PIR_LAST_SERIALS_FILE = path.join(DATA_DIR, 'pir-last-instrument-serials.json');
 const DWL_GENERATED_PDF_DIR = path.join(DATA_DIR, 'dwl-generated-pdfs');
 const TM_UPLOAD_DIR = path.join(DATA_DIR, 'tm-uploads');
 const TM_RECORDS_FILE = path.join(DATA_DIR, 'tm-records.json');
@@ -68,6 +70,8 @@ if (!fs.existsSync(FORM_LOGS_FILE)) fs.writeFileSync(FORM_LOGS_FILE, '[]');
 if (!fs.existsSync(DWL_PORTAL_SYNC_LOG_FILE)) fs.writeFileSync(DWL_PORTAL_SYNC_LOG_FILE, '[]');
 if (!fs.existsSync(BOL_PORTAL_SYNC_LOG_FILE)) fs.writeFileSync(BOL_PORTAL_SYNC_LOG_FILE, '[]');
 if (!fs.existsSync(BOL_COUNTERS_FILE)) fs.writeFileSync(BOL_COUNTERS_FILE, '{}');
+if (!fs.existsSync(DWL_LAST_CREWS_FILE)) fs.writeFileSync(DWL_LAST_CREWS_FILE, '{}');
+if (!fs.existsSync(PIR_LAST_SERIALS_FILE)) fs.writeFileSync(PIR_LAST_SERIALS_FILE, '{}');
 if (!fs.existsSync(WORKERS_FILE)) {
   const seed = path.join(__dirname, 'public', 'data', 'active-workers.json');
   fs.writeFileSync(WORKERS_FILE, fs.existsSync(seed) ? fs.readFileSync(seed, 'utf8') : '[]');
@@ -843,6 +847,30 @@ app.get('/api/dwl/generated-pdf/:id/download', (req, res) => {
   } catch (err) {
     res.status(500).send('Unable to download PDF.');
   }
+});
+
+
+function reusableKey(v){ return String(v||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim(); }
+app.get('/api/dwl/last-crew', (req,res)=>{
+  const project=String(req.query.project||'').trim(), crew=String(req.query.crew||'').trim();
+  if(!project || !crew) return res.status(400).json({ok:false,error:'Project and crew are required.'});
+  const all=readJsonSafe(DWL_LAST_CREWS_FILE,{}), row=all[`${reusableKey(project)}|${reusableKey(crew)}`]||null;
+  res.json({ok:true,names:Array.isArray(row?.names)?row.names:[],savedAt:row?.savedAt||''});
+});
+app.post('/api/dwl/last-crew', (req,res)=>{
+  const project=String(req.body?.project||'').trim(), crew=String(req.body?.crew||'').trim();
+  const names=Array.isArray(req.body?.names)?req.body.names.map(v=>String(v||'').trim()).filter(Boolean).slice(0,40):[];
+  if(!project || !crew || !names.length) return res.status(400).json({ok:false,error:'Project, crew, and names are required.'});
+  const all=readJsonSafe(DWL_LAST_CREWS_FILE,{}); all[`${reusableKey(project)}|${reusableKey(crew)}`]={project,crew,names,savedAt:new Date().toISOString()}; writeJsonSafe(DWL_LAST_CREWS_FILE,all);
+  res.json({ok:true,count:names.length});
+});
+app.get('/api/pir/last-instrument-serials', (req,res)=>{
+  const saved=readJsonSafe(PIR_LAST_SERIALS_FILE,{}); res.json({ok:true,...saved});
+});
+app.post('/api/pir/last-instrument-serials', (req,res)=>{
+  const serials=Array.isArray(req.body?.serials)?req.body.serials.map(v=>String(v||'').trim()).slice(0,20):[];
+  if(!serials.some(Boolean)) return res.status(400).json({ok:false,error:'At least one serial number is required.'});
+  const saved={serials,project:String(req.body?.project||'').trim(),reportDate:String(req.body?.reportDate||'').trim(),savedAt:new Date().toISOString()}; writeJsonSafe(PIR_LAST_SERIALS_FILE,saved); res.json({ok:true});
 });
 
 app.post('/api/dwl/portal-sync', async (req, res) => {
