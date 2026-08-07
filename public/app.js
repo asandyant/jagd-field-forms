@@ -58,6 +58,8 @@ let serverMaterials = [];
 let serverMaterialsLoaded = false;
 let bolInventoryItems = [];
 let bolInventoryLoaded = false;
+let bolInventoryLoading = false;
+let bolInventoryLoadPromise = null;
 let activeBolProductInput = null;
 
 function slug(text){
@@ -2594,9 +2596,10 @@ function showBolInventorySuggestions(input){
   if(q.length<1){ hideBolInventorySuggestions(); return; }
   bolInventorySuggestInput=input;
   if(!bolInventoryLoaded){
-    box.innerHTML='<div style="padding:12px">Loading inventory…</div>';
+    box.innerHTML=`<div style="padding:12px">${bolInventoryLoading?'Loading inventory…':'Loading inventory…'}</div>`;
     box.style.display='block';
     positionBolInventorySuggestPortal(input);
+    loadBolInventory(false);
     return;
   }
   const matches=bolInventoryMatchesForQuery(q).slice(0,30);
@@ -2620,6 +2623,55 @@ function showBolInventorySuggestions(input){
 }
 window.addEventListener('resize',()=>{ if(bolInventorySuggestInput) positionBolInventorySuggestPortal(bolInventorySuggestInput); });
 window.addEventListener('scroll',()=>{ if(bolInventorySuggestInput) positionBolInventorySuggestPortal(bolInventorySuggestInput); },true);
+function setBolInventoryMessage(text, canRetry=false){
+  const msg=document.getElementById('bolInventoryMsg');
+  if(!msg) return;
+  msg.innerHTML=canRetry ? `${esc(text)} <button type="button" id="bolInventoryRetry" class="linkBtn">Retry</button>` : esc(text);
+  const retry=document.getElementById('bolInventoryRetry');
+  if(retry) retry.onclick=()=>loadBolInventory(true);
+}
+function loadBolInventory(force=false){
+  if(bolInventoryLoaded && !force) return Promise.resolve(bolInventoryItems);
+  if(bolInventoryLoading && bolInventoryLoadPromise && !force) return bolInventoryLoadPromise;
+  bolInventoryLoading=true;
+  bolInventoryLoaded=false;
+  setBolInventoryMessage('Loading portal inventory list...');
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),9000);
+  bolInventoryLoadPromise=fetch('/api/bol/inventory-items',{signal:controller.signal,cache:'no-store'})
+    .then(async r=>{
+      const json=await r.json().catch(()=>({}));
+      if(!r.ok || !json.ok) throw new Error(json.error||`Inventory request failed (${r.status})`);
+      bolInventoryItems=Array.isArray(json.items)?json.items:[];
+      bolInventoryLoaded=true;
+      const cached=Boolean(json.cached);
+      if(bolInventoryItems.length){
+        setBolInventoryMessage(`${cached?'Saved inventory loaded':'Current stock loaded from portal'} (${bolInventoryItems.length} items). Start typing an item name to search.`);
+      } else {
+        setBolInventoryMessage('No current Warehouse stock items were returned. You can still type materials manually.',true);
+      }
+      return bolInventoryItems;
+    })
+    .catch(err=>{
+      bolInventoryItems=[];
+      bolInventoryLoaded=false;
+      const timeout=err && err.name==='AbortError';
+      setBolInventoryMessage(timeout?'Inventory took too long to load. You can type manually or tap Retry.':'Portal inventory list did not load. You can type manually or tap Retry.',true);
+      return [];
+    })
+    .finally(()=>{
+      clearTimeout(timer);
+      bolInventoryLoading=false;
+      bolInventoryLoadPromise=null;
+      const inp=bolInventorySuggestInput;
+      if(inp && document.body.contains(inp) && String(inp.value||'').trim() && bolInventoryLoaded){
+        setTimeout(()=>showBolInventorySuggestions(inp),0);
+      } else if(!bolInventoryLoaded){
+        hideBolInventorySuggestions();
+      }
+    });
+  return bolInventoryLoadPromise;
+}
 function setupBolInventoryAutocomplete(){
   const msg=document.getElementById('bolInventoryMsg');
   const apply=()=>{
@@ -2650,15 +2702,7 @@ function setupBolInventoryAutocomplete(){
     if(msg) msg.textContent=bolInventoryItems.length ? `Current stock loaded (${bolInventoryItems.length} items). Start typing an item name to search.` : 'No portal inventory items yet. You can still type manually.';
     return;
   }
-  fetch('/api/bol/inventory-items').then(r=>r.json()).then(json=>{
-    bolInventoryLoaded=true;
-    bolInventoryItems=Array.isArray(json.items)?json.items:[];
-    apply();
-    if(msg) msg.textContent=bolInventoryItems.length ? `Current stock loaded from portal (${bolInventoryItems.length} items). Start typing an item name to search.` : 'No current portal stock items yet. You can still type manually.';
-  }).catch(()=>{
-    bolInventoryLoaded=true;
-    if(msg) msg.textContent='Portal current stock list did not load. You can still type materials manually.';
-  });
+  loadBolInventory(false).then(()=>apply());
 }
 function bolItemRows(){
   return Array.from({length:EXTRA_FORM_ROWS},(_,idx)=>{

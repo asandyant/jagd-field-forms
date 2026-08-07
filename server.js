@@ -29,6 +29,7 @@ const PORTAL_BOL_SUBMIT_URL = process.env.PORTAL_BOL_SUBMIT_URL || 'https://port
 const PORTAL_BOL_SYNC_TIMEOUT_MS = Number(process.env.PORTAL_BOL_SYNC_TIMEOUT_MS || 6000);
 const BOL_PORTAL_SYNC_LOG_FILE = path.join(DATA_DIR, 'bol-portal-sync-log.json');
 const BOL_COUNTERS_FILE = path.join(DATA_DIR, 'bol-counters.json');
+const BOL_INVENTORY_CACHE_FILE = path.join(DATA_DIR, 'bol-inventory-cache.json');
 const DWL_LAST_CREWS_FILE = path.join(DATA_DIR, 'dwl-last-crews.json');
 const PIR_LAST_SERIALS_FILE = path.join(DATA_DIR, 'pir-last-instrument-serials.json');
 const DWL_GENERATED_PDF_DIR = path.join(DATA_DIR, 'dwl-generated-pdfs');
@@ -70,6 +71,7 @@ if (!fs.existsSync(FORM_LOGS_FILE)) fs.writeFileSync(FORM_LOGS_FILE, '[]');
 if (!fs.existsSync(DWL_PORTAL_SYNC_LOG_FILE)) fs.writeFileSync(DWL_PORTAL_SYNC_LOG_FILE, '[]');
 if (!fs.existsSync(BOL_PORTAL_SYNC_LOG_FILE)) fs.writeFileSync(BOL_PORTAL_SYNC_LOG_FILE, '[]');
 if (!fs.existsSync(BOL_COUNTERS_FILE)) fs.writeFileSync(BOL_COUNTERS_FILE, '{}');
+if (!fs.existsSync(BOL_INVENTORY_CACHE_FILE)) fs.writeFileSync(BOL_INVENTORY_CACHE_FILE, JSON.stringify({ items: [], savedAt: '' }, null, 2));
 if (!fs.existsSync(DWL_LAST_CREWS_FILE)) fs.writeFileSync(DWL_LAST_CREWS_FILE, '{}');
 if (!fs.existsSync(PIR_LAST_SERIALS_FILE)) fs.writeFileSync(PIR_LAST_SERIALS_FILE, '{}');
 if (!fs.existsSync(WORKERS_FILE)) {
@@ -946,36 +948,49 @@ app.get('/api/bol/next-number', (req, res) => {
 });
 
 app.get('/api/bol/inventory-items', async (req, res) => {
+  const cached = readJsonSafe(BOL_INVENTORY_CACHE_FILE, { items: [], savedAt: '' });
+  const cachedItems = Array.isArray(cached?.items) ? cached.items : [];
   try {
     const baseUrl = new URL(PORTAL_BOL_SUBMIT_URL);
     const invUrl = `${baseUrl.origin}/api/forms/inventory/items`;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PORTAL_BOL_SYNC_TIMEOUT_MS);
+    const timeoutMs = Math.max(2500, Math.min(Number(PORTAL_BOL_SYNC_TIMEOUT_MS || 6000), 6000));
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const headers = { Accept: 'application/json' };
     if (PORTAL_SYNC_TOKEN) headers['x-forms-sync-token'] = PORTAL_SYNC_TOKEN;
-    const r = await fetch(invUrl, { headers, signal: controller.signal });
-    clearTimeout(timer);
+    let r;
+    try {
+      r = await fetch(invUrl, { headers, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
     const json = await r.json().catch(() => ({}));
-    if (!r.ok || !json.ok) throw new Error(json.error || 'Portal inventory unavailable');
+    if (!r.ok || !json.ok) throw new Error(json.error || `Portal inventory unavailable (${r.status})`);
     const isCompanyStockLocation = (location = '') => ['warehouse', 'main yard', 'shop', 'other'].includes(String(location || 'Warehouse').trim().toLowerCase());
     const isPositiveStock = (row = {}) => Number(row.quantity || 0) > 0;
+    let items=[];
     if (Array.isArray(json.items)) {
-      const items = json.items.filter(row => isCompanyStockLocation(row.location) && isPositiveStock(row));
-      return res.json({ ok: true, items });
+      items = json.items.filter(row => isCompanyStockLocation(row.location) && isPositiveStock(row));
+    } else {
+      const seen = new Map();
+      const add = (row) => {
+        const item = bolCleanText(row.item || row.product || '', 180);
+        const unit = bolCleanText(row.unit || '', 40);
+        if (!item) return;
+        const location = bolCleanText(row.location || 'Warehouse', 180);
+        const key = `${item.toLowerCase()}|${unit.toLowerCase()}|${location.toLowerCase()}`;
+        if (!seen.has(key)) seen.set(key, { item, unit, location, quantity: row.quantity || 0, sku: row.sku || '', aliases: row.aliases || [] });
+      };
+      (Array.isArray(json.warehouse) ? json.warehouse : []).filter(isPositiveStock).forEach(add);
+      items = Array.from(seen.values()).filter(row => isCompanyStockLocation(row.location) && isPositiveStock(row)).sort((a,b)=>String(a.item).localeCompare(String(b.item)) || String(a.location).localeCompare(String(b.location)));
     }
-    const seen = new Map();
-    const add = (row) => {
-      const item = bolCleanText(row.item || row.product || '', 180);
-      const unit = bolCleanText(row.unit || '', 40);
-      if (!item) return;
-      const location = bolCleanText(row.location || 'Warehouse', 180);
-      const key = `${item.toLowerCase()}|${unit.toLowerCase()}|${location.toLowerCase()}`;
-      if (!seen.has(key)) seen.set(key, { item, unit, location, quantity: row.quantity || 0 });
-    };
-    (Array.isArray(json.warehouse) ? json.warehouse : []).filter(isPositiveStock).forEach(add);
-    res.json({ ok: true, items: Array.from(seen.values()).filter(row => isCompanyStockLocation(row.location) && isPositiveStock(row)).sort((a,b)=>String(a.item).localeCompare(String(b.item)) || String(a.location).localeCompare(String(b.location))) });
+    writeJsonSafe(BOL_INVENTORY_CACHE_FILE, { items, savedAt: new Date().toISOString() });
+    return res.json({ ok: true, items, source: 'portal', cached: false });
   } catch (err) {
-    res.json({ ok: false, items: [], error: err.message || 'Could not load inventory items' });
+    if (cachedItems.length) {
+      return res.json({ ok: true, items: cachedItems, source: 'cache', cached: true, savedAt: cached?.savedAt || '', warning: err.message || 'Portal inventory unavailable' });
+    }
+    return res.status(503).json({ ok: false, items: [], error: err.message || 'Could not load inventory items' });
   }
 });
 
