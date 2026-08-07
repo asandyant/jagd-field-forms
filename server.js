@@ -1262,6 +1262,26 @@ app.delete('/api/admin/materials/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/mewp/next-file-title', (req, res) => {
+  const date = cleanText(req.query.date).slice(0, 20);
+  const serial = cleanText(req.query.serial).slice(0, 120);
+  const baseTitle = cleanText(req.query.baseTitle).slice(0, 220);
+  if (!date || !serial || !baseTitle) return res.status(400).json({ error: 'Date, serial, and base title are required.' });
+  const normalizedSerial = serial.toLowerCase().replace(/\s+/g, ' ').trim();
+  const same = readFormLogs().filter(row => {
+    if (String(row.type || '').toLowerCase() !== 'mewp') return false;
+    if (String(row.date || '') !== date) return false;
+    const title = String(row.title || '');
+    // New filenames include the serial between separators. Keep matching conservative
+    // so different lifts on the same date never share a sequence.
+    return title.toLowerCase().includes(` - ${normalizedSerial} - `) ||
+      title.toLowerCase().endsWith(` - ${normalizedSerial}`);
+  });
+  const sequence = same.length + 1;
+  const title = sequence > 1 ? `${baseTitle} - ${sequence}` : baseTitle;
+  res.json({ ok: true, title, sequence });
+});
+
 app.get('/api/submissions', (req, res) => {
   const type = req.query.type;
   const rows = readSubmissions()
