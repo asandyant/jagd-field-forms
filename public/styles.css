@@ -1128,3 +1128,11 @@
 .dwlNightChoiceRow .dwlShiftChoiceCard{padding:6px 9px}
 .dwlShiftOfficeNote{display:none!important}
 @media(max-width:700px){.dwlShiftChoiceRow{display:flex;grid-template-columns:none}.dwlShiftChoiceCard{min-height:0;padding:7px 9px}.dwlShiftChoiceCard b{font-size:13px}.dwlShiftSection{padding:6px}}
+
+/* BOL inventory autocomplete: same interaction as DWL employee search. */
+.bolProductCell{position:relative;min-width:230px}
+.bolInventorySuggest{z-index:1005}
+@media(max-width:700px){
+  .bolProductCell{min-width:220px}
+  .bolInventorySuggest{left:0!important;right:auto!important;width:min(300px,86vw)!important;max-height:260px!important}
+}
