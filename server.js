@@ -542,6 +542,161 @@ function makeMaterialLabel(m) {
   return parts.join(' — ');
 }
 
+
+function coaNormalizeSpace(v) {
+  return String(v || '').replace(/\s+/g, ' ').trim();
+}
+function coaNormalizeBatch(v) {
+  return coaNormalizeSpace(v).replace(/[^A-Za-z0-9-]/g, '').toUpperCase();
+}
+function coaNormalizeDate(v) {
+  const raw = coaNormalizeSpace(v).replace(/^(?:exp(?:iration)?(?:\s*date)?|mfg(?:\s*date)?|date\s*of\s*manufacture)\s*[:\-]?\s*/i, '').trim();
+  if (!raw) return '';
+  const m = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/);
+  if (m) {
+    let y = m[3]; if (y.length === 2) y = String(Number(y) >= 70 ? 1900 + Number(y) : 2000 + Number(y));
+    return `${String(m[1]).padStart(2,'0')}/${String(m[2]).padStart(2,'0')}/${y}`;
+  }
+  const d = new Date(raw);
+  if (!Number.isNaN(d.getTime()) && /[A-Za-z]{3}/.test(raw)) {
+    return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;
+  }
+  return raw;
+}
+function coaLineTextFromTextract(parsed) {
+  return (Array.isArray(parsed?.Blocks) ? parsed.Blocks : [])
+    .filter(b => b && b.BlockType === 'LINE' && b.Text)
+    .sort((a,b) => {
+      const at = Number(a?.Geometry?.BoundingBox?.Top || 0), bt = Number(b?.Geometry?.BoundingBox?.Top || 0);
+      if (Math.abs(at-bt) > 0.008) return at-bt;
+      return Number(a?.Geometry?.BoundingBox?.Left || 0) - Number(b?.Geometry?.BoundingBox?.Left || 0);
+    })
+    .map(b => coaNormalizeSpace(b.Text))
+    .filter(Boolean);
+}
+function coaValueAfterLabel(lines, labelRe) {
+  for (let i=0;i<lines.length;i++) {
+    const line=lines[i];
+    const m=line.match(labelRe);
+    if (!m) continue;
+    const direct=coaNormalizeSpace(m[1] || '');
+    if (direct) return direct;
+    const next=coaNormalizeSpace(lines[i+1] || '');
+    if (next && !/^(?:Product|Description|Color|Batch|Julian|Date|Expiration|Shelf|Test|Method|Specification)\b/i.test(next)) return next;
+  }
+  return '';
+}
+function coaComponentFromText(text, description='') {
+  const t=`${text} ${description}`.toLowerCase();
+  if (/part\s*b|component\s*b|hardener|converter/.test(t)) return 'Hardener / Converter';
+  if (/zinc\s*dust|component\s*f|powder|dust/.test(t)) return 'Dust / Powder';
+  if (/accelerator|acceltor/.test(t)) return 'Accelerator';
+  if (/thinner|reducer/.test(t)) return 'Thinner';
+  return 'Base / Paint';
+}
+function coaManufacturerFromText(text) {
+  if (/purity\s+zinc\s+metals|\bPZM\b/i.test(text)) return 'Purity Zinc Metals';
+  if (/sherwin[- ]williams/i.test(text)) return 'Sherwin-Williams';
+  if (/\bPPG\b/i.test(text)) return 'PPG';
+  if (/carboline/i.test(text)) return 'Carboline';
+  return '';
+}
+function coaSummaryCandidates(lines, meta={}) {
+  const joined=lines.join(' \n ');
+  if (!/NYC\s*DOT\s*CMTR|LOT\s+NUMBER\s*\(Component/i.test(joined)) return [];
+  const product = coaValueAfterLabel(lines, /PRODUCT\s+NAME\s*:?\s*(.*)$/i) || (joined.match(/PRODUCT\s+NAME\s+(Zinc\s+Clad\s+4100)/i)||[])[1] || 'Zinc Clad 4100';
+  const out=[];
+  const defs=[['A','Base / Paint'],['B','Hardener / Converter'],['F','Dust / Powder']];
+  for (const [letter,component] of defs) {
+    let itemNo='',batch='',expDate='';
+    for (let i=0;i<lines.length;i++) {
+      const line=lines[i];
+      if (new RegExp(`PRODUCT\\s+CODE\\s*\\(\\s*Component\\s*${letter}\\s*\\)`, 'i').test(line)) {
+        const tail=line.replace(new RegExp(`.*PRODUCT\\s+CODE\\s*\\(\\s*Component\\s*${letter}\\s*\\)\\s*:?`, 'i'),'').trim();
+        itemNo = tail || coaNormalizeSpace(lines[i+1]||'');
+      }
+      if (new RegExp(`LOT\\s+NUMBER\\s*\\(\\s*Component\\s*${letter}\\s*\\)`, 'i').test(line)) {
+        const tail=line.replace(new RegExp(`.*LOT\\s+NUMBER\\s*\\(\\s*Component\\s*${letter}\\s*\\)\\s*:?`, 'i'),'').trim();
+        const source=tail || coaNormalizeSpace(lines[i+1]||'');
+        const bm=source.match(/([A-Z0-9-]{5,})/i); if (bm) batch=coaNormalizeBatch(bm[1]);
+        const em=source.match(/Exp\s*:?\s*([0-9]{1,2}[\/-][0-9]{1,2}[\/-][0-9]{2,4})/i); if (em) expDate=coaNormalizeDate(em[1]);
+        if (!expDate) {
+          const nx=coaNormalizeSpace(lines[i+2]||''); const em2=nx.match(/Exp\s*:?\s*([^\s]+(?:\s+\d{4})?)/i); if(em2) expDate=coaNormalizeDate(em2[1]);
+        }
+      }
+    }
+    if (!batch) {
+      const re=new RegExp(`LOT\\s+NUMBER\\s*\\(\\s*Component\\s*${letter}\\s*\\)[\\s\\S]{0,80}?([A-Z]{1,3}[A-Z0-9-]{4,})`, 'i');
+      const m=joined.match(re); if(m) batch=coaNormalizeBatch(m[1]);
+    }
+    if (batch) out.push({
+      project: meta.project || '', mfr:'Sherwin-Williams', prodName:coaNormalizeSpace(product), description:coaNormalizeSpace(product), color:'', component,
+      itemNo:((coaNormalizeSpace(itemNo).match(/[A-Z0-9-]+/i)||[])[0]||coaNormalizeSpace(itemNo)), batch, mfgDate:'', expDate, shelfLife:'', sourceFileName:meta.fileName||'', sourcePage:Number(meta.pageNumber||1), sourceType:'CMTR Summary', confidence:0.92
+    });
+  }
+  return out;
+}
+function coaCertificateCandidate(lines, meta={}) {
+  const text=lines.join(' \n ');
+  if (!text.trim()) return null;
+  const mfr=coaManufacturerFromText(text);
+  let prodName=coaValueAfterLabel(lines, /^\s*Description\s*:?\s*(.*)$/i);
+  let itemNo=coaValueAfterLabel(lines, /^\s*Product\s+Number\s*:?\s*(.*)$/i);
+  let batch=coaValueAfterLabel(lines, /^\s*Batch\s+(?:No\.?|Number)\s*:?\s*(.*)$/i);
+  let mfgDate=coaValueAfterLabel(lines, /^\s*Date\s+of\s+Manufacture\s*:?\s*(.*)$/i);
+  let expDate=coaValueAfterLabel(lines, /^\s*Expiration\s+Date\s*:?\s*(.*)$/i);
+  let shelfLife=coaValueAfterLabel(lines, /^\s*Shelf\s+Life\s*:?\s*(.*)$/i);
+  let color=coaValueAfterLabel(lines, /^\s*Color\s*:?\s*(.*)$/i);
+
+  if (/ULTRAPURE\s+ZINC\s+DUST/i.test(text)) {
+    prodName='Ultrapure Zinc Dust';
+    itemNo=coaValueAfterLabel(lines, /^\s*PRODUCT\s*:?\s*(.*)$/i) || ((text.match(/\bPRODUCT\s*:\s*([A-Z0-9-]+)/i)||[])[1]||itemNo);
+    batch=coaValueAfterLabel(lines, /^\s*BATCH\s+NO\.?\s*:?\s*(.*)$/i) || batch;
+    mfgDate=coaValueAfterLabel(lines, /^\s*Manufacture\s+Date\s*:?\s*(.*)$/i) || mfgDate;
+    expDate=coaValueAfterLabel(lines, /^\s*Expiration\s+Date\s*:?\s*(.*)$/i) || expDate;
+    if (!mfgDate || !expDate) {
+      const allDates=[...text.matchAll(/\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{4})\b/g)].map(m=>m[1]);
+      if (allDates.length>=2) {
+        if (!mfgDate) mfgDate=allDates[allDates.length-2];
+        if (!expDate) expDate=allDates[allDates.length-1];
+      }
+    }
+  }
+  batch=coaNormalizeBatch((String(batch||'').match(/[A-Z0-9-]{5,}/i)||[])[0] || batch);
+  if (!batch) {
+    const bm=text.match(/\b(?:Batch\s*(?:No\.?|Number)?\s*:?\s*)([A-Z0-9-]{5,})/i); if(bm) batch=coaNormalizeBatch(bm[1]);
+  }
+  if (!prodName && /ZINC\s+CLAD.{0,8}4100/i.test(text)) prodName='Zinc Clad 4100';
+  if (!prodName && /ULTRAPURE\s+ZINC\s+DUST/i.test(text)) prodName='Ultrapure Zinc Dust';
+  if (!batch || !prodName) return null;
+  return {
+    project:meta.project||'', mfr, prodName:coaNormalizeSpace(prodName), description:coaNormalizeSpace(prodName), color:coaNormalizeSpace(color),
+    component:coaComponentFromText(text,prodName), itemNo:coaNormalizeSpace(itemNo), batch, mfgDate:coaNormalizeDate(mfgDate), expDate:coaNormalizeDate(expDate), shelfLife:coaNormalizeSpace(shelfLife),
+    sourceFileName:meta.fileName||'', sourcePage:Number(meta.pageNumber||1), sourceType:'Certificate of Analysis', confidence:0.97
+  };
+}
+function coaParseTextractCandidates(parsed, meta={}) {
+  const lines=coaLineTextFromTextract(parsed);
+  const summary=coaSummaryCandidates(lines,meta);
+  if (summary.length) return { lines, candidates:summary };
+  const single=coaCertificateCandidate(lines,meta);
+  return { lines, candidates:single?[single]:[] };
+}
+function coaCandidateDuplicate(candidate, rows) {
+  const batch=coaNormalizeBatch(candidate?.batch);
+  if (!batch) return null;
+  const project=coaNormalizeSpace(candidate?.project).toLowerCase();
+  return (rows||[]).find(m => !m.disabled && coaNormalizeBatch(m.batch)===batch && coaNormalizeSpace(m.project).toLowerCase()===project) || null;
+}
+async function coaAnalyzeImageBuffer(imageBuffer, meta={}) {
+  const region=String(process.env.AWS_REGION||'us-east-1').trim()||'us-east-1';
+  const host=`textract.${region}.amazonaws.com`;
+  const body=Buffer.from(JSON.stringify({ Document:{ Bytes:imageBuffer.toString('base64') }, FeatureTypes:['TABLES','FORMS'] }), 'utf8');
+  const response=await coaAwsSignedRequest({ service:'textract', region, host, method:'POST', pathname:'/', headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeDocument'}, body });
+  const parsed=JSON.parse(response.text||'{}');
+  return coaParseTextractCandidates(parsed,meta);
+}
+
 function readFormLogs() {
   return JSON.parse(fs.readFileSync(FORM_LOGS_FILE, 'utf8'));
 }
@@ -1318,6 +1473,80 @@ app.post('/api/admin/materials/aws-test', requireAdmin, async (req, res) => {
   } catch (err) {
     return res.status(502).json({ ok: false, region, error: err.message || 'Textract connection failed.' });
   }
+});
+
+
+app.post('/api/admin/materials/analyze-page', requireAdmin, async (req, res) => {
+  const body=req.body||{};
+  const project=cleanText(body.project);
+  const fileName=cleanText(body.fileName);
+  const pageNumber=Math.max(1, Number(body.pageNumber||1));
+  const imageDataUrl=String(body.imageDataUrl||'');
+  if (!project) return res.status(400).json({ ok:false, error:'Project is required.' });
+  const match=imageDataUrl.match(/^data:image\/(?:png|jpe?g);base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match) return res.status(400).json({ ok:false, error:'A rendered PNG/JPEG page is required.' });
+  let imageBuffer;
+  try { imageBuffer=Buffer.from(match[1],'base64'); } catch (_) { return res.status(400).json({ok:false,error:'Could not decode the rendered PDF page.'}); }
+  if (!imageBuffer.length || imageBuffer.length > 8*1024*1024) return res.status(400).json({ok:false,error:'Rendered page is empty or too large.'});
+  try {
+    const result=await coaAnalyzeImageBuffer(imageBuffer,{project,fileName,pageNumber});
+    const rows=readMaterials();
+    const candidates=(result.candidates||[]).map(c=>{
+      const existing=coaCandidateDuplicate(c,rows);
+      return { ...c, duplicateExisting: existing ? { id:existing.id, label:existing.label||makeMaterialLabel(existing), batch:existing.batch, component:existing.component } : null };
+    });
+    return res.json({ok:true,pageNumber,fileName,candidates,lineCount:result.lines.length});
+  } catch(err) {
+    return res.status(502).json({ok:false,error:err.message||'AWS Textract COA analysis failed.'});
+  }
+});
+
+app.post('/api/admin/materials/apply-import', requireAdmin, upload.array('coaFiles', 60), (req, res) => {
+  const project=cleanText(req.body.project);
+  if (!project) return res.status(400).json({error:'Project is required.'});
+  let candidates=[];
+  try { candidates=JSON.parse(String(req.body.candidates||'[]')); } catch (_) { return res.status(400).json({error:'COA review rows could not be read.'}); }
+  if (!Array.isArray(candidates) || !candidates.length) return res.status(400).json({error:'Choose at least one reviewed COA row to apply.'});
+  const files=req.files||[];
+  const fileMap=new Map(files.map(f=>[String(f.originalname||'').toLowerCase(),f]));
+  let rows=readMaterials();
+  const added=[], skipped=[], replacedReview=[];
+  for (const raw of candidates) {
+    if (raw && raw.add===false) continue;
+    const batch=coaNormalizeBatch(raw.batch);
+    const prodName=cleanText(raw.prodName||raw.description);
+    const component=cleanText(raw.component)||'Base / Paint';
+    if (!batch || !prodName) { skipped.push({batch,prodName,reason:'Missing product name or batch.'}); continue; }
+    const candidate={
+      project,
+      mfr:cleanText(raw.mfr), prodName, description:cleanText(raw.description)||prodName, color:cleanText(raw.color), component,
+      itemNo:cleanText(raw.itemNo), batch, mfgDate:cleanText(raw.mfgDate), expDate:cleanText(raw.expDate), shelfLife:cleanText(raw.shelfLife),
+      sourceFileName:cleanText(raw.sourceFileName), sourcePage:Math.max(1,Number(raw.sourcePage||1)), sourceType:cleanText(raw.sourceType)||'Textract COA',
+      confidence:Number(raw.confidence||0)
+    };
+    const existing=coaCandidateDuplicate(candidate,rows);
+    if (existing) { skipped.push({batch,prodName,reason:`Already active: ${existing.label||makeMaterialLabel(existing)}`}); continue; }
+    const sourceFile=fileMap.get(String(candidate.sourceFileName||'').toLowerCase());
+    const uploadPath=sourceFile ? `/uploads/${sourceFile.filename}` : '';
+    // Remove old filename-only disabled review rows from the earlier importer for this same source PDF.
+    rows=rows.filter(m=>{
+      const oldReview=!!m.needsReview && !!m.disabled && coaNormalizeSpace(m.project).toLowerCase()===coaNormalizeSpace(project).toLowerCase() && coaNormalizeSpace(m.fileName).toLowerCase()===coaNormalizeSpace(candidate.sourceFileName).toLowerCase();
+      if (oldReview) replacedReview.push(m.id);
+      return !oldReview;
+    });
+    const material={
+      id:slug(`${project}-${candidate.prodName}-${candidate.component}-${candidate.batch}`)+'-'+nanoid(4),
+      project, mfr:candidate.mfr, prodName:candidate.prodName, description:candidate.description, color:candidate.color, component:candidate.component,
+      itemNo:candidate.itemNo, batch:candidate.batch, mfgDate:candidate.mfgDate, expDate:candidate.expDate, shelfLife:candidate.shelfLife,
+      fileName:candidate.sourceFileName, uploadPath, sourcePage:candidate.sourcePage, sourceType:candidate.sourceType,
+      disabled:false, needsReview:false, textractImported:true, textractConfidence:candidate.confidence,
+      importedAt:new Date().toISOString(), updatedAt:new Date().toISOString()
+    };
+    material.label=makeMaterialLabel(material);
+    rows.push(material); added.push(material);
+  }
+  writeMaterials(rows);
+  return res.json({ok:true,added,skipped,replacedReview:[...new Set(replacedReview)]});
 });
 
 app.post('/api/admin/materials/import', requireAdmin, upload.array('coaFiles', 60), (req, res) => {
