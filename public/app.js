@@ -2637,7 +2637,7 @@ function loadBolInventory(force=false){
   bolInventoryLoaded=false;
   setBolInventoryMessage('Loading portal inventory list...');
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),9000);
+  const timer=setTimeout(()=>controller.abort(),30000);
   bolInventoryLoadPromise=fetch('/api/bol/inventory-items',{signal:controller.signal,cache:'no-store'})
     .then(async r=>{
       const json=await r.json().catch(()=>({}));

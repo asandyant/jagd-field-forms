@@ -954,7 +954,7 @@ app.get('/api/bol/inventory-items', async (req, res) => {
     const baseUrl = new URL(PORTAL_BOL_SUBMIT_URL);
     const invUrl = `${baseUrl.origin}/api/forms/inventory/items`;
     const controller = new AbortController();
-    const timeoutMs = Math.max(2500, Math.min(Number(PORTAL_BOL_SYNC_TIMEOUT_MS || 6000), 6000));
+    const timeoutMs = Math.max(15000, Math.min(Number(process.env.PORTAL_BOL_INVENTORY_TIMEOUT_MS || 25000), 45000));
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const headers = { Accept: 'application/json' };
     if (PORTAL_SYNC_TOKEN) headers['x-forms-sync-token'] = PORTAL_SYNC_TOKEN;
