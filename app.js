@@ -3300,27 +3300,30 @@ let receiptObjectUrls=[];
 function receiptEscapeAttr(v){return esc(String(v||''));}
 function receiptStatusHtml(text,kind=''){return `<div class="notice ${kind==='success'?'success':''}">${esc(text)}</div>`;}
 async function receiptLoadJobs(selectId){
-  const sel=document.getElementById(selectId); if(!sel)return;
+  const sel=document.getElementById(selectId);
+  if(!sel)return;
+  sel.innerHTML='<option value="">Loading jobs...</option>';
   try{
-    const r=await fetch('/api/jobs?t='+Date.now(),{cache:'no-store'});
-    const j=await r.json();
-    if(!r.ok) throw new Error(j.error||`Jobs returned HTTP ${r.status}`);
-    const rows=Array.isArray(j.rows)?j.rows:[];
-    const jobs=rows.map(row=>{
-      if(typeof row==='string'){
-        const name=String(row||'').trim();
-        return name?{id:name,name}:null;
-      }
-      if(!row||typeof row!=='object') return null;
-      const id=String(row.id||row.contract||row.jobId||row.name||row.jobName||row.project||'').trim();
-      const name=String(row.name||row.jobName||row.project||row.contract||row.id||row.jobId||'').trim();
-      return (id||name)?{id:id||name,name:name||id}:null;
-    }).filter(Boolean);
-    if(!jobs.length) throw new Error('No jobs were returned by the Portal job list.');
-    sel.innerHTML='<option value="">Choose job...</option>'+jobs.map(job=>`<option value="${receiptEscapeAttr(job.id)}" data-job-name="${receiptEscapeAttr(job.name)}">${esc(job.name)}${job.id&&job.id!==job.name?' — '+esc(job.id):''}</option>`).join('');
+    // Reuse the same proven Portal job loader used by DWL/PIR/etc.
+    // It already handles live Portal jobs, the Forms cache, and static fallback names.
+    await loadPortalJobOptions(true);
+    const rows=portalJobBaseOptions();
+    if(!rows.length) throw new Error('No jobs available');
+    sel.innerHTML='<option value="">Choose job...</option>'+rows.map(name=>{
+      const job=String(name||'').trim();
+      return `<option value="${receiptEscapeAttr(job)}" data-job-name="${receiptEscapeAttr(job)}">${esc(job)}</option>`;
+    }).join('');
   }catch(e){
     console.warn('Receipt job list unavailable.',e);
-    sel.innerHTML='<option value="">Could not load jobs — refresh and try again</option>';
+    const fallback=portalJobBaseOptions();
+    if(fallback.length){
+      sel.innerHTML='<option value="">Choose job...</option>'+fallback.map(name=>{
+        const job=String(name||'').trim();
+        return `<option value="${receiptEscapeAttr(job)}" data-job-name="${receiptEscapeAttr(job)}">${esc(job)}</option>`;
+      }).join('');
+    }else{
+      sel.innerHTML='<option value="">Could not load jobs - refresh and try again</option>';
+    }
   }
 }
 async function receiptLoadWorkers(selectId){
