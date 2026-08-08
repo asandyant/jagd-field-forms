@@ -3301,8 +3301,28 @@ function receiptEscapeAttr(v){return esc(String(v||''));}
 function receiptStatusHtml(text,kind=''){return `<div class="notice ${kind==='success'?'success':''}">${esc(text)}</div>`;}
 async function receiptLoadJobs(selectId){
   const sel=document.getElementById(selectId); if(!sel)return;
-  try{const r=await fetch('/api/jobs?t='+Date.now(),{cache:'no-store'});const j=await r.json();const rows=Array.isArray(j.rows)?j.rows:[];sel.innerHTML='<option value="">Choose job...</option>'+rows.map(row=>{const id=String(row.id||row.contract||row.jobId||row.name||'');const name=String(row.name||row.jobName||row.project||id);return `<option value="${receiptEscapeAttr(id)}" data-job-name="${receiptEscapeAttr(name)}">${esc(name)}${id&&id!==name?' — '+esc(id):''}</option>`;}).join('');}
-  catch(e){sel.innerHTML='<option value="">Could not load jobs — refresh and try again</option>';}
+  const renderNames=(names)=>{
+    const clean=uniqueList(names||[]);
+    sel.innerHTML='<option value="">Choose job...</option>'+clean.map(name=>`<option value="${receiptEscapeAttr(name)}" data-job-name="${receiptEscapeAttr(name)}">${esc(name)}</option>`).join('');
+  };
+  // Receipts must never wait on Portal before the field user can choose a job.
+  // Fill immediately from the same cached/static list used by the proven Forms project fields.
+  renderNames(portalJobBaseOptions());
+  try{
+    const r=await fetch('/api/jobs?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok) throw new Error('Job list request failed');
+    const j=await r.json();
+    const rows=Array.isArray(j.rows)?j.rows:[];
+    const names=rows.map(row=>typeof row==='string'?row:(row?.name||row?.jobName||row?.project||row?.contract||row?.id||'')).filter(Boolean);
+    if(names.length){
+      portalProjectOptions=uniqueList(names);
+      portalProjectOptionsLoaded=true;
+      try{localStorage.setItem('jagdPortalJobOptions',JSON.stringify(portalProjectOptions));}catch(e){}
+      renderNames(portalProjectOptions);
+    }
+  }catch(e){
+    console.warn('Receipt live job refresh unavailable; keeping cached/static job list.',e.message||e);
+  }
 }
 async function receiptLoadWorkers(selectId){
   const sel=document.getElementById(selectId); if(!sel)return;
