@@ -1162,6 +1162,22 @@ function home(){
         </div>
         <strong>Open Form</strong>
       </a>
+      <a class="formCard receiptCard" href="${freshRoute('#/receipts')}">
+        <div>
+          <span class="formTag">Job Receipts</span>
+          <h2>Receipts</h2>
+          <p>Choose the job, take photos or select multiple saved receipt photos, and submit them in one batch.</p>
+        </div>
+        <strong>Open</strong>
+      </a>
+      <a class="formCard reimbursementCard" href="${freshRoute('#/reimbursements')}">
+        <div>
+          <span class="formTag">Personal Purchase</span>
+          <h2>Reimbursements</h2>
+          <p>For purchases paid personally. Choose who gets reimbursed, the job, and add the receipt photos.</p>
+        </div>
+        <strong>Open</strong>
+      </a>
       <a class="formCard tmCard" href="${freshRoute('#/tm')}">
         <div>
           <span class="formTag">Receipts / Billing</span>
@@ -3180,7 +3196,7 @@ async function renderAdminCoa(editMat=null, mode='list'){
     let workPanel='';
     if(mode==='manual') workPanel=materialFormHtml(editMat||{}, savedProject);
     if(mode==='import') workPanel=coaImportHtml(savedProject);
-    c.innerHTML=`<div class="panel"><h2>COA / Material Library</h2><p class="tiny">Simple view: choose a job, import COA PDFs, add one material manually, or show what is already loaded for that job.</p><div class="adminSimpleBar"><label>Project / Job</label><select id="adminMatFilterProject"><option value="">Choose a job...</option>${adminProjectOptions(savedProject)}</select><button class="btn" id="adminShowMaterialsBtn" type="button">Show Current COAs</button><button class="btn" id="adminImportCoaBtn" type="button">Import COAs</button><button class="btn light" id="adminAddManualCoaBtn" type="button">Add Single COA Manually</button><button class="btn light" id="adminReceiptAwsTestBtn" type="button">Test Receipt AWS</button><span>${active.length} active / ${rows.length} total</span><span id="adminCoaAwsStatus"></span></div>${workPanel}<div class="adminToolbar"><input id="adminMatSearch" placeholder="Search product, batch, color"><span id="adminMatVisibleCount"></span></div><div id="adminMatTable"></div></div>`;
+    c.innerHTML=`<div class="panel"><h2>COA / Material Library</h2><p class="tiny">Simple view: choose a job, import COA PDFs, add one material manually, or show what is already loaded for that job.</p><div class="adminSimpleBar"><label>Project / Job</label><select id="adminMatFilterProject"><option value="">Choose a job...</option>${adminProjectOptions(savedProject)}</select><button class="btn" id="adminShowMaterialsBtn" type="button">Show Current COAs</button><button class="btn" id="adminImportCoaBtn" type="button">Import COAs</button><button class="btn light" id="adminAddManualCoaBtn" type="button">Add Single COA Manually</button><span>${active.length} active / ${rows.length} total</span><span id="adminCoaAwsStatus"></span></div>${workPanel}<div class="adminToolbar"><input id="adminMatSearch" placeholder="Search product, batch, color"><span id="adminMatVisibleCount"></span></div><div id="adminMatTable"></div></div>`;
     if(mode==='manual') setupAdminMaterialForm();
     if(mode==='import') setupAdminCoaImport();
     const clearMatTable=(msg='Choose a job, then click Show Current COAs.')=>{
@@ -3208,7 +3224,6 @@ async function renderAdminCoa(editMat=null, mode='list'){
     document.getElementById('adminShowMaterialsBtn').onclick=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); window.adminCoaShowMaterials=true; renderTable();};
     document.getElementById('adminImportCoaBtn').onclick=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); window.adminCoaShowMaterials=false; renderAdminCoa(null,'import');};
     document.getElementById('adminAddManualCoaBtn').onclick=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); window.adminCoaShowMaterials=false; renderAdminCoa(null,'manual');};
-    const receiptAwsBtn=document.getElementById('adminReceiptAwsTestBtn'); if(receiptAwsBtn) receiptAwsBtn.onclick=async()=>{ const status=document.getElementById('adminCoaAwsStatus'); receiptAwsBtn.disabled=true; receiptAwsBtn.classList.add('is-busy'); receiptAwsBtn.setAttribute('aria-busy','true'); receiptAwsBtn.textContent='Testing Receipt AWS...'; if(status) status.innerHTML='<span class=\"tiny\">Testing S3 + Textract...</span>'; try{ const j=await adminFetch('/api/admin/receipts/aws-test',{method:'POST'}); if(status) status.innerHTML=`<span style=\"color:#167c2b;font-weight:700\">✓ ${esc(j.message||'Receipt AWS verified.')}</span>`; receiptAwsBtn.textContent='Receipt AWS Verified'; }catch(e){ if(status) status.innerHTML=`<span style=\"color:#b42318;font-weight:700\">${esc(e.message)}</span>`; receiptAwsBtn.disabled=false; receiptAwsBtn.classList.remove('is-busy'); receiptAwsBtn.removeAttribute('aria-busy'); receiptAwsBtn.textContent='Test Receipt AWS'; }};
     window.adminCoaShowMaterials=false;
     clearMatTable();
   }catch(e){c.innerHTML=`<div class="panel"><div class="notice">${esc(e.message)}</div></div>`;}
@@ -3278,6 +3293,81 @@ function setupAdminMaterialForm(){
 
 
 
+
+let receiptSelectedFiles=[];
+let receiptCurrentKind='receipt';
+let receiptObjectUrls=[];
+function receiptEscapeAttr(v){return esc(String(v||''));}
+function receiptStatusHtml(text,kind=''){return `<div class="notice ${kind==='success'?'success':''}">${esc(text)}</div>`;}
+async function receiptLoadJobs(selectId){
+  const sel=document.getElementById(selectId); if(!sel)return;
+  try{const r=await fetch('/api/jobs?t='+Date.now(),{cache:'no-store'});const j=await r.json();const rows=Array.isArray(j.rows)?j.rows:[];sel.innerHTML='<option value="">Choose job...</option>'+rows.map(row=>{const id=String(row.id||row.contract||row.jobId||row.name||'');const name=String(row.name||row.jobName||row.project||id);return `<option value="${receiptEscapeAttr(id)}" data-job-name="${receiptEscapeAttr(name)}">${esc(name)}${id&&id!==name?' — '+esc(id):''}</option>`;}).join('');}
+  catch(e){sel.innerHTML='<option value="">Could not load jobs — refresh and try again</option>';}
+}
+async function receiptLoadWorkers(selectId){
+  const sel=document.getElementById(selectId); if(!sel)return;
+  try{const r=await fetch('/api/workers?t='+Date.now(),{cache:'no-store'});const j=await r.json();const rows=(Array.isArray(j.rows)?j.rows:[]).filter(w=>String(w.status||'Active').toLowerCase()==='active'&&!w.disabled);rows.sort((a,b)=>String(a.fullName||a.name||'').localeCompare(String(b.fullName||b.name||'')));sel.innerHTML='<option value="">Choose employee / PM...</option>'+rows.map(w=>{const name=String(w.fullName||w.name||`${w.firstName||''} ${w.lastName||''}`).trim();return `<option value="${receiptEscapeAttr(w.id||w.employeeId||name)}" data-worker-name="${receiptEscapeAttr(name)}">${esc(name)}</option>`;}).join('');}
+  catch(e){sel.innerHTML='<option value="">Could not load employee list</option>';}
+}
+function receiptScreen(kind='receipt'){
+  receiptCurrentKind=kind==='reimbursement'?'reimbursement':'receipt'; receiptSelectedFiles=[]; receiptObjectUrls.forEach(u=>URL.revokeObjectURL(u)); receiptObjectUrls=[];
+  const isReimb=receiptCurrentKind==='reimbursement';
+  app.innerHTML=`<div class="container receiptShell">
+    <section class="receiptHero ${isReimb?'is-reimbursement':''}"><div><span class="formTag">${isReimb?'Personal purchase':'Company card receipt'}</span><h1>${isReimb?'Reimbursements':'Receipts'}</h1><p>${isReimb?'Use this only when someone paid personally and needs to be reimbursed.':'Keep it simple: choose the job, add one or many receipt photos, and submit.'}</p></div><a href="#/" class="btn light">Back to Forms</a></section>
+    <section class="panel receiptPanel">
+      ${isReimb?`<label class="receiptField"><strong>Who is getting reimbursed? *</strong><select id="receiptReimburseTo"><option value="">Loading employees...</option></select></label>`:''}
+      <label class="receiptField"><strong>Project / Job *</strong><select id="receiptJob"><option value="">Loading jobs...</option></select></label>
+      <section class="receiptAddBox"><h2>Add Receipt Photos</h2><p class="tiny">Take a new photo or choose multiple receipts already saved on your phone. Each selected photo is treated as one receipt.</p>
+        <div class="receiptButtons"><label class="btn primary">Take Photo<input id="receiptCamera" class="hiddenFileInput" type="file" accept="image/*" capture="environment"></label><label class="btn">Upload Photos<input id="receiptFiles" class="hiddenFileInput" type="file" accept="image/*" multiple></label></div>
+        <div id="receiptFileCount" class="small muted">No receipts selected.</div><div id="receiptPreview" class="receiptPreview"></div>
+      </section>
+      <div id="receiptSubmitMsg"></div>
+      <button id="receiptSubmitBtn" class="btn primary receiptSubmitBtn" type="button">Submit Receipts</button>
+      <div id="receiptBatchStatus"></div>
+    </section>
+  </div>`;
+  receiptLoadJobs('receiptJob'); if(isReimb)receiptLoadWorkers('receiptReimburseTo');
+  document.getElementById('receiptCamera').onchange=e=>{receiptAddFiles(e.target.files);e.target.value='';};
+  document.getElementById('receiptFiles').onchange=e=>{receiptAddFiles(e.target.files);e.target.value='';};
+  document.getElementById('receiptSubmitBtn').onclick=receiptSubmitBatch;
+}
+function receiptAddFiles(list){
+  for(const f of Array.from(list||[])){if(receiptSelectedFiles.length>=24)break;if(!String(f.type||'').startsWith('image/'))continue;receiptSelectedFiles.push(f);}receiptRenderSelected();
+}
+function receiptRenderSelected(){
+  receiptObjectUrls.forEach(u=>URL.revokeObjectURL(u));receiptObjectUrls=[];const box=document.getElementById('receiptPreview'),count=document.getElementById('receiptFileCount');if(!box||!count)return;
+  count.textContent=receiptSelectedFiles.length?`${receiptSelectedFiles.length} receipt${receiptSelectedFiles.length===1?'':'s'} selected. Maximum 24 per batch.`:'No receipts selected.';
+  if(!receiptSelectedFiles.length){box.innerHTML='';return;}
+  box.innerHTML=receiptSelectedFiles.map((f,i)=>{const u=URL.createObjectURL(f);receiptObjectUrls.push(u);return `<article class="receiptThumb"><img src="${u}" alt="Receipt ${i+1}"><div><strong>Receipt ${i+1}</strong><small>${Math.max(1,Math.round(f.size/1024))} KB original</small></div><button class="btn small danger" type="button" onclick="receiptRemoveFile(${i})">Remove</button></article>`;}).join('');
+}
+function receiptRemoveFile(i){receiptSelectedFiles.splice(i,1);receiptRenderSelected();}
+async function receiptCompressImage(file){
+  const maxSide=2200,quality=.82;
+  let bitmap=null;
+  try{bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});}catch(_){
+    bitmap=await new Promise((resolve,reject)=>{const img=new Image();const url=URL.createObjectURL(file);img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error(`Could not read ${file.name}. If this is HEIC, choose a screenshot/JPG or retake the photo in the form.`));};img.src=url;});
+  }
+  const w=bitmap.width||bitmap.naturalWidth,h=bitmap.height||bitmap.naturalHeight;if(!w||!h)throw new Error(`Could not read ${file.name}.`);const scale=Math.min(1,maxSide/Math.max(w,h));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(w*scale));canvas.height=Math.max(1,Math.round(h*scale));const ctx=canvas.getContext('2d',{alpha:false});ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);if(bitmap.close)bitmap.close();const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));if(!blob)throw new Error(`Could not optimize ${file.name}.`);return new File([blob],`${String(file.name||'receipt').replace(/\.[^.]+$/,'')}.jpg`,{type:'image/jpeg',lastModified:Date.now()});
+}
+async function receiptSubmitBatch(){
+  const btn=document.getElementById('receiptSubmitBtn'),msg=document.getElementById('receiptSubmitMsg'),status=document.getElementById('receiptBatchStatus');const jobSel=document.getElementById('receiptJob');const jobId=jobSel?.value||'';const jobName=jobSel?.selectedOptions?.[0]?.dataset?.jobName||jobSel?.selectedOptions?.[0]?.textContent||jobId;
+  const reimbSel=document.getElementById('receiptReimburseTo');const reimburseToId=reimbSel?.value||'';const reimburseToName=reimbSel?.selectedOptions?.[0]?.dataset?.workerName||reimbSel?.selectedOptions?.[0]?.textContent||'';
+  if(!jobId){msg.innerHTML=receiptStatusHtml('Choose the project / job first.');return;}if(receiptCurrentKind==='reimbursement'&&!reimburseToId){msg.innerHTML=receiptStatusHtml('Choose who is getting reimbursed.');return;}if(!receiptSelectedFiles.length){msg.innerHTML=receiptStatusHtml('Add at least one receipt photo.');return;}
+  btn.disabled=true;btn.classList.add('is-busy');btn.textContent=`Preparing 0 of ${receiptSelectedFiles.length}...`;msg.innerHTML=receiptStatusHtml('Optimizing receipt photos so phone images do not waste storage space.');
+  try{
+    const optimized=[];for(let i=0;i<receiptSelectedFiles.length;i++){btn.textContent=`Preparing ${i+1} of ${receiptSelectedFiles.length}...`;optimized.push(await receiptCompressImage(receiptSelectedFiles[i]));}
+    const fd=new FormData();fd.append('data',JSON.stringify({kind:receiptCurrentKind,jobId,jobName,reimburseToId,reimburseToName}));optimized.forEach(f=>fd.append('files',f));btn.textContent=`Uploading ${optimized.length} receipt${optimized.length===1?'':'s'}...`;msg.innerHTML=receiptStatusHtml('Uploading optimized copies. You only need to wait until we confirm they were received.');
+    const res=await fetch('/api/receipts/upload',{method:'POST',body:fd});const j=await res.json();if(!res.ok||!j.ok)throw new Error(j.error||'Receipt upload failed.');
+    msg.innerHTML=receiptStatusHtml(j.message||'Receipts received. You can leave this page.','success');btn.textContent='Receipts Received';status.innerHTML=`<div class="receiptSuccess"><strong>Batch ${esc(j.batchId||'')}</strong><span>${(j.accepted||[]).length} received${(j.duplicates||[]).length?` · ${(j.duplicates||[]).length} duplicate(s) skipped`:''}</span><span>Textract is reading them in the background. You can leave this page.</span></div>`;receiptSelectedFiles=[];receiptRenderSelected();
+    if(j.batchId)receiptPollBatch(j.batchId);
+  }catch(e){msg.innerHTML=receiptStatusHtml(e.message);btn.disabled=false;btn.classList.remove('is-busy');btn.textContent='Submit Receipts';}
+}
+async function receiptPollBatch(batchId){
+  const box=document.getElementById('receiptBatchStatus');if(!box)return;let tries=0;const poll=async()=>{tries++;try{const r=await fetch('/api/receipts/status/'+encodeURIComponent(batchId),{cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)return;const rows=j.rows||[];const done=rows.filter(x=>x.status!=='processing').length;box.innerHTML=`<div class="receiptSuccess"><strong>Batch ${esc(batchId)}</strong><span>${done} of ${rows.length} read by AWS</span>${rows.slice(0,8).map(x=>`<span>${esc(x.displayFileName||x.id)} — ${esc(x.status==='ready'?'Ready':x.status==='needs_attention'?'Needs attention':'Reading...')}</span>`).join('')}${rows.length>8?`<span>+ ${rows.length-8} more</span>`:''}</div>`;if(done<rows.length&&tries<20)setTimeout(poll,2500);}catch(_){}};setTimeout(poll,1800);
+}
+function receiptsForm(){receiptScreen('receipt');}
+function reimbursementsForm(){receiptScreen('reimbursement');}
+
 let tmSelectedFiles=[];
 function tmInputField(id,label,type='text',extra=''){return `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" ${extra}></div>`;}
 function tmSelectField(id,label,optionsHtml){return `<div><label for="${id}">${label}</label><select id="${id}">${optionsHtml}</select></div>`;}
@@ -3345,7 +3435,7 @@ async function tmCarryRentals(){const ids=Array.from(document.querySelectorAll('
 async function tmAddProject(){try{await tmJson('/api/admin/tm/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contract:val('tmNewContract'),name:val('tmNewName'),active:true})});alert('Project added.');tmOfficeDashboard();}catch(e){alert(e.message);}}
 function tmExportCsv(){const rows=window.tmOfficeRows||[],head=['Record','Project','Month','Type','Vendor','Date','Amount','Category','Paid With','Purchased By','Submitted By','Description','Status'];const csv=[head,...rows.map(r=>[r.id,r.projectLabel,r.billingMonth,r.type,r.vendor,r.transactionDate,r.amount,r.category,r.paymentMethod,r.purchaser,r.submitter,r.description,r.status])].map(row=>row.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`JAGD_TM_${val('tmOfficeProject')}_${val('tmOfficeMonth')}.csv`;a.click();URL.revokeObjectURL(a.href);}
 
-function router(){const h=location.hash||'#/'; if(h.startsWith('#/tm-office')) tmOfficeView(); else if(h.startsWith('#/tm')) tmFieldView(); else if(h.startsWith('#/admin')) adminView(); else if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/dwl')) dwlForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else if(h.startsWith('#/bill-of-lading')) bolForm(); else if(h.startsWith('#/incident-report')) incidentReportForm(); else if(h.startsWith('#/heavy-accident-report')) heavyAccidentReportForm(); else if(h.startsWith('#/disciplinary-report')) disciplinaryReportForm(); else home();}
+function router(){const h=location.hash||'#/'; if(h.startsWith('#/receipts')) receiptsForm(); else if(h.startsWith('#/reimbursements')) reimbursementsForm(); else if(h.startsWith('#/tm-office')) tmOfficeView(); else if(h.startsWith('#/tm')) tmFieldView(); else if(h.startsWith('#/admin')) adminView(); else if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/dwl')) dwlForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else if(h.startsWith('#/bill-of-lading')) bolForm(); else if(h.startsWith('#/incident-report')) incidentReportForm(); else if(h.startsWith('#/heavy-accident-report')) heavyAccidentReportForm(); else if(h.startsWith('#/disciplinary-report')) disciplinaryReportForm(); else home();}
 
 window.addEventListener('beforeprint',()=>{
   const h=location.hash||'#/';

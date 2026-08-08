@@ -152,6 +152,10 @@ const DWL_GENERATED_PDF_DIR = path.join(DATA_DIR, 'dwl-generated-pdfs');
 const TM_UPLOAD_DIR = path.join(DATA_DIR, 'tm-uploads');
 const TM_RECORDS_FILE = path.join(DATA_DIR, 'tm-records.json');
 const TM_PROJECTS_FILE = path.join(DATA_DIR, 'tm-projects.json');
+const RECEIPT_RECORDS_FILE = path.join(DATA_DIR, 'receipt-records.json');
+const RECEIPT_BATCHES_FILE = path.join(DATA_DIR, 'receipt-batches.json');
+const RECEIPT_MAX_FILES = 24;
+const RECEIPT_PUBLIC_LIMIT = 20;
 const TM_DEFAULT_PROJECTS = [
   { id: 'BRX9579', contract: 'BRX9579', name: 'Boston Road', active: true },
   { id: 'D265495', contract: 'D265495', name: '8 Bridges', active: true },
@@ -190,6 +194,8 @@ if (!fs.existsSync(BOL_COUNTERS_FILE)) fs.writeFileSync(BOL_COUNTERS_FILE, '{}')
 if (!fs.existsSync(BOL_INVENTORY_CACHE_FILE)) fs.writeFileSync(BOL_INVENTORY_CACHE_FILE, JSON.stringify({ items: [], savedAt: '' }, null, 2));
 if (!fs.existsSync(DWL_LAST_CREWS_FILE)) fs.writeFileSync(DWL_LAST_CREWS_FILE, '{}');
 if (!fs.existsSync(PIR_LAST_SERIALS_FILE)) fs.writeFileSync(PIR_LAST_SERIALS_FILE, '{}');
+if (!fs.existsSync(RECEIPT_RECORDS_FILE)) fs.writeFileSync(RECEIPT_RECORDS_FILE, '[]');
+if (!fs.existsSync(RECEIPT_BATCHES_FILE)) fs.writeFileSync(RECEIPT_BATCHES_FILE, '[]');
 if (!fs.existsSync(WORKERS_FILE)) {
   const seed = path.join(__dirname, 'public', 'data', 'active-workers.json');
   fs.writeFileSync(WORKERS_FILE, fs.existsSync(seed) ? fs.readFileSync(seed, 'utf8') : '[]');
@@ -1504,44 +1510,168 @@ app.post('/api/admin/materials', requireAdmin, (req, res) => {
 
 
 
-app.post('/api/admin/receipts/aws-test', requireAdmin, async (req, res) => {
-  const region = String(process.env.RECEIPTS_AWS_REGION || 'us-east-1').trim() || 'us-east-1';
-  const bucket = String(process.env.RECEIPTS_AWS_S3_BUCKET || '').trim();
-  const configured = {
-    accessKeyId: !!String(process.env.RECEIPTS_AWS_ACCESS_KEY_ID || '').trim(),
-    secretAccessKey: !!String(process.env.RECEIPTS_AWS_SECRET_ACCESS_KEY || '').trim(),
-    region,
-    bucket
-  };
-  if (!configured.accessKeyId || !configured.secretAccessKey || !bucket) {
-    return res.status(500).json({ ok:false, configured, error:'Receipt AWS credentials or S3 bucket are not configured in Render.' });
-  }
-  const testKey = `connection-tests/receipt-aws-${Date.now()}-${nanoid(6)}.png`;
-  const testImage = coaAwsTestPng();
-  const s3Host = `${bucket}.s3.${region}.amazonaws.com`;
-  try {
-    await receiptAwsSignedRequest({ service:'s3', region, host:s3Host, method:'PUT', pathname:receiptS3Path(testKey), headers:{ 'content-type':'image/png' }, body:testImage });
-    const readBack = await receiptAwsSignedRequest({ service:'s3', region, host:s3Host, method:'GET', pathname:receiptS3Path(testKey), headers:{}, body:Buffer.alloc(0) });
-    if (!readBack.body || readBack.body.length !== testImage.length) throw new Error('S3 read-back verification returned a different file size.');
-    await receiptAwsSignedRequest({ service:'s3', region, host:s3Host, method:'DELETE', pathname:receiptS3Path(testKey), headers:{}, body:Buffer.alloc(0) });
 
-    const textractHost = `textract.${region}.amazonaws.com`;
-    const textractBody = Buffer.from(JSON.stringify({ Document:{ Bytes:testImage.toString('base64') }, FeatureTypes:['TABLES','FORMS'] }), 'utf8');
-    const textractResponse = await receiptAwsSignedRequest({
-      service:'textract', region, host:textractHost, method:'POST', pathname:'/',
-      headers:{ 'content-type':'application/x-amz-json-1.1', 'x-amz-target':'Textract.AnalyzeDocument' }, body:textractBody
-    });
-    const parsed = JSON.parse(textractResponse.text || '{}');
-    return res.json({
-      ok:true, region, bucket,
-      message:`Receipt AWS verified: S3 upload/read/delete passed; Textract AnalyzeDocument passed in ${region}.`,
-      pages:Number(parsed?.DocumentMetadata?.Pages || 0),
-      blocks:Array.isArray(parsed?.Blocks) ? parsed.Blocks.length : 0
-    });
-  } catch (err) {
-    try { await receiptAwsSignedRequest({ service:'s3', region, host:s3Host, method:'DELETE', pathname:receiptS3Path(testKey), headers:{}, body:Buffer.alloc(0) }); } catch (_) {}
-    return res.status(502).json({ ok:false, region, bucket, error:err.message || 'Receipt AWS connection test failed.' });
+function receiptReadRecords() { return readJsonSafe(RECEIPT_RECORDS_FILE, []); }
+function receiptWriteRecords(rows) { writeJsonSafe(RECEIPT_RECORDS_FILE, Array.isArray(rows) ? rows : []); }
+function receiptReadBatches() { return readJsonSafe(RECEIPT_BATCHES_FILE, []); }
+function receiptWriteBatches(rows) { writeJsonSafe(RECEIPT_BATCHES_FILE, Array.isArray(rows) ? rows : []); }
+function receiptAwsConfig() {
+  return {
+    region: String(process.env.RECEIPTS_AWS_REGION || 'us-east-1').trim() || 'us-east-1',
+    bucket: String(process.env.RECEIPTS_AWS_S3_BUCKET || '').trim(),
+    accessKeyId: String(process.env.RECEIPTS_AWS_ACCESS_KEY_ID || '').trim(),
+    secretAccessKey: String(process.env.RECEIPTS_AWS_SECRET_ACCESS_KEY || '').trim()
+  };
+}
+function receiptRequireAws() {
+  const cfg = receiptAwsConfig();
+  if (!cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) throw new Error('Receipt AWS is not configured in Render.');
+  return cfg;
+}
+function receiptS3Host(bucket, region) { return `${bucket}.s3.${region}.amazonaws.com`; }
+function receiptSafePart(value, fallback='NA') {
+  const out = String(value || '').trim().replace(/&/g,' and ').replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');
+  return (out || fallback).slice(0,60);
+}
+function receiptJobCode(jobId, jobName) {
+  const id=String(jobId||'').trim().toUpperCase(), name=String(jobName||'').trim().toUpperCase();
+  if(id==='BRX9579'||name.includes('BOSTON ROAD')) return 'BRX';
+  if(name.includes('DYRE')) return 'DYRE';
+  if(name.includes('GORDIE HOWE')) return 'GH';
+  if(name.includes('GEORGE WASHINGTON')||name==='GWB'||id.includes('GWB')) return 'GWB';
+  if(name.includes('MACOMBS')||id==='HB1070MD') return 'MAC';
+  if(name.includes('8 BRIDGES')||id==='D265495') return '8BR';
+  if(id.startsWith('VN')) return receiptSafePart(id,'VN').slice(0,10);
+  if(name.startsWith('VN')) return receiptSafePart(name.split(/\s+/)[0],'VN').slice(0,10);
+  if(id) return receiptSafePart(id).slice(0,10);
+  const words=name.split(/\s+/).filter(Boolean); const initials=words.map(w=>w[0]).join('');
+  return receiptSafePart(initials||name,'JOB').slice(0,10);
+}
+function receiptNormalizeDate(value) {
+  const v=String(value||'').trim(); if(!v) return '';
+  const iso=v.match(/^(20\d{2})[-\/]?(\d{1,2})[-\/]?(\d{1,2})$/); if(iso) return `${iso[1]}-${String(iso[2]).padStart(2,'0')}-${String(iso[3]).padStart(2,'0')}`;
+  const us=v.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/); if(us){let y=us[3];if(y.length===2)y='20'+y;return `${y}-${String(us[1]).padStart(2,'0')}-${String(us[2]).padStart(2,'0')}`;}
+  const d=new Date(v); return Number.isNaN(d.getTime())?'':d.toISOString().slice(0,10);
+}
+function receiptMoneyNumber(value) {
+  const m=String(value||'').replace(/,/g,'').match(/-?\$?\s*(\d+(?:\.\d{1,2})?)/); return m?Number(m[1]):0;
+}
+function receiptLast4FromText(text) {
+  const t=String(text||'');
+  const pats=[/(?:AMEX|AMERICAN\s*EXPRESS|CARD|ACCT|ACCOUNT|ENDING|XXXX|\*{2,})[^\d]{0,18}(\d{4})\b/i,/\b(?:X{4,}|\*{4,})[- ]?(\d{4})\b/i];
+  for(const p of pats){const m=t.match(p);if(m)return m[1];} return '';
+}
+function receiptAllBlockText(parsed) {
+  return (Array.isArray(parsed?.Blocks)?parsed.Blocks:[]).filter(b=>b&&b.Text).map(b=>String(b.Text)).join('\n');
+}
+function receiptExpenseSummary(parsed) {
+  const doc=(Array.isArray(parsed?.ExpenseDocuments)?parsed.ExpenseDocuments[0]:null)||{};
+  const fields={};
+  for(const f of (doc.SummaryFields||[])){
+    const type=String(f?.Type?.Text||'').toUpperCase(); const value=String(f?.ValueDetection?.Text||'').trim(); if(type&&value&&!fields[type])fields[type]=value;
   }
+  const allText=[receiptAllBlockText(parsed),...Object.values(fields)].filter(Boolean).join('\n');
+  return {
+    vendor: fields.VENDOR_NAME || fields.RECEIVER_NAME || '',
+    transactionDate: receiptNormalizeDate(fields.INVOICE_RECEIPT_DATE || fields.ORDER_DATE || ''),
+    amount: receiptMoneyNumber(fields.TOTAL || fields.AMOUNT_DUE || ''),
+    tax: receiptMoneyNumber(fields.TAX || ''),
+    receiptNumber: fields.INVOICE_RECEIPT_ID || fields.ORDER_NUMBER || '',
+    cardLast4: receiptLast4FromText(allText),
+    rawText: allText.slice(0,12000),
+    confidence: 'expense'
+  };
+}
+function receiptDocumentSummary(parsed) {
+  const text=receiptAllBlockText(parsed); const lines=text.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  const totalLine=[...lines].reverse().find(x=>/\b(total|amount due|balance)\b/i.test(x)&&/\d/.test(x))||'';
+  let date=''; for(const line of lines){const m=line.match(/\b(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\b/);if(m){date=receiptNormalizeDate(m[1]);break;}}
+  const vendor=(lines.find(x=>x.length>2&&!/receipt|invoice|thank|date|time|total/i.test(x)&&/[A-Za-z]/.test(x))||'').slice(0,80);
+  return {vendor,transactionDate:date,amount:receiptMoneyNumber(totalLine),tax:0,receiptNumber:'',cardLast4:receiptLast4FromText(text),rawText:text.slice(0,12000),confidence:'document'};
+}
+async function receiptAnalyzeImage(buffer) {
+  const cfg=receiptRequireAws(); const host=`textract.${cfg.region}.amazonaws.com`; const bytes=Buffer.from(buffer).toString('base64');
+  try{
+    const body=Buffer.from(JSON.stringify({Document:{Bytes:bytes}}),'utf8');
+    const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeExpense'},body});
+    return receiptExpenseSummary(JSON.parse(out.text||'{}'));
+  }catch(err){
+    // AnalyzeExpense is purpose-built for receipts. Fall back to AnalyzeDocument so the flow still works until/if IAM is expanded.
+    const body=Buffer.from(JSON.stringify({Document:{Bytes:bytes},FeatureTypes:['FORMS','TABLES']}),'utf8');
+    const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeDocument'},body});
+    const parsed=JSON.parse(out.text||'{}'); const summary=receiptDocumentSummary(parsed); summary.fallbackReason=String(err.message||'AnalyzeExpense unavailable').slice(0,240); return summary;
+  }
+}
+async function receiptPutObject(key, buffer, contentType='image/jpeg') {
+  const cfg=receiptRequireAws(); const host=receiptS3Host(cfg.bucket,cfg.region);
+  await receiptAwsSignedRequest({service:'s3',region:cfg.region,host,method:'PUT',pathname:receiptS3Path(key),headers:{'content-type':contentType,'cache-control':'private, max-age=0, no-store'},body:buffer});
+}
+async function receiptGetObject(key) {
+  const cfg=receiptRequireAws(); const host=receiptS3Host(cfg.bucket,cfg.region);
+  return receiptAwsSignedRequest({service:'s3',region:cfg.region,host,method:'GET',pathname:receiptS3Path(key),headers:{},body:Buffer.alloc(0)});
+}
+function receiptHumanFileName(record) {
+  const p=record.parsed||{}; const date=receiptNormalizeDate(p.transactionDate)||String(record.createdAt||'').slice(0,10); const [y,m,d]=date.split('-');
+  const shortDate=(m&&d&&y)?`${m}.${d}.${String(y).slice(-2)}`:'NoDate'; const vendor=receiptSafePart(p.vendor,'Receipt'); const amount=Number(p.amount||0); const money=amount?`$${amount.toFixed(2)}`:'Amount-Unknown';
+  return `${shortDate} ${vendor} ${money} ${record.jobCode || 'JOB'} ${record.id}.jpg`;
+}
+async function receiptProcessOne(recordId, buffer) {
+  try{
+    const parsed=await receiptAnalyzeImage(buffer); const rows=receiptReadRecords(); const row=rows.find(x=>x.id===recordId); if(!row)return;
+    row.parsed=parsed; row.status=(parsed.vendor&&parsed.amount)?'ready':'needs_attention'; row.displayFileName=receiptHumanFileName(row); row.processedAt=new Date().toISOString(); row.error=''; receiptWriteRecords(rows);
+  }catch(err){const rows=receiptReadRecords();const row=rows.find(x=>x.id===recordId);if(row){row.status='needs_attention';row.error=String(err.message||'Textract failed').slice(0,500);row.processedAt=new Date().toISOString();receiptWriteRecords(rows);}}
+}
+function receiptRequestTokenOk(req) {
+  const configured=String(process.env.PORTAL_SYNC_TOKEN||process.env.FORMS_SYNC_TOKEN||'').trim();
+  if(!configured) return false; const supplied=String(req.get('x-forms-sync-token')||req.query.token||'').trim(); return crypto.timingSafeEqual(Buffer.from(configured),Buffer.from(supplied.padEnd(configured.length,'\0').slice(0,configured.length)));
+}
+
+app.post('/api/receipts/upload', upload.array('files', RECEIPT_MAX_FILES), async (req,res)=>{
+  const files=Array.isArray(req.files)?req.files:[]; let meta={}; try{meta=JSON.parse(String(req.body.data||'{}'));}catch(_){ }
+  const kind=String(meta.kind||'receipt')==='reimbursement'?'reimbursement':'receipt'; const jobId=String(meta.jobId||'').trim(); const jobName=String(meta.jobName||jobId).trim();
+  const reimburseToName=String(meta.reimburseToName||'').trim(); const reimburseToId=String(meta.reimburseToId||'').trim();
+  if(!jobId||!files.length){files.forEach(f=>{try{fs.unlinkSync(f.path)}catch(_){}});return res.status(400).json({ok:false,error:'Choose a job and add at least one receipt photo.'});}
+  if(kind==='reimbursement'&&!reimburseToName){files.forEach(f=>{try{fs.unlinkSync(f.path)}catch(_){}});return res.status(400).json({ok:false,error:'Choose who is being reimbursed.'});}
+  try{receiptRequireAws();}catch(e){files.forEach(f=>{try{fs.unlinkSync(f.path)}catch(_){}});return res.status(500).json({ok:false,error:e.message});}
+  const rows=receiptReadRecords(); const batches=receiptReadBatches(); const batchId=`RB-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${nanoid(6).toUpperCase()}`; const accepted=[],duplicates=[],jobs=readJsonSafe(JOBS_FILE,[]); const job=(jobs||[]).find(j=>String(j.id||j.contract||'')===jobId)||{}; const resolvedName=jobName||job.name||job.label||jobId; const jobCode=receiptJobCode(jobId,resolvedName);
+  const buffers=[];
+  for(const f of files){
+    const buf=fs.readFileSync(f.path); try{fs.unlinkSync(f.path)}catch(_){} const hash=crypto.createHash('sha256').update(buf).digest('hex'); const dupe=rows.find(r=>r.sha256===hash);
+    if(dupe){duplicates.push({originalName:f.originalname,existingId:dupe.id});continue;}
+    const id=`RCP-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${nanoid(7).toUpperCase()}`; const now=new Date(); const key=`${kind==='reimbursement'?'reimbursements':'receipts'}/${now.getUTCFullYear()}/${String(now.getUTCMonth()+1).padStart(2,'0')}/${receiptSafePart(jobCode)}/${id}.jpg`;
+    await receiptPutObject(key,buf,f.mimetype||'image/jpeg');
+    const row={id,batchId,kind,jobId,jobName:resolvedName,jobCode,reimburseToId,reimburseToName,createdAt:now.toISOString(),submittedAt:now.toISOString(),status:'processing',reimbursementStatus:kind==='reimbursement'?'Pending':'',s3Key:key,sha256:hash,mimeType:f.mimetype||'image/jpeg',sizeBytes:buf.length,originalName:f.originalname,displayFileName:`${id}.jpg`,parsed:{vendor:'',transactionDate:'',amount:0,tax:0,receiptNumber:'',cardLast4:''},error:''};
+    rows.unshift(row); accepted.push({id,status:'processing',originalName:f.originalname}); buffers.push({id,buf});
+  }
+  batches.unshift({id:batchId,kind,jobId,jobName:resolvedName,jobCode,reimburseToId,reimburseToName,createdAt:new Date().toISOString(),count:accepted.length,duplicateCount:duplicates.length});
+  receiptWriteRecords(rows); receiptWriteBatches(batches.slice(0,5000));
+  res.json({ok:true,batchId,accepted,duplicates,message:`${accepted.length} receipt${accepted.length===1?'':'s'} received${duplicates.length?`; ${duplicates.length} duplicate${duplicates.length===1?'':'s'} skipped`:''}. You can leave this page.`});
+  setImmediate(async()=>{for(const item of buffers) await receiptProcessOne(item.id,item.buf);});
+});
+
+app.get('/api/receipts/status/:batchId',(req,res)=>{
+  const rows=receiptReadRecords().filter(r=>r.batchId===req.params.batchId); res.json({ok:true,rows:rows.map(r=>({id:r.id,status:r.status,displayFileName:r.displayFileName,parsed:r.parsed,error:r.error}))});
+});
+
+app.get('/api/admin/receipts', requireAdmin, (req,res)=>{
+  const rows=receiptReadRecords(); const kind=String(req.query.kind||'').trim(),jobId=String(req.query.jobId||'').trim(),q=String(req.query.q||'').trim().toLowerCase(); const status=String(req.query.status||'').trim(); const page=Math.max(1,Number(req.query.page||1)); const limit=Math.max(1,Math.min(20,Number(req.query.limit||20)));
+  let filtered=rows.filter(r=>(!kind||r.kind===kind)&&(!jobId||r.jobId===jobId)&&(!status||r.status===status)); if(q)filtered=filtered.filter(r=>[r.id,r.jobName,r.reimburseToName,r.parsed?.vendor,r.displayFileName,String(r.parsed?.amount||'')].join(' ').toLowerCase().includes(q)); const total=filtered.length; const slice=filtered.slice((page-1)*limit,(page-1)*limit+limit); res.json({ok:true,rows:slice,total,page,limit});
+});
+app.patch('/api/admin/receipts/:id', requireAdmin, (req,res)=>{
+  const rows=receiptReadRecords(); const row=rows.find(r=>r.id===req.params.id); if(!row)return res.status(404).json({ok:false,error:'Receipt not found.'}); const b=req.body||{}; if(row.kind==='reimbursement'&&['Pending','Paid'].includes(String(b.reimbursementStatus||'')))row.reimbursementStatus=String(b.reimbursementStatus); if(b.jobId)row.jobId=String(b.jobId); if(b.jobName)row.jobName=String(b.jobName); if(b.reimburseToName)row.reimburseToName=String(b.reimburseToName); row.updatedAt=new Date().toISOString(); receiptWriteRecords(rows); res.json({ok:true,row});
+});
+app.get('/api/admin/receipts/:id/file', requireAdmin, async (req,res)=>{
+  const row=receiptReadRecords().find(r=>r.id===req.params.id); if(!row)return res.status(404).send('Receipt not found.'); try{const out=await receiptGetObject(row.s3Key); res.setHeader('Content-Type',row.mimeType||'image/jpeg'); res.setHeader('Content-Disposition',`${req.query.download==='1'?'attachment':'inline'}; filename="${String(row.displayFileName||row.originalName||row.id+'.jpg').replace(/"/g,'')}"`);res.setHeader('Cache-Control','private, no-store');res.send(out.body);}catch(e){res.status(502).send(e.message||'Receipt file unavailable.');}
+});
+
+app.get('/api/forms/receipts', (req,res)=>{
+  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'}); const rows=receiptReadRecords(); const page=Math.max(1,Number(req.query.page||1));const limit=Math.max(1,Math.min(20,Number(req.query.limit||20)));const kind=String(req.query.kind||'').trim(),jobId=String(req.query.jobId||'').trim(),q=String(req.query.q||'').trim().toLowerCase();let filtered=rows.filter(r=>(!kind||r.kind===kind)&&(!jobId||r.jobId===jobId));if(q)filtered=filtered.filter(r=>[r.id,r.jobName,r.reimburseToName,r.parsed?.vendor,String(r.parsed?.amount||''),r.parsed?.cardLast4].join(' ').toLowerCase().includes(q));const total=filtered.length;res.json({ok:true,rows:filtered.slice((page-1)*limit,(page-1)*limit+limit),total,page,limit});
+});
+app.patch('/api/forms/receipts/:id', (req,res)=>{
+  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});const rows=receiptReadRecords();const row=rows.find(r=>r.id===req.params.id);if(!row)return res.status(404).json({ok:false,error:'Receipt not found.'});const b=req.body||{};if(row.kind==='reimbursement'&&['Pending','Paid'].includes(String(b.reimbursementStatus||'')))row.reimbursementStatus=String(b.reimbursementStatus);row.updatedAt=new Date().toISOString();receiptWriteRecords(rows);res.json({ok:true,row});
+});
+app.get('/api/forms/receipts/:id/file', async (req,res)=>{
+  if(!receiptRequestTokenOk(req))return res.status(403).send('Forms sync token required.');const row=receiptReadRecords().find(r=>r.id===req.params.id);if(!row)return res.status(404).send('Receipt not found.');try{const out=await receiptGetObject(row.s3Key);res.setHeader('Content-Type',row.mimeType||'image/jpeg');res.setHeader('Content-Disposition',`${req.query.download==='1'?'attachment':'inline'}; filename="${String(row.displayFileName||row.originalName||row.id+'.jpg').replace(/"/g,'')}"`);res.send(out.body);}catch(e){res.status(502).send(e.message||'Receipt file unavailable.');}
 });
 
 app.post('/api/admin/materials/aws-test', requireAdmin, async (req, res) => {
