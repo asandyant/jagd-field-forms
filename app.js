@@ -3301,27 +3301,25 @@ function receiptEscapeAttr(v){return esc(String(v||''));}
 function receiptStatusHtml(text,kind=''){return `<div class="notice ${kind==='success'?'success':''}">${esc(text)}</div>`;}
 async function receiptLoadJobs(selectId){
   const sel=document.getElementById(selectId); if(!sel)return;
-  // Use the same normalized /api/jobs feed as the rest of Field Forms.
-  // That endpoint intentionally returns job names as strings after Portal normalization/cache.
-  const setOptions=(rows)=>{
-    const names=uniqueList((Array.isArray(rows)?rows:[]).map(row=>
-      typeof row==='string' ? row : (row?.name || row?.jobName || row?.project || row?.contract || row?.id || '')
-    ));
-    if(!names.length)return false;
-    sel.innerHTML='<option value="">Choose job...</option>'+names.map(name=>`<option value="${receiptEscapeAttr(name)}" data-job-name="${receiptEscapeAttr(name)}">${esc(name)}</option>`).join('');
-    return true;
-  };
   try{
     const r=await fetch('/api/jobs?t='+Date.now(),{cache:'no-store'});
     const j=await r.json();
-    if(!r.ok)throw new Error(j?.error||`Job list returned ${r.status}`);
-    if(setOptions(j.rows))return;
-    // Same safe fallback already used by the existing project fields.
-    if(setOptions(portalJobBaseOptions()))return;
-    throw new Error('No jobs were returned.');
+    if(!r.ok) throw new Error(j.error||`Jobs returned HTTP ${r.status}`);
+    const rows=Array.isArray(j.rows)?j.rows:[];
+    const jobs=rows.map(row=>{
+      if(typeof row==='string'){
+        const name=String(row||'').trim();
+        return name?{id:name,name}:null;
+      }
+      if(!row||typeof row!=='object') return null;
+      const id=String(row.id||row.contract||row.jobId||row.name||row.jobName||row.project||'').trim();
+      const name=String(row.name||row.jobName||row.project||row.contract||row.id||row.jobId||'').trim();
+      return (id||name)?{id:id||name,name:name||id}:null;
+    }).filter(Boolean);
+    if(!jobs.length) throw new Error('No jobs were returned by the Portal job list.');
+    sel.innerHTML='<option value="">Choose job...</option>'+jobs.map(job=>`<option value="${receiptEscapeAttr(job.id)}" data-job-name="${receiptEscapeAttr(job.name)}">${esc(job.name)}${job.id&&job.id!==job.name?' — '+esc(job.id):''}</option>`).join('');
   }catch(e){
-    console.warn('Receipt job list unavailable; using cached/static project list.',e?.message||e);
-    if(setOptions(portalJobBaseOptions()))return;
+    console.warn('Receipt job list unavailable.',e);
     sel.innerHTML='<option value="">Could not load jobs — refresh and try again</option>';
   }
 }
