@@ -3299,32 +3299,25 @@ let receiptCurrentKind='receipt';
 let receiptObjectUrls=[];
 function receiptEscapeAttr(v){return esc(String(v||''));}
 function receiptStatusHtml(text,kind=''){return `<div class="notice ${kind==='success'?'success':''}">${esc(text)}</div>`;}
-async function receiptLoadJobs(selectId){
+function receiptPopulateJobs(selectId){
   const sel=document.getElementById(selectId);
   if(!sel)return;
-  sel.innerHTML='<option value="">Loading jobs...</option>';
-  try{
-    // Reuse the same proven Portal job loader used by DWL/PIR/etc.
-    // It already handles live Portal jobs, the Forms cache, and static fallback names.
-    await loadPortalJobOptions(true);
-    const rows=portalJobBaseOptions();
-    if(!rows.length) throw new Error('No jobs available');
-    sel.innerHTML='<option value="">Choose job...</option>'+rows.map(name=>{
-      const job=String(name||'').trim();
-      return `<option value="${receiptEscapeAttr(job)}" data-job-name="${receiptEscapeAttr(job)}">${esc(job)}</option>`;
-    }).join('');
-  }catch(e){
-    console.warn('Receipt job list unavailable.',e);
-    const fallback=portalJobBaseOptions();
-    if(fallback.length){
-      sel.innerHTML='<option value="">Choose job...</option>'+fallback.map(name=>{
-        const job=String(name||'').trim();
-        return `<option value="${receiptEscapeAttr(job)}" data-job-name="${receiptEscapeAttr(job)}">${esc(job)}</option>`;
-      }).join('');
-    }else{
-      sel.innerHTML='<option value="">Could not load jobs - refresh and try again</option>';
-    }
-  }
+  const current=sel.value||'';
+  const rows=portalJobBaseOptions();
+  sel.innerHTML='<option value="">Choose job...</option>'+rows.map(name=>{
+    const job=String(name||'').trim();
+    return `<option value="${receiptEscapeAttr(job)}" data-job-name="${receiptEscapeAttr(job)}">${esc(job)}</option>`;
+  }).join('');
+  if(current && rows.includes(current)) sel.value=current;
+}
+function receiptLoadJobs(selectId){
+  // Populate immediately from the same cached/static list used by the existing Forms job fields.
+  // Then refresh from Portal in the background so a slow/unavailable Portal can never leave
+  // the receipt dropdown stuck on "Loading jobs...".
+  receiptPopulateJobs(selectId);
+  loadPortalJobOptions(true)
+    .then(()=>receiptPopulateJobs(selectId))
+    .catch(e=>console.warn('Receipt Portal job refresh unavailable; kept cached/static jobs.',e));
 }
 async function receiptLoadWorkers(selectId){
   const sel=document.getElementById(selectId); if(!sel)return;
