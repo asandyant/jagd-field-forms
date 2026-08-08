@@ -835,9 +835,15 @@ function isGwbCablesProjectName(text){
   const p=String(text||'').toUpperCase();
   return p.includes('GWB CABLE') || p.includes('GWB-244.048') || p.includes('GWB 244.048') || p.includes('244.048');
 }
+function isBostonRoadProjectName(text){
+  const p=String(text||'').toUpperCase();
+  return p.includes('BRX9579') || p.includes('BOSTON ROAD');
+}
 function pirMaterialProjectKey(){
   const raw=projectValue('pirProject');
   const p=raw.toUpperCase();
+  // Match special COA libraries by stable contract/job identifiers instead of fragile display labels.
+  if(isBostonRoadProjectName(p)) return 'BRX9579';
   // Only the actual GWB Cables job gets the GWB cable COAs. Do not let GW 244.289 Lemoine Ave pull GWB Cables COAs.
   if(isGwbCablesProjectName(p)) return 'GWB';
   if(p.includes('LEMOINE') || p.includes('244.289')) return raw;
@@ -849,18 +855,21 @@ function materialProjectMatches(m, key){
   const project=String(m.project||'').toUpperCase();
   const keyText=String(key||'').toUpperCase();
   if(!key) return false;
+  if(keyText==='BRX9579') return project.includes('BRX9579') || project.includes('BOSTON ROAD');
   if(key==='GWB') return project === 'GWB' || isGwbCablesProjectName(project);
   if(key==='DYRE') return project.includes('DYRE') || project.includes('C35311') || project.includes('C-35311');
   return project===keyText;
 }
 function adminProjectKeyFromName(projectName){
   const p=String(projectName||'').toUpperCase();
+  if(isBostonRoadProjectName(p)) return 'BRX9579';
   if(isGwbCablesProjectName(p)) return 'GWB';
   if(p.includes('LEMOINE') || p.includes('244.289')) return projectName;
   if(p.includes('DYRE') || p.includes('DYER') || p.includes('C35311') || p.includes('C-35311')) return 'DYRE';
   return projectName;
 }
 function pirMaterialProjectLabel(key){
+  if(key==='BRX9579') return 'Boston Road';
   if(key==='GWB') return 'GWB';
   if(key==='DYRE') return 'Dyre Ave';
   return key || 'Job';
