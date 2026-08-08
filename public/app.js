@@ -3103,23 +3103,49 @@ function coaCandidateScore(c){
   return score;
 }
 function coaDedupeAnalyzedCandidates(rows){
-  const best=new Map();
-  rows.forEach((c,idx)=>{
+  // One review row per batch. When the same batch appears on a CMTR summary and
+  // a detailed COA, merge the useful fields and prefer the detailed COA as proof.
+  const groups=new Map();
+  (rows||[]).forEach((c,idx)=>{
     const key=String(c.batch||'').toUpperCase().replace(/[^A-Z0-9-]/g,'') || `NO-BATCH-${idx}`;
-    if(!best.has(key) || coaCandidateScore(c)>coaCandidateScore(best.get(key))) best.set(key,c);
+    if(!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(c);
   });
-  return rows.map(c=>{
-    const key=String(c.batch||'').toUpperCase().replace(/[^A-Z0-9-]/g,'');
-    const winner=key?best.get(key):c;
-    return {...c,duplicateInUpload:!!key&&winner!==c,add:(!c.duplicateExisting && (!key||winner===c))};
+  const fieldNames=['project','mfr','prodName','description','color','component','itemNo','batch','mfgDate','expDate','shelfLife'];
+  const merged=[];
+  groups.forEach((items,key)=>{
+    const sorted=[...items].sort((a,b)=>coaCandidateScore(b)-coaCandidateScore(a));
+    const best={...sorted[0]};
+    for(const field of fieldNames){
+      if(!String(best[field]||'').trim()){
+        const donor=sorted.find(x=>String(x?.[field]||'').trim());
+        if(donor) best[field]=donor[field];
+      }
+    }
+    // If another page has a more authoritative Certificate of Analysis source,
+    // use that source page/file while retaining values found on the summary.
+    const detailed=sorted.find(x=>x?.sourceType==='Certificate of Analysis');
+    if(detailed){
+      best.sourceFileName=detailed.sourceFileName||best.sourceFileName;
+      best.sourcePage=detailed.sourcePage||best.sourcePage;
+      best.sourceType=detailed.sourceType||best.sourceType;
+      best.confidence=Math.max(Number(best.confidence||0),Number(detailed.confidence||0));
+    }
+    const existing=sorted.find(x=>x?.duplicateExisting)?.duplicateExisting || best.duplicateExisting || null;
+    best.duplicateExisting=existing;
+    best.duplicateInUpload=false;
+    best.mergedSourceCount=items.length;
+    best.add=!existing;
+    merged.push(best);
   });
+  return merged;
 }
 function renderCoaImportReview(){
   const wrap=document.getElementById('adminImportReview'); if(!wrap)return;
   const state=window.adminCoaImportState||{rows:[]}; const rows=state.rows||[];
   if(!rows.length){wrap.innerHTML='';return;}
   const active=rows.filter(r=>r.add&&!r.duplicateExisting&&!r.duplicateInUpload).length;
-  wrap.innerHTML=`<div class="panel" style="margin-top:14px"><h3>Review Textract Results</h3><p class="tiny">${rows.length} row(s) found. ${active} currently selected to apply. Duplicate batches start unchecked. Review/edit every row before applying.</p><div class="adminTableWrap"><table class="adminTable"><tr><th>Add</th><th>Source</th><th>Component</th><th>Manufacturer</th><th>Product</th><th>Batch</th><th>Mfg Date</th><th>Exp Date</th><th>Item No.</th><th>Status</th></tr>${rows.map((r,i)=>`<tr class="${(!r.add||r.duplicateExisting||r.duplicateInUpload)?'mutedRow':''}"><td><input type="checkbox" data-coa-add="${i}" ${r.add?'checked':''} ${r.duplicateExisting?'disabled':''}></td><td><b>${esc(r.sourceFileName||'')}</b><br><small>Page ${Number(r.sourcePage||1)} · ${esc(r.sourceType||'Textract')}</small></td><td>${coaReviewSelect('component-'+i,['Base / Paint','Hardener / Converter','Dust / Powder','Accelerator','Thinner','Other'],r.component)}</td><td><input data-coa-edit="mfr-${i}" value="${esc(r.mfr||'')}"></td><td><input data-coa-edit="prodName-${i}" value="${esc(r.prodName||'')}"></td><td><input data-coa-edit="batch-${i}" value="${esc(r.batch||'')}"></td><td><input data-coa-edit="mfgDate-${i}" value="${esc(r.mfgDate||'')}"></td><td><input data-coa-edit="expDate-${i}" value="${esc(r.expDate||'')}"></td><td><input data-coa-edit="itemNo-${i}" value="${esc(r.itemNo||'')}"></td><td>${r.duplicateExisting?`<b>Already active</b><br><small>${esc(r.duplicateExisting.label||r.duplicateExisting.batch||'')}</small>`:r.duplicateInUpload?'<b>Duplicate in this upload</b><br><small>Better source page selected above/below.</small>':'Ready'}</td></tr>`).join('')}</table></div><div class="actions" style="margin-top:12px"><button class="btn" id="adminApplyAnalyzedCoasBtn" type="button">Apply Reviewed COAs</button></div><div id="adminApplyCoaMsg"></div></div>`;
+  wrap.innerHTML=`<div class="panel" style="margin-top:14px"><h3>Review Textract Results</h3><p class="tiny">${rows.length} row(s) found. ${active} currently selected to apply. Duplicate batches start unchecked. Review/edit every row before applying.</p><div class="adminTableWrap"><table class="adminTable"><tr><th>Add</th><th>Source</th><th>Component</th><th>Manufacturer</th><th>Product</th><th>Batch</th><th>Mfg Date</th><th>Exp Date</th><th>Item No.</th><th>Status</th></tr>${rows.map((r,i)=>`<tr class="${(!r.add||r.duplicateExisting||r.duplicateInUpload)?'mutedRow':''}"><td><input type="checkbox" data-coa-add="${i}" ${r.add?'checked':''} ${r.duplicateExisting?'disabled':''}></td><td><b>${esc(r.sourceFileName||'')}</b><br><small>Page ${Number(r.sourcePage||1)} · ${esc(r.sourceType||'Textract')}${Number(r.mergedSourceCount||1)>1?` · merged from ${Number(r.mergedSourceCount)} matching source pages`:''}</small></td><td>${coaReviewSelect('component-'+i,['Base / Paint','Hardener / Converter','Dust / Powder','Accelerator','Thinner','Other'],r.component)}</td><td><input data-coa-edit="mfr-${i}" value="${esc(r.mfr||'')}"></td><td><input data-coa-edit="prodName-${i}" value="${esc(r.prodName||'')}"></td><td><input data-coa-edit="batch-${i}" value="${esc(r.batch||'')}"></td><td><input data-coa-edit="mfgDate-${i}" value="${esc(r.mfgDate||'')}"></td><td><input data-coa-edit="expDate-${i}" value="${esc(r.expDate||'')}"></td><td><input data-coa-edit="itemNo-${i}" value="${esc(r.itemNo||'')}"></td><td>${r.duplicateExisting?`<b>Already active</b><br><small>${esc(r.duplicateExisting.label||r.duplicateExisting.batch||'')}</small>`:r.duplicateInUpload?'<b>Duplicate in this upload</b><br><small>Better source page selected above/below.</small>':(!String(r.mfgDate||'').trim()?'<b>Ready</b><br><small>Mfg date not shown in analyzed source.</small>':'Ready')}</td></tr>`).join('')}</table></div><div class="actions" style="margin-top:12px"><button class="btn" id="adminApplyAnalyzedCoasBtn" type="button">Apply Reviewed COAs</button></div><div id="adminApplyCoaMsg"></div></div>`;
   rows.forEach((r,i)=>{
     const add=document.querySelector(`[data-coa-add="${i}"]`); if(add) add.onchange=()=>{r.add=add.checked;};
     const comp=document.querySelector(`[data-coa-field="component-${i}"]`); if(comp) comp.onchange=()=>{r.component=comp.value;};
@@ -3133,7 +3159,7 @@ async function applyReviewedCoas(){
   if(!rows.length){if(msg)msg.innerHTML='<div class="notice">Nothing is selected to apply.</div>';return;}
   for(const r of rows){if(!String(r.prodName||'').trim()||!String(r.batch||'').trim()){if(msg)msg.innerHTML='<div class="notice">Every selected row needs a Product and Batch before applying.</div>';return;}}
   if(!confirm(`Apply ${rows.length} reviewed COA batch row(s) to ${project}? They will become available in the PIR helper.`))return;
-  btn.disabled=true; btn.textContent='Applying...'; if(msg)msg.innerHTML='<div class="notice">Saving reviewed COAs...</div>';
+  btn.disabled=true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy','true'); btn.textContent='Applying...'; if(msg)msg.innerHTML='<div class="notice">Saving reviewed COAs...</div>';
   try{
     const fd=new FormData(); fd.append('project',project); (state.files||[]).forEach(f=>fd.append('coaFiles',f)); fd.append('candidates',JSON.stringify(rows));
     const res=await fetch('/api/admin/materials/apply-import',{method:'POST',headers:{'x-admin-pin':adminPin()},body:fd}); const json=await res.json(); if(!res.ok||!json.ok)throw new Error(json.error||'Apply failed');
@@ -3154,7 +3180,7 @@ async function renderAdminCoa(editMat=null, mode='list'){
     let workPanel='';
     if(mode==='manual') workPanel=materialFormHtml(editMat||{}, savedProject);
     if(mode==='import') workPanel=coaImportHtml(savedProject);
-    c.innerHTML=`<div class="panel"><h2>COA / Material Library</h2><p class="tiny">Simple view: choose a job, import COA PDFs, add one material manually, or show what is already loaded for that job.</p><div class="adminSimpleBar"><label>Project / Job</label><select id="adminMatFilterProject"><option value="">Choose a job...</option>${adminProjectOptions(savedProject)}</select><button class="btn" id="adminShowMaterialsBtn" type="button">Show Current COAs</button><button class="btn" id="adminImportCoaBtn" type="button">Import COAs</button><button class="btn light" id="adminCoaAwsTestBtn" type="button">Test AWS Textract</button><button class="btn light" id="adminAddManualCoaBtn" type="button">Add Single COA Manually</button><span>${active.length} active / ${rows.length} total</span><span id="adminCoaAwsStatus"></span></div>${workPanel}<div class="adminToolbar"><input id="adminMatSearch" placeholder="Search product, batch, color"><span id="adminMatVisibleCount"></span></div><div id="adminMatTable"></div></div>`;
+    c.innerHTML=`<div class="panel"><h2>COA / Material Library</h2><p class="tiny">Simple view: choose a job, import COA PDFs, add one material manually, or show what is already loaded for that job.</p><div class="adminSimpleBar"><label>Project / Job</label><select id="adminMatFilterProject"><option value="">Choose a job...</option>${adminProjectOptions(savedProject)}</select><button class="btn" id="adminShowMaterialsBtn" type="button">Show Current COAs</button><button class="btn" id="adminImportCoaBtn" type="button">Import COAs</button><button class="btn light" id="adminAddManualCoaBtn" type="button">Add Single COA Manually</button><span>${active.length} active / ${rows.length} total</span><span id="adminCoaAwsStatus"></span></div>${workPanel}<div class="adminToolbar"><input id="adminMatSearch" placeholder="Search product, batch, color"><span id="adminMatVisibleCount"></span></div><div id="adminMatTable"></div></div>`;
     if(mode==='manual') setupAdminMaterialForm();
     if(mode==='import') setupAdminCoaImport();
     const clearMatTable=(msg='Choose a job, then click Show Current COAs.')=>{
@@ -3181,7 +3207,6 @@ async function renderAdminCoa(editMat=null, mode='list'){
     document.getElementById('adminMatFilterProject').onchange=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); window.adminCoaShowMaterials=false; clearMatTable();};
     document.getElementById('adminShowMaterialsBtn').onclick=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); window.adminCoaShowMaterials=true; renderTable();};
     document.getElementById('adminImportCoaBtn').onclick=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); window.adminCoaShowMaterials=false; renderAdminCoa(null,'import');};
-    const awsTestBtn=document.getElementById('adminCoaAwsTestBtn'); if(awsTestBtn) awsTestBtn.onclick=async()=>{const status=document.getElementById('adminCoaAwsStatus'); awsTestBtn.disabled=true; awsTestBtn.textContent='Testing AWS...'; if(status) status.textContent=''; try{const res=await fetch('/api/admin/materials/aws-test',{method:'POST',headers:{'x-admin-pin':adminPin()}}); const json=await res.json(); if(!res.ok||!json.ok) throw new Error(json.error||'AWS Textract test failed'); if(status) status.innerHTML=`<span style="color:#137333;font-weight:700">✓ ${esc(json.message||'AWS Textract connected')}</span>`;}catch(e){if(status) status.innerHTML=`<span style="color:#b3261e;font-weight:700">${esc(e.message)}</span>`;}finally{awsTestBtn.disabled=false; awsTestBtn.textContent='Test AWS Textract';}};
     document.getElementById('adminAddManualCoaBtn').onclick=()=>{window.adminCoaSelectedProject=val('adminMatFilterProject'); window.adminCoaShowMaterials=false; renderAdminCoa(null,'manual');};
     window.adminCoaShowMaterials=false;
     clearMatTable();
@@ -3197,7 +3222,7 @@ function setupAdminCoaImport(){
     const msg=document.getElementById('adminImportMsg');
     if(!project){msg.innerHTML='<div class="notice">Choose a project/job first.</div>';return;}
     if(!files.length){msg.innerHTML='<div class="notice">Choose at least one COA PDF.</div>';return;}
-    btn.disabled=true; btn.textContent='Analyzing...';
+    btn.disabled=true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy','true'); btn.textContent='Analyzing...';
     const fileInput=document.getElementById('adminImportFiles'); if(fileInput)fileInput.disabled=true;
     if(sel)sel.disabled=true;
     window.adminCoaImportState={project,files,rows:[]};
@@ -3233,11 +3258,11 @@ function setupAdminCoaImport(){
       const noFind=rows.length===0;
       msg.innerHTML=noFind?'<div class="notice">Textract finished, but no product/batch rows were confidently identified. Nothing has been added. You can cancel and use Add Single COA Manually.</div>':`<div class="notice success">Textract found ${rows.length} batch row(s). ${selected} selected to apply; ${duplicates} duplicate row(s) were left unchecked. Review below before applying.</div>`;
       renderCoaImportReview();
-      btn.textContent='Analysis Complete';
+      btn.classList.remove('is-busy'); btn.classList.add('is-complete'); btn.removeAttribute('aria-busy'); btn.textContent='Analysis Complete';
       // Golden rule: keep the completed analysis button disabled so this same batch cannot be started twice accidentally.
     }catch(e){
       msg.innerHTML=`<div class="notice">${esc(e.message)}</div>`;
-      btn.disabled=false; btn.textContent='Analyze COAs'; if(fileInput)fileInput.disabled=false; if(sel)sel.disabled=false;
+      btn.disabled=false; btn.classList.remove('is-busy','is-complete'); btn.removeAttribute('aria-busy'); btn.textContent='Analyze COAs'; if(fileInput)fileInput.disabled=false; if(sel)sel.disabled=false;
     }
   };
 }

@@ -1136,3 +1136,8 @@
   .bolProductCell{min-width:220px}
   .bolInventorySuggest{left:0!important;right:auto!important;width:min(300px,86vw)!important;max-height:260px!important}
 }
+
+/* JAGD Golden Rule: action buttons visibly lock while processing/completed. */
+.btn:disabled{opacity:.48!important;cursor:not-allowed!important;filter:grayscale(.35);box-shadow:none!important;}
+.btn.is-busy:disabled{opacity:.58!important;}
+.btn.is-complete:disabled{opacity:.46!important;background:#d7dbe1!important;color:#4b5563!important;border-color:#c8cdd4!important;}
