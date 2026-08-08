@@ -4,6 +4,71 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const { nanoid } = require('nanoid');
+const crypto = require('crypto');
+const https = require('https');
+
+
+
+function coaAwsSha256Hex(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function coaAwsHmac(key, value, encoding) {
+  return crypto.createHmac('sha256', key).update(value, 'utf8').digest(encoding);
+}
+
+function coaAwsAmzDate(date = new Date()) {
+  return date.toISOString().replace(/[:-]|\.\d{3}/g, '');
+}
+
+function coaAwsSignedRequest({ service, region, host, method = 'POST', pathname = '/', headers = {}, body = Buffer.alloc(0) }) {
+  return new Promise((resolve, reject) => {
+    const accessKeyId = String(process.env.AWS_ACCESS_KEY_ID || '').trim();
+    const secretAccessKey = String(process.env.AWS_SECRET_ACCESS_KEY || '').trim();
+    if (!accessKeyId || !secretAccessKey) return reject(new Error('AWS access keys are not configured in Render.'));
+    const bodyBuffer = Buffer.isBuffer(body) ? body : Buffer.from(String(body || ''), 'utf8');
+    const now = new Date();
+    const amzDate = coaAwsAmzDate(now);
+    const dateStamp = amzDate.slice(0, 8);
+    const payloadHash = coaAwsSha256Hex(bodyBuffer);
+    const normalized = {};
+    Object.entries(headers || {}).forEach(([key, value]) => { normalized[String(key).toLowerCase()] = String(value).trim().replace(/\s+/g, ' '); });
+    normalized.host = host;
+    normalized['x-amz-date'] = amzDate;
+    normalized['x-amz-content-sha256'] = payloadHash;
+    const signedHeaderNames = Object.keys(normalized).sort();
+    const canonicalHeaders = signedHeaderNames.map(name => `${name}:${normalized[name]}\n`).join('');
+    const canonicalRequest = [method.toUpperCase(), pathname, '', canonicalHeaders, signedHeaderNames.join(';'), payloadHash].join('\n');
+    const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+    const stringToSign = ['AWS4-HMAC-SHA256', amzDate, credentialScope, coaAwsSha256Hex(canonicalRequest)].join('\n');
+    const kDate = coaAwsHmac(Buffer.from(`AWS4${secretAccessKey}`, 'utf8'), dateStamp);
+    const kRegion = coaAwsHmac(kDate, region);
+    const kService = coaAwsHmac(kRegion, service);
+    const kSigning = coaAwsHmac(kService, 'aws4_request');
+    const signature = coaAwsHmac(kSigning, stringToSign, 'hex');
+    normalized.authorization = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaderNames.join(';')}, Signature=${signature}`;
+    const request = https.request({ hostname: host, method: method.toUpperCase(), path: pathname, headers: normalized }, response => {
+      const chunks = [];
+      response.on('data', chunk => chunks.push(chunk));
+      response.on('end', () => {
+        const responseBody = Buffer.concat(chunks);
+        const text = responseBody.toString('utf8');
+        if (response.statusCode >= 200 && response.statusCode < 300) return resolve({ statusCode: response.statusCode, body: responseBody, text });
+        let message = text || `AWS request failed with status ${response.statusCode}.`;
+        try { const parsed = JSON.parse(text); message = parsed.Message || parsed.message || parsed.__type || message; } catch (_) {}
+        const error = new Error(message); error.statusCode = response.statusCode; reject(error);
+      });
+    });
+    request.on('error', reject);
+    if (bodyBuffer.length) request.write(bodyBuffer);
+    request.end();
+  });
+}
+
+function coaAwsTestPng() {
+  // Tiny valid 1x1 PNG; enough to verify AnalyzeDocument permission/connectivity.
+  return Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z0xkAAAAASUVORK5CYII=', 'base64');
+}
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -1228,6 +1293,32 @@ app.post('/api/admin/materials', requireAdmin, (req, res) => {
 });
 
 
+
+
+
+app.post('/api/admin/materials/aws-test', requireAdmin, async (req, res) => {
+  const region = String(process.env.AWS_REGION || 'us-east-1').trim() || 'us-east-1';
+  const configured = {
+    accessKeyId: !!String(process.env.AWS_ACCESS_KEY_ID || '').trim(),
+    secretAccessKey: !!String(process.env.AWS_SECRET_ACCESS_KEY || '').trim(),
+    region
+  };
+  if (!configured.accessKeyId || !configured.secretAccessKey) {
+    return res.status(500).json({ ok: false, configured, error: 'AWS Forms credentials are not configured in Render.' });
+  }
+  try {
+    const host = `textract.${region}.amazonaws.com`;
+    const body = Buffer.from(JSON.stringify({ Document: { Bytes: coaAwsTestPng().toString('base64') }, FeatureTypes: ['TABLES', 'FORMS'] }), 'utf8');
+    const response = await coaAwsSignedRequest({
+      service: 'textract', region, host, method: 'POST', pathname: '/',
+      headers: { 'content-type': 'application/x-amz-json-1.1', 'x-amz-target': 'Textract.AnalyzeDocument' }, body
+    });
+    const parsed = JSON.parse(response.text || '{}');
+    return res.json({ ok: true, region, message: `AWS Textract connection verified in ${region}.`, pages: Number(parsed?.DocumentMetadata?.Pages || 0), blocks: Array.isArray(parsed?.Blocks) ? parsed.Blocks.length : 0 });
+  } catch (err) {
+    return res.status(502).json({ ok: false, region, error: err.message || 'Textract connection failed.' });
+  }
+});
 
 app.post('/api/admin/materials/import', requireAdmin, upload.array('coaFiles', 60), (req, res) => {
   const project = cleanText(req.body.project);
