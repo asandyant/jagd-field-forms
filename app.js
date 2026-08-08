@@ -58,6 +58,8 @@ let serverMaterials = [];
 let serverMaterialsLoaded = false;
 let bolInventoryItems = [];
 let bolInventoryLoaded = false;
+let bolInventoryLoading = false;
+let bolInventoryLoadPromise = null;
 let activeBolProductInput = null;
 
 function slug(text){
@@ -148,24 +150,33 @@ function savePirInstrumentSerials(data){
   try{
     const serials=(data&&data.instruments||[]).map(x=>String(x&&x.serial||'').trim());
     if(!serials.some(Boolean)) return;
-    localStorage.setItem('jagdPirLastInstrumentSerials', JSON.stringify({savedAt:new Date().toISOString(), project:data.project||'', reportDate:data.reportDate||'', serials}));
+    const saved={savedAt:new Date().toISOString(), project:data.project||'', reportDate:data.reportDate||'', serials};
+    localStorage.setItem('jagdPirLastInstrumentSerials', JSON.stringify(saved));
+    fetch('/api/pir/last-instrument-serials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(saved)}).catch(()=>{});
   }catch(e){console.warn('Could not save PIR instrument serials', e);}
 }
-function loadPirInstrumentSerials(){
+async function loadPirInstrumentSerials(){
   const msg=document.getElementById('pirSerialMsg');
+  if(msg) msg.innerHTML='<div class="tiny noticeInline">Loading the last saved PIR serial numbers...</div>';
+  let saved=null;
   try{
-    const raw=localStorage.getItem('jagdPirLastInstrumentSerials');
-    if(!raw){ if(msg) msg.innerHTML='<div class="tiny noticeInline">No prior PIR serial numbers found on this device.</div>'; return; }
-    const saved=JSON.parse(raw);
-    const serials=Array.isArray(saved.serials)?saved.serials:[];
-    let filled=0;
-    pirInstrumentNames().forEach((_,i)=>{
-      const el=document.getElementById('pirInstSerial'+i);
-      const v=String(serials[i]||'').trim();
-      if(el && v){ el.value=v; filled++; }
-    });
-    if(msg) msg.innerHTML=`<div class="tiny success">Loaded ${filled} serial number${filled===1?'':'s'} from last saved PIR${saved.reportDate?' ('+esc(saved.reportDate)+')':''}.</div>`;
-  }catch(e){ if(msg) msg.innerHTML='<div class="tiny noticeInline">Could not load prior serial numbers from this device.</div>'; console.warn(e); }
+    const res=await fetch('/api/pir/last-instrument-serials',{headers:{Accept:'application/json'}});
+    const json=await res.json().catch(()=>({}));
+    if(res.ok && Array.isArray(json.serials) && json.serials.some(Boolean)) saved=json;
+  }catch(e){}
+  if(!saved){
+    try{ const raw=localStorage.getItem('jagdPirLastInstrumentSerials'); if(raw) saved=JSON.parse(raw); }catch(e){}
+  }
+  if(!saved){ if(msg) msg.innerHTML='<div class="tiny noticeInline">No prior PIR serial numbers have been saved yet.</div>'; return; }
+  const serials=Array.isArray(saved.serials)?saved.serials:[];
+  let filled=0;
+  pirInstrumentNames().forEach((_,i)=>{
+    const el=document.getElementById('pirInstSerial'+i);
+    const v=String(serials[i]||'').trim();
+    if(el && v){ el.value=v; filled++; }
+  });
+  try{ localStorage.setItem('jagdPirLastInstrumentSerials',JSON.stringify(saved)); }catch(e){}
+  if(msg) msg.innerHTML=`<div class="tiny success">Loaded ${filled} serial number${filled===1?'':'s'} from last saved PIR${saved.reportDate?' ('+esc(saved.reportDate)+')':''}.</div>`;
 }
 
 function parsePirTemp(value){
@@ -346,6 +357,23 @@ function formSaveTitle(type, dateValue, projectName='', crewName=''){
   const datePart = dateToDisplay(dateValue) || 'No Date';
   const projectPart = cleanFilePart(projectName);
   return projectPart ? `${prefix} - ${datePart} - ${projectPart}` : `${prefix} - ${datePart}`;
+}
+
+function mewpBaseSaveTitle(dateValue, serial='', projectName=''){
+  const datePart = dateToDisplay(dateValue) || 'No Date';
+  const serialPart = cleanFilePart(serial) || 'No Serial';
+  const projectPart = cleanFilePart(projectName);
+  return ['MEWP', datePart, serialPart, projectPart].filter(Boolean).join(' - ');
+}
+async function mewpNextSaveTitle(data){
+  const baseTitle = mewpBaseSaveTitle(data?.inspectionDate, data?.serial, data?.jobName);
+  try{
+    const q = new URLSearchParams({ date:String(data?.inspectionDate||''), serial:String(data?.serial||''), baseTitle });
+    const r = await fetch('/api/mewp/next-file-title?' + q.toString(), { cache:'no-store' });
+    const j = await r.json();
+    if(r.ok && j?.title) return j.title;
+  }catch(e){ console.warn('MEWP sequence lookup unavailable; using base filename.', e); }
+  return baseTitle;
 }
 function dateToDotMMDDYY(dateValue){ const d=String(dateValue||''); const m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return ''; return `${m[2]}.${m[3]}.${m[1].slice(2)}`; }
 function dateToSlashYYYY(dateValue){ const d=String(dateValue||''); const m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return d; return `${m[2]}/${m[3]}/${m[1]}`; }
@@ -807,9 +835,15 @@ function isGwbCablesProjectName(text){
   const p=String(text||'').toUpperCase();
   return p.includes('GWB CABLE') || p.includes('GWB-244.048') || p.includes('GWB 244.048') || p.includes('244.048');
 }
+function isBostonRoadProjectName(text){
+  const p=String(text||'').toUpperCase();
+  return p.includes('BRX9579') || p.includes('BOSTON ROAD');
+}
 function pirMaterialProjectKey(){
   const raw=projectValue('pirProject');
   const p=raw.toUpperCase();
+  // Match special COA libraries by stable contract/job identifiers instead of fragile display labels.
+  if(isBostonRoadProjectName(p)) return 'BRX9579';
   // Only the actual GWB Cables job gets the GWB cable COAs. Do not let GW 244.289 Lemoine Ave pull GWB Cables COAs.
   if(isGwbCablesProjectName(p)) return 'GWB';
   if(p.includes('LEMOINE') || p.includes('244.289')) return raw;
@@ -821,18 +855,21 @@ function materialProjectMatches(m, key){
   const project=String(m.project||'').toUpperCase();
   const keyText=String(key||'').toUpperCase();
   if(!key) return false;
+  if(keyText==='BRX9579') return project.includes('BRX9579') || project.includes('BOSTON ROAD');
   if(key==='GWB') return project === 'GWB' || isGwbCablesProjectName(project);
   if(key==='DYRE') return project.includes('DYRE') || project.includes('C35311') || project.includes('C-35311');
   return project===keyText;
 }
 function adminProjectKeyFromName(projectName){
   const p=String(projectName||'').toUpperCase();
+  if(isBostonRoadProjectName(p)) return 'BRX9579';
   if(isGwbCablesProjectName(p)) return 'GWB';
   if(p.includes('LEMOINE') || p.includes('244.289')) return projectName;
   if(p.includes('DYRE') || p.includes('DYER') || p.includes('C35311') || p.includes('C-35311')) return 'DYRE';
   return projectName;
 }
 function pirMaterialProjectLabel(key){
+  if(key==='BRX9579') return 'Boston Road';
   if(key==='GWB') return 'GWB';
   if(key==='DYRE') return 'Dyre Ave';
   return key || 'Job';
@@ -1125,6 +1162,22 @@ function home(){
         </div>
         <strong>Open Form</strong>
       </a>
+      <a class="formCard receiptCard" href="${freshRoute('#/receipts')}">
+        <div>
+          <span class="formTag">Job Receipts</span>
+          <h2>Receipts</h2>
+          <p>Choose the job, take photos or select multiple saved receipt photos, and submit them in one batch.</p>
+        </div>
+        <strong>Open</strong>
+      </a>
+      <a class="formCard reimbursementCard" href="${freshRoute('#/reimbursements')}">
+        <div>
+          <span class="formTag">Personal Purchase</span>
+          <h2>Reimbursements</h2>
+          <p>For purchases paid personally. Choose who gets reimbursed, the job, and add the receipt photos.</p>
+        </div>
+        <strong>Open</strong>
+      </a>
       <a class="formCard tmCard" href="${freshRoute('#/tm')}">
         <div>
           <span class="formTag">Receipts / Billing</span>
@@ -1265,12 +1318,12 @@ function buildPirPrint(data=collectPir(), files=[]){
 }
 
 function mewpForm(){
- app.innerHTML=`<div class="container printOnly"><h1>MEWP Daily Equipment Inspection</h1><div class="panel"><h2>Equipment / Job Information</h2><div class="grid three">${projectField('mewpJobName','Project / Job')} ${field('mewpLocation','Location / Work Area')} ${field('mewpDate','Inspection Date','date')} ${field('mewpTime','Inspection Time','time')} ${field('mewpInspector','Inspector Name')} ${field('mewpCompany','Company','text','value="JAGD Construction"')} ${field('mewpEquipmentId','Equipment ID / Unit #')} ${field('mewpMakeModel','Make / Model')} ${field('mewpSerial','Serial #')} ${field('mewpHours','Hour Meter')} ${field('mewpOperator','Operator')} ${selectField('mewpOverall','Overall Status',['Ready for Use','Do Not Use - Correction Required','N/A'])}</div></div><div class="panel"><h2>MEWP Checklist</h2>${mewpQuestions.map((q,i)=>`<div class="checkrow"><div class="questionTitle">${i+1}. ${q}</div><div class="choiceBtns"><label><input type="radio" name="mewpQ${i}" value="PASS">PASS</label><label><input type="radio" name="mewpQ${i}" value="FAIL">FAIL</label><label><input type="radio" name="mewpQ${i}" value="N/A">N/A</label></div><label>Notes / corrective action</label><textarea id="mewpNote${i}"></textarea></div>`).join('')}</div><div class="panel"><h2>Pictures / Signature</h2>${photoInput('mewpPhotos','Pictures')}${textarea('mewpGeneralNotes','General Notes')}${sigField('mewpSignature','Inspector Signature')}<div class="actions"><button class="btn" id="mewpPrintBtn" type="button">Save PDF / Print MEWP</button></div>${printPdfHelp('mewp')}<div id="mewpMsg"></div></div></div>`;
+ app.innerHTML=`<div class="container printOnly"><h1>MEWP Daily Equipment Inspection</h1><div class="panel"><h2>Equipment / Job Information</h2><div class="grid three">${projectField('mewpJobName','Project / Job')} ${field('mewpLocation','Location / Work Area')} ${field('mewpDate','Inspection Date','date')} ${field('mewpTime','Inspection Time','time')} ${field('mewpInspector','Inspector Name')} ${field('mewpCompany','Company','text','value="JAGD Construction"')} ${field('mewpEquipmentId','Equipment ID / Unit #')} ${field('mewpMakeModel','Make / Model')} ${field('mewpSerial','Serial # *')} ${field('mewpHours','Hour Meter')} ${field('mewpOperator','Operator')} ${selectField('mewpOverall','Overall Status',['Ready for Use','Do Not Use - Correction Required','N/A'])}</div></div><div class="panel"><h2>MEWP Checklist</h2>${mewpQuestions.map((q,i)=>`<div class="checkrow"><div class="questionTitle">${i+1}. ${q}</div><div class="choiceBtns"><label><input type="radio" name="mewpQ${i}" value="PASS">PASS</label><label><input type="radio" name="mewpQ${i}" value="FAIL">FAIL</label><label><input type="radio" name="mewpQ${i}" value="N/A">N/A</label></div><label>Notes / corrective action</label><textarea id="mewpNote${i}"></textarea></div>`).join('')}</div><div class="panel"><h2>Pictures / Signature</h2>${photoInput('mewpPhotos','Pictures')}${textarea('mewpGeneralNotes','General Notes')}${sigField('mewpSignature','Inspector Signature')}<div class="actions"><button class="btn" id="mewpPrintBtn" type="button">Save PDF / Print MEWP</button></div>${printPdfHelp('mewp')}<div id="mewpMsg"></div></div></div>`;
  setupOtherProject('mewpJobName');
  setupPhotoPreview('mewpPhotos');
  document.getElementById('mewpDate').value=new Date().toISOString().slice(0,10);
  initSignatureButtons();
- document.getElementById('mewpPrintBtn').onclick=(e)=>{e.preventDefault(); try{const btn=document.getElementById('mewpPrintBtn'); const msg=document.getElementById('mewpMsg'); if(btn) btn.disabled=true; if(msg) msg.innerHTML='<div class="notice">Opening MEWP print / save screen...</div>'; const data=collectMewp(); document.title = formSaveTitle('mewp', data.inspectionDate, data.jobName); buildMewpPrint(data, []); openPrintNow('mewpMsg'); logGeneratedForm('mewp', data.jobName, data.inspectionDate, document.title); setTimeout(()=>{if(btn) btn.disabled=false;},1200);}catch(err){const msg=document.getElementById('mewpMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; const btn=document.getElementById('mewpPrintBtn'); if(btn) btn.disabled=false; console.error(err);} };
+ document.getElementById('mewpPrintBtn').onclick=async(e)=>{e.preventDefault(); try{const btn=document.getElementById('mewpPrintBtn'); const msg=document.getElementById('mewpMsg'); if(btn) btn.disabled=true; const data=collectMewp(); if(!String(data.serial||'').trim()){ if(msg) msg.innerHTML='<div class="notice"><b>Serial # is required.</b> Enter the MEWP serial number before saving.</div>'; const serial=document.getElementById('mewpSerial'); if(serial){serial.focus(); serial.scrollIntoView({behavior:'smooth',block:'center'});} if(btn) btn.disabled=false; return; } if(msg) msg.innerHTML='<div class="notice">Preparing MEWP PDF...</div>'; document.title = await mewpNextSaveTitle(data); buildMewpPrint(data, []); await openPrintNow('mewpMsg'); logGeneratedForm('mewp', data.jobName, data.inspectionDate, document.title); setTimeout(()=>{if(btn) btn.disabled=false;},1200);}catch(err){const msg=document.getElementById('mewpMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; const btn=document.getElementById('mewpPrintBtn'); if(btn) btn.disabled=false; console.error(err);} };
 }
 function collectMewp(){return {jobName:projectValue('mewpJobName'),location:val('mewpLocation'),inspectionDate:val('mewpDate'),time:val('mewpTime'),inspector:val('mewpInspector'),company:val('mewpCompany'),equipmentId:val('mewpEquipmentId'),makeModel:val('mewpMakeModel'),serial:val('mewpSerial'),hours:val('mewpHours'),operator:val('mewpOperator'),overall:val('mewpOverall'),generalNotes:val('mewpGeneralNotes'),signature:val('mewpSignature'),signatureData:signatureStore.mewpSignature||'',questions:mewpQuestions.map((q,i)=>({q,status:checked('mewpQ'+i),notes:val('mewpNote'+i)}))};}
 function buildMewpPrint(data=collectMewp(), files=[]){const rows=(data.questions||[]).map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.q)}</td><td>${esc(x.status)}</td><td>${esc(x.notes)}</td></tr>`).join(''); const html=`<div class="mewpSheet mewpSheetSafe"><div class="mewpHeader"><img src="${logo}"><div class="mewpTitle">MEWP Daily Equipment Inspection<br><span style="font-size:12px;font-weight:400">JAGD Construction</span></div></div><table class="printTable mewpInfoTable"><tr><td><b>Project / Job:</b> ${esc(data.jobName)}</td><td><b>Location:</b> ${esc(data.location)}</td><td><b>Date:</b> ${esc(data.inspectionDate)}</td></tr><tr><td><b>Inspector:</b> ${esc(data.inspector)}</td><td><b>Time:</b> ${esc(data.time)}</td><td><b>Overall Status:</b> ${esc(data.overall)}</td></tr><tr><td><b>Equipment ID:</b> ${esc(data.equipmentId)}</td><td><b>Make / Model:</b> ${esc(data.makeModel)}</td><td><b>Serial #:</b> ${esc(data.serial)}</td></tr><tr><td><b>Hour Meter:</b> ${esc(data.hours)}</td><td><b>Operator:</b> ${esc(data.operator)}</td><td><b>Company:</b> ${esc(data.company)}</td></tr></table><h3>Inspection Checklist</h3><table class="printTable mewpCheckTable"><tr><th>#</th><th>Inspection Item</th><th>Status</th><th>Notes / Corrective Action</th></tr>${rows}</table><p class="mewpNotesPrint"><b>General Notes:</b> ${esc(data.generalNotes)}</p><p class="mewpSigPrint"><b>Inspector Signature:</b> ${data.signatureData?`<img class="sigPrint" src="${data.signatureData}">`:esc(data.signature)}</p></div>`; setPrint(html); return html;}
@@ -1880,6 +1933,21 @@ function getDwlLastCrewStorageKey(project, crew){
   if(!p || !c) return '';
   return `jagdDwlLastCrewNames:${p}:${c}`;
 }
+
+async function saveDwlLastCrewToServer(project, crew, names){
+  if(!project || !crew || !Array.isArray(names) || !names.length) return;
+  try{
+    await fetch('/api/dwl/last-crew', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project, crew, names:names.slice(0,40)})});
+  }catch(e){ /* local browser copy remains the fallback */ }
+}
+async function loadDwlLastCrewFromServer(project, crew){
+  try{
+    const q=new URLSearchParams({project, crew});
+    const res=await fetch('/api/dwl/last-crew?'+q.toString(), {headers:{Accept:'application/json'}});
+    const json=await res.json().catch(()=>({}));
+    return res.ok && Array.isArray(json.names) ? json.names : [];
+  }catch(e){ return []; }
+}
 function saveDwlLastCrewFromRows(){
   try{
     const names=getDwlCrewNamesFromRows();
@@ -1890,6 +1958,7 @@ function saveDwlLastCrewFromRows(){
     const cleanNames=names.map(normalizeCrewName).filter(Boolean).slice(0,40);
     localStorage.setItem(key, JSON.stringify(cleanNames));
     localStorage.setItem('jagdDwlLastCrewLastKey', key);
+    saveDwlLastCrewToServer(selected.project, selected.crew, cleanNames);
   }catch(e){}
 }
 function ensureDwlRows(count){
@@ -1935,7 +2004,7 @@ function showDwlCrewUpload(){
     modal.remove();
   };
 }
-function loadDwlLastCrew(){
+async function loadDwlLastCrew(){
   const msg=document.getElementById('dwlMsg');
   const selected=getDwlSelectedProjectCrew();
   const key=getDwlLastCrewStorageKey(selected.project, selected.crew);
@@ -1943,10 +2012,17 @@ function loadDwlLastCrew(){
     if(msg) msg.innerHTML='<div class="notice">Choose the Project and Crew first, then tap Load Last Crew. Crews are saved separately by Project + Crew so the wrong job crew is not loaded.</div>';
     return;
   }
+  if(msg) msg.innerHTML='<div class="notice">Loading the last saved crew...</div>';
   let names=[];
   try{ names=JSON.parse(localStorage.getItem(key)||'[]'); }catch(e){ names=[]; }
   if(!Array.isArray(names) || !names.length){
-    if(msg) msg.innerHTML=`<div class="notice">No saved crew found for <b>${esc(selected.project)}</b> / <b>${esc(selected.crew)}</b> on this phone/browser yet. Use Upload Crew once for this job/crew, then it can be reloaded later.</div>`;
+    names=await loadDwlLastCrewFromServer(selected.project, selected.crew);
+    if(Array.isArray(names) && names.length){
+      try{ localStorage.setItem(key, JSON.stringify(names)); }catch(e){}
+    }
+  }
+  if(!Array.isArray(names) || !names.length){
+    if(msg) msg.innerHTML=`<div class="notice">No saved crew found yet for <b>${esc(selected.project)}</b> / <b>${esc(selected.crew)}</b>. Save or upload that crew once, then it can be reloaded from PC or mobile.</div>`;
     return;
   }
   applyDwlCrewNames(names);
@@ -1954,7 +2030,14 @@ function loadDwlLastCrew(){
 }
 function resetDwlForm(){
   if(!confirm('Reset this Daily Work Log? This clears the form on this screen.')) return;
+  try{ sessionStorage.removeItem(dwlReturnDraftKey()); }catch(e){}
   ['dwlProject','dwlProjectOther','dwlCrew','dwlCrewOther','dwlWeather','dwlForeman','dwlDescription','dwlNotes','dwlSafetyTopic','dwlPrintName'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
+  const shiftEl=document.getElementById('dwlShift'), nightEl=document.getElementById('dwlNightWorkType');
+  if(shiftEl) shiftEl.value='Day';
+  if(nightEl) nightEl.value='';
+  document.querySelectorAll('input[name="dwlShiftChoice"]').forEach(el=>{ el.checked = el.value === 'Day'; });
+  document.querySelectorAll('input[name="dwlNightChoice"]').forEach(el=>{ el.checked = false; });
+  updateDwlShiftUi();
   signatureStore.dwlSignature='';
   const sig=document.getElementById('dwlSignaturePreview'); if(sig) sig.innerHTML='Tap to sign';
   const dateEl=document.getElementById('dwlReportDate'), dayEl=document.getElementById('dwlDay');
@@ -1998,13 +2081,35 @@ function makeDwlSyncId(data, title){
 function normalizeDwlDataForSave(data={}){
   const notes = String(data.notes ?? data.additionalNotes ?? data.dwlNotes ?? '').trim();
   const safetyTopic = String(data.safetyTopic ?? data.safetyHuddleTopic ?? data.safetyHuddle ?? data.dwlSafetyTopic ?? '').trim();
+  const shift = String(data.shift || data.shiftType || 'Day').trim() === 'Night' ? 'Night' : 'Day';
+  const nightWorkType = shift === 'Night' && String(data.nightWorkType || data.nightType || '').trim() === 'all_ot' ? 'all_ot' : (shift === 'Night' ? '10_percent' : '');
+  const officePayrollNote = shift === 'Night'
+    ? (nightWorkType === 'all_ot' ? 'NIGHT WORK — ALL HOURS PAID AS OVERTIME' : 'NIGHT WORK — ADD 10% DIFFERENTIAL')
+    : '';
+  const rows = (Array.isArray(data.rows) ? data.rows : []).map(row => {
+    const next = {...row};
+    if (nightWorkType === 'all_ot') {
+      const st = Number(next.straight || 0);
+      const ot = Number(next.over || 0);
+      if (st > 0) next.over = String(Math.round((st + ot) * 100) / 100);
+      next.straight = '0';
+    }
+    return next;
+  });
   return {
     ...data,
+    shift,
+    shiftType: shift,
+    nightWorkType,
+    nightType: nightWorkType,
+    officePayrollNote,
+    payrollNote: officePayrollNote,
     notes,
     additionalNotes: notes,
     safetyTopic,
     safetyHuddleTopic: safetyTopic,
-    safetyHuddle: safetyTopic
+    safetyHuddle: safetyTopic,
+    rows
   };
 }
 function dwlPortalPayload(data, title, syncId){
@@ -2038,10 +2143,132 @@ async function syncDwlToPortal(data, title, options = {}) {
   }
 }
 
+function dwlShiftControlsHtml(){
+  return `<div class="dwlShiftSection">
+    <label class="dwlShiftTitle">Shift <span class="required">*</span></label>
+    <input type="hidden" id="dwlShift" value="Day">
+    <input type="hidden" id="dwlNightWorkType" value="">
+    <div class="dwlShiftChoiceRow" role="radiogroup" aria-label="DWL shift">
+      <label class="dwlShiftChoiceCard dayChoice">
+        <input type="radio" name="dwlShiftChoice" value="Day" checked>
+        <span class="dwlShiftCheckBox" aria-hidden="true"></span>
+        <b>Day Shift</b>
+      </label>
+      <label class="dwlShiftChoiceCard nightChoice">
+        <input type="radio" name="dwlShiftChoice" value="Night">
+        <span class="dwlShiftCheckBox" aria-hidden="true"></span>
+        <b>Night Shift</b>
+      </label>
+    </div>
+    <div id="dwlNightTypeWrap" class="dwlNightTypeWrap" style="display:none">
+      <div class="dwlShiftChoiceRow dwlNightChoiceRow" role="radiogroup" aria-label="Night work pay rule">
+        <label class="dwlShiftChoiceCard differentialChoice">
+          <input type="radio" name="dwlNightChoice" value="10_percent">
+          <span class="dwlShiftCheckBox" aria-hidden="true"></span>
+          <b>10% Differential</b>
+        </label>
+        <label class="dwlShiftChoiceCard allOtChoice">
+          <input type="radio" name="dwlNightChoice" value="all_ot">
+          <span class="dwlShiftCheckBox" aria-hidden="true"></span>
+          <b>All OT</b>
+        </label>
+      </div>
+    </div>
+  </div>`;
+}
+function dwlShiftNoteForValues(shift, nightWorkType){
+  if(shift !== 'Night') return { text:'', mode:'day' };
+  if(nightWorkType === 'all_ot') return { text:'NIGHT WORK — ALL HOURS PAID AS OVERTIME', mode:'allOt' };
+  if(nightWorkType === '10_percent') return { text:'NIGHT WORK — ADD 10% DIFFERENTIAL', mode:'differential' };
+  return { text:'SELECT NIGHT PAY RULE', mode:'needsChoice' };
+}
+function updateDwlShiftUi(){
+  const shiftEl=document.getElementById('dwlShift');
+  const nightEl=document.getElementById('dwlNightWorkType');
+  if(!shiftEl || !nightEl) return;
+  const selectedShift=document.querySelector('input[name="dwlShiftChoice"]:checked');
+  const shift=selectedShift?.value === 'Night' ? 'Night' : 'Day';
+  const selectedNight=document.querySelector('input[name="dwlNightChoice"]:checked');
+  const nightType=shift === 'Night' ? String(selectedNight?.value || '') : '';
+  shiftEl.value=shift;
+  nightEl.value=nightType;
+  const wrap=document.getElementById('dwlNightTypeWrap');
+  if(wrap) wrap.style.display=shift === 'Night' ? '' : 'none';
+  const box=document.getElementById('dwlShiftOfficeNote');
+  if(box){
+    box.style.display='none';
+    box.textContent='';
+  }
+  const allOt=shift === 'Night' && nightType === 'all_ot';
+  for(let i=1;i<=40;i++){
+    const st=document.getElementById('dwlStraight'+i);
+    const ot=document.getElementById('dwlOver'+i);
+    if(!st) continue;
+    if(allOt){
+      const stNum=Number(st.value||0), otNum=Number(ot?.value||0);
+      if(stNum>0 && ot){ ot.value=String(Math.round((stNum+otNum)*100)/100); }
+      st.value='0';
+      st.disabled=true;
+      st.title='All OT night shift: enter all hours in the Over column.';
+    }else{
+      st.disabled=false;
+      st.title='Tap to set 8 hours; edit if needed';
+    }
+  }
+}
+function validateDwlShiftSelection(){
+  const shift=document.getElementById('dwlShift')?.value || 'Day';
+  const nightType=document.getElementById('dwlNightWorkType')?.value || '';
+  if(shift === 'Night' && !['10_percent','all_ot'].includes(nightType)){
+    alert('Night Shift is selected. Choose either 10% Differential or All OT before saving.');
+    document.getElementById('dwlNightTypeWrap')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
+  return true;
+}
+
+function dwlReturnDraftKey(){ return 'jagdDwlReturnDraft'; }
+function saveDwlReturnDraft(data){
+  try{
+    const isMobile=/iPad|iPhone|iPod|Android/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+    if(!isMobile) return;
+    sessionStorage.setItem(dwlReturnDraftKey(), JSON.stringify({...data, savedAt:new Date().toISOString()}));
+  }catch(e){}
+}
+function restoreDwlReturnDraft(){
+  let data=null;
+  try{
+    const raw=sessionStorage.getItem(dwlReturnDraftKey());
+    if(raw) data=JSON.parse(raw);
+    sessionStorage.removeItem(dwlReturnDraftKey());
+  }catch(e){ data=null; }
+  if(!data || !Array.isArray(data.rows)) return false;
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v==null?'':String(v); };
+  const projectSel=document.getElementById('dwlProject');
+  if(projectSel){
+    const option=Array.from(projectSel.options).find(o=>o.value===data.project);
+    if(option) projectSel.value=data.project; else if(data.project){ projectSel.value='Other'; set('dwlProjectOther',data.project); }
+    setupOtherProject('dwlProject');
+  }
+  set('dwlReportDate',data.reportDate); set('dwlDay',data.day); set('dwlWeather',data.weather); set('dwlForeman',data.foreman);
+  set('dwlRevision',data.revision||'0'); set('dwlDescription',data.description); set('dwlNotes',data.notes||data.additionalNotes); set('dwlSafetyTopic',data.safetyTopic||data.safetyHuddleTopic); set('dwlPrintName',data.printName);
+  const crewSel=document.getElementById('dwlCrew');
+  if(crewSel){ const opt=Array.from(crewSel.options).find(o=>o.value===data.crew); if(opt) crewSel.value=data.crew; else if(data.crew){ crewSel.value='Other'; set('dwlCrewOther',data.crew); } setupOtherCrew('dwlCrew'); }
+  const shift=data.shift==='Night'?'Night':'Day';
+  document.querySelectorAll('input[name="dwlShiftChoice"]').forEach(el=>el.checked=el.value===shift);
+  document.querySelectorAll('input[name="dwlNightChoice"]').forEach(el=>el.checked=shift==='Night' && el.value===data.nightWorkType);
+  const needed=Math.min(40, Math.max(20, data.rows.length)); ensureDwlRows(needed);
+  data.rows.slice(0,40).forEach((r,idx)=>{ const i=idx+1; set('dwlEmp'+i,r.employee); set('dwlLoc'+i,r.location); set('dwlAct'+i,r.activity); set('dwlClass'+i,r.class); set('dwlLocal'+i,r.local); set('dwlStraight'+i,r.straight); set('dwlOver'+i,r.over); set('dwlNoLunch'+i,r.noLunch); set('dwlPT'+i,r.pt); set('dwlRT'+i,r.rt); });
+  if(data.signatureData){ signatureStore.dwlSignature=data.signatureData; const sig=document.getElementById('dwlSignaturePreview'); if(sig) sig.innerHTML=`<img src="${data.signatureData}" alt="Signature">`; }
+  updateDwlShiftUi();
+  const msg=document.getElementById('dwlMsg'); if(msg) msg.innerHTML='<div class="notice success">Your DWL was restored so you can correct it. Increase the Revision number before saving a corrected DWL.</div>';
+  return true;
+}
+
 async function dwlForm(){
   await loadActiveWorkers(true);
   app.innerHTML=`<div class="container printOnly dwlContainer"><h1>Daily Work Log</h1><datalist id="dwlWorkerList"></datalist>${dwlDataList('dwlClassList',DWL_CLASS_OPTIONS)}${dwlDataList('dwlLocalList',DWL_LOCAL_OPTIONS)}${dwlDataList('dwlActivityList',DWL_ACTIVITY_NUMBERS)}${dwlDataList('dwlOverList',DWL_OVER_OPTIONS)}${dwlDataList('dwlSmallHourList',DWL_SMALL_HOUR_OPTIONS)}
-    <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')}</div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
+    <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')} ${dwlShiftControlsHtml()}</div><div id="dwlShiftOfficeNote" class="dwlShiftOfficeNote" style="display:none"></div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
     <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project + Crew on this phone.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew for This Job/Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
@@ -2052,11 +2279,14 @@ async function dwlForm(){
   const updateDay=()=>{ if(!dateEl.value){dayEl.value='';return;} const d=new Date(dateEl.value+'T00:00:00'); dayEl.value=d.toLocaleDateString(undefined,{weekday:'long'}); };
   dateEl.value=new Date().toISOString().slice(0,10); updateDay(); dateEl.addEventListener('change',updateDay);
   populateDwlWorkerDatalist(); setupDwlRows(); initSignatureButtons();
-  document.getElementById('dwlAddPageBtn').onclick=addDwlPageRows;
+  document.querySelectorAll('input[name="dwlShiftChoice"], input[name="dwlNightChoice"]').forEach(el=>el.addEventListener('change',updateDwlShiftUi));
+  updateDwlShiftUi();
+  document.getElementById('dwlAddPageBtn').onclick=()=>{ addDwlPageRows(); updateDwlShiftUi(); };
   document.getElementById('dwlUploadCrewBtn').onclick=showDwlCrewUpload;
   document.getElementById('dwlLoadLastCrewBtn').onclick=loadDwlLastCrew;
   document.getElementById('dwlResetBtn').onclick=resetDwlForm;
-  setTimeout(()=>autoFillWeather(),350);
+  const restoredDwl=restoreDwlReturnDraft();
+  if(!restoredDwl) setTimeout(()=>autoFillWeather(),350);
   document.getElementById('dwlPrintBtn').onclick=async(e)=>{
     e.preventDefault();
     const btn = e.currentTarget;
@@ -2065,11 +2295,21 @@ async function dwlForm(){
     const originalText = btn.textContent;
     btn.textContent = 'Saving DWL...';
     try{
+      if(!validateDwlShiftSelection()){
+        btn.disabled = false;
+        btn.textContent = originalText;
+        return;
+      }
       saveDwlLastCrewFromRows();
       const data=collectDwl();
+      saveDwlReturnDraft(data);
       const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
       const dwlFileTitle=dwlFileTitleWithRevision(baseTitle, data.revision);
-      if(!confirmDwlSaveAndSend(data,dwlFileTitle)) return;
+      if(!confirmDwlSaveAndSend(data,dwlFileTitle)) {
+        btn.disabled = false;
+        btn.textContent = originalText;
+        return;
+      }
       setNextPdfFileTitle(dwlFileTitle);
       markDwlSubmittedLocally(data,dwlFileTitle);
       logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle);
@@ -2129,6 +2369,15 @@ function dwlPdfBox(doc, x, y, w, h, label, value, bodySize=9){
   doc.setFillColor(217,217,217); doc.rect(x,y,w,13,'F'); doc.rect(x,y,w,13);
   dwlPdfText(doc, label, x+3, y+9.5, {size:8, style:'bold', maxWidth:w-6});
   dwlPdfWrapText(doc, value, x, y+13, w, h-13, {size:bodySize, style:'normal'});
+}
+function dwlPdfShiftBanner(doc, x, y, w, data){
+  const note=dwlShiftNoteForValues(data.shift, data.nightWorkType);
+  if(note.mode==='day') return 0;
+  if(note.mode==='allOt') doc.setFillColor(255,199,168);
+  else doc.setFillColor(255,235,153);
+  doc.setDrawColor(0); doc.setLineWidth(1.2); doc.rect(x,y,w,24,'FD');
+  dwlPdfText(doc,note.text,x+w/2,y+16,{size:12.5,style:'bold',align:'center',maxWidth:w-12,noEllipsis:true});
+  return 24;
 }
 async function saveDwlDirectPdf(data, msgId){
   if(!window.jspdf || !window.jspdf.jsPDF) return false;
@@ -2197,12 +2446,13 @@ async function saveDwlDirectPdf(data, msgId){
     doc.setLineWidth(1.25); doc.line(m,y+18,pageW-m,y+18);
     y += 20;
 
+    y += dwlPdfShiftBanner(doc,m,y,w,data);
     y = drawActivityGrid(y);
 
-    // Narrative boxes: use the old larger typed-field sizing.
-    dwlPdfBox(doc,m,y,w,84,'Location/Description of work',data.description,15.5); y += 84;
-    dwlPdfBox(doc,m,y,w,48,'Additional Notes',data.notes || data.additionalNotes,15.5); y += 48;
-    dwlPdfBox(doc,m,y,w,38,'Safety Huddle Topic',data.safetyTopic || data.safetyHuddleTopic,15.5); y += 38;
+    // Keep the one-page layout while giving the office a full-width shift/payroll banner.
+    dwlPdfBox(doc,m,y,w,72,'Location/Description of work',data.description,14.5); y += 72;
+    dwlPdfBox(doc,m,y,w,40,'Additional Notes',data.notes || data.additionalNotes,14.5); y += 40;
+    dwlPdfBox(doc,m,y,w,30,'Safety Huddle Topic',data.safetyTopic || data.safetyHuddleTopic,14.5); y += 30;
 
     // Worker table header and rows. Keep 20 rows per page like the boss DWL, but do not shrink the font.
     let x=m; const headerH=18;
@@ -2254,7 +2504,7 @@ function collectDwl(){
     const row={num:i, employee:val('dwlEmp'+i), location:val('dwlLoc'+i), activity:val('dwlAct'+i), class:val('dwlClass'+i), local:val('dwlLocal'+i), straight:val('dwlStraight'+i), over:val('dwlOver'+i), noLunch:val('dwlNoLunch'+i), pt:val('dwlPT'+i), rt:val('dwlRT'+i)};
     rows.push(row);
   }
-  return normalizeDwlDataForSave({project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),revision:cleanDwlRevision(val('dwlRevision')||'0')||'0',weather:val('dwlWeather'),foreman:val('dwlForeman'),activities:[],description:val('dwlDescription'),notes:val('dwlNotes'),additionalNotes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),safetyHuddleTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows});
+  return normalizeDwlDataForSave({project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),revision:cleanDwlRevision(val('dwlRevision')||'0')||'0',weather:val('dwlWeather'),foreman:val('dwlForeman'),shift:val('dwlShift')||'Day',nightWorkType:val('dwlNightWorkType'),activities:[],description:val('dwlDescription'),notes:val('dwlNotes'),additionalNotes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),safetyHuddleTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows});
 }
 function dwlWorkerRowsPrint(rows, start, count){
   const slice=rows.slice(start,start+count);
@@ -2265,7 +2515,7 @@ function buildDwlSheet(data, pageIndex, totalPages){
   data = normalizeDwlDataForSave(data);
   const dateSlash=dateToSlashYYYY(data.reportDate); const dateDot=dateToDotMMDDYY(data.reportDate);
   const rowsPerPage=12; const start=(pageIndex-1)*rowsPerPage;
-  return `<div class="dwlPrintSheet ${totalPages===1?'dwlSinglePage':''}"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 4.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Crew:</b> ${esc(data.crew)}</div><div><b>Revision:</b> ${esc(cleanDwlRevision(data.revision||'0')||'0')}</div></div><table class="dwlActivitiesPrint"><tr><th colspan="2">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.notes || data.additionalNotes)}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic || data.safetyHuddleTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b> <span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
+  return `<div class="dwlPrintSheet ${totalPages===1?'dwlSinglePage':''}"><div class="dwlPrintTop"><div class="dwlBrand"><img src="${logo}"><b>JAGD Daily Work Log</b></div><b>DWL 4.0</b></div><div class="dwlHeadLine"><div><b>Project:</b> ${esc(data.project)}</div><div><b>Report Date:</b> <span class="bigDate">${esc(dateSlash)}</span></div></div><div class="dwlWeatherLine"><div><b>Weather:</b> ${esc(data.weather)}</div><div><b>Day:</b> ${esc(data.day)}</div><div><b>Crew:</b> ${esc(data.crew)}</div><div><b>Revision:</b> ${esc(cleanDwlRevision(data.revision||'0')||'0')}</div></div>${data.shift === 'Night' ? `<div class="dwlShiftPrintBanner ${esc(dwlShiftNoteForValues(data.shift,data.nightWorkType).mode)}">${esc(dwlShiftNoteForValues(data.shift,data.nightWorkType).text)}</div>` : ''}<table class="dwlActivitiesPrint"><tr><th colspan="2">Activities Performed</th></tr>${activityCodesTable()}</table><div class="dwlBox"><b>Location/Description of work</b><div>${esc(data.description)}</div></div><div class="dwlBox small"><b>Additional Notes</b><div>${esc(data.notes || data.additionalNotes)}</div></div><div class="dwlBox small"><b>Safety Huddle Topic</b><div>${esc(data.safetyTopic || data.safetyHuddleTopic)}</div></div><table class="dwlPrintTable"><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr>${dwlWorkerRowsPrint(data.rows,start,rowsPerPage)}</table><div class="dwlPrintFoot"><div><b>Print Name:</b> ${esc(data.printName||data.foreman||'')}</div><div><b>Sign:</b> ${sigPrint(data.signatureData,'')}</div><div><b>Date:</b> <span class="bigDate2">${esc(dateSlash)}</span></div></div><div class="dwlPageNum">${pageIndex}${totalPages>1?` of ${totalPages}`:''}</div></div>`;
 }
 function buildDwlPrint(data){
   data = normalizeDwlDataForSave(data);
@@ -2305,10 +2555,54 @@ function bolLocationField(id,label){
 function setupOtherBolLocation(id){ setupOtherProject(id); }
 function bolLocationValue(id){ return projectValue(id); }
 function bolInventoryDatalist(){
-  return `<datalist id="bolInventoryProducts">${(bolInventoryItems||[]).map(i=>`<option value="${esc(i.item||'')}">${esc([i.sku,i.location,i.quantity,i.unit].filter(Boolean).join(' - '))}</option>`).join('')}</datalist><div id="bolInventoryPicker" class="bolInventoryPicker" style="display:none"></div>`;
+  // BOL item suggestions are rendered per row only after the user starts typing.
+  return '';
 }
 function bolInventoryDisplayLabel(item){
   return [item.sku ? `#${item.sku}` : '', item.item || '', item.location ? `@ ${item.location}` : '', String(item.quantity ?? '') !== '' ? `Qty ${item.quantity}` : '', item.unit || ''].filter(Boolean).join(' - ');
+}
+let bolInventorySuggestPortal=null;
+let bolInventorySuggestInput=null;
+function getBolInventorySuggestPortal(){
+  if(bolInventorySuggestPortal && document.body.contains(bolInventorySuggestPortal)) return bolInventorySuggestPortal;
+  const box=document.createElement('div');
+  box.className='dwlSuggestPortal bolInventorySuggestPortal';
+  box.style.display='none';
+  document.body.appendChild(box);
+  bolInventorySuggestPortal=box;
+  return box;
+}
+function positionBolInventorySuggestPortal(input){
+  const box=getBolInventorySuggestPortal();
+  if(!input || box.style.display==='none') return;
+  const r=input.getBoundingClientRect();
+  const margin=8;
+  const width=Math.max(260,Math.min(r.width,window.innerWidth-margin*2));
+  let left=Math.max(margin,Math.min(r.left,window.innerWidth-width-margin));
+  let top=r.bottom+4;
+  const maxH=Math.min(300,Math.max(140,window.innerHeight-top-margin));
+  box.style.left=`${left}px`;
+  box.style.top=`${top}px`;
+  box.style.width=`${width}px`;
+  box.style.maxHeight=`${maxH}px`;
+}
+function hideBolInventorySuggestions(exceptBox=null){
+  const box=getBolInventorySuggestPortal();
+  if(exceptBox && box===exceptBox) return;
+  box.style.display='none';
+  box.innerHTML='';
+  bolInventorySuggestInput=null;
+}
+function bolInventoryMatchesForQuery(q){
+  const raw=String(q||'').trim().toLowerCase();
+  if(!raw) return [];
+  const starts=[]; const contains=[];
+  (Array.isArray(bolInventoryItems)?bolInventoryItems:[]).forEach(item=>{
+    const fields=[item.item,item.sku,item.location,item.unit,...(Array.isArray(item.aliases)?item.aliases:[])].map(v=>String(v||'').toLowerCase());
+    if(fields.some(v=>v.startsWith(raw))) starts.push(item);
+    else if(fields.some(v=>v.includes(raw))) contains.push(item);
+  });
+  return starts.concat(contains);
 }
 function pickBolInventoryItem(input, item){
   if(!input || !item) return;
@@ -2316,41 +2610,108 @@ function pickBolInventoryItem(input, item){
   input.dataset.sku=item.sku||'';
   const row=input.closest('tr');
   const unit=row?.querySelector('.bolUnitInput');
-  if(unit && !unit.value) unit.value=item.unit||'';
-  const picker=document.getElementById('bolInventoryPicker');
-  if(picker) picker.style.display='none';
+  if(unit) unit.value=item.unit||unit.value||'';
+  hideBolInventorySuggestions();
   input.dispatchEvent(new Event('change', {bubbles:true}));
 }
-function showBolInventoryPicker(input){
-  activeBolProductInput=input;
-  const picker=document.getElementById('bolInventoryPicker');
-  if(!picker) return;
-  const items=Array.isArray(bolInventoryItems)?bolInventoryItems:[];
-  if(!bolInventoryLoaded){ picker.style.display='block'; picker.innerHTML='<div class="notice">Loading portal inventory...</div>'; return; }
-  if(!items.length){ picker.style.display='block'; picker.innerHTML='<div class="notice">No current stock items loaded yet. You can still type manually.</div>'; return; }
-  const render=(term='')=>{
-    const q=String(term||'').toLowerCase().trim();
-    const filtered=items.filter(i=>!q || [i.item,i.sku,i.location,i.unit].some(v=>String(v||'').toLowerCase().includes(q))).slice(0,80);
-    picker.innerHTML=`<div class="bolInventoryPickerBox"><div class="bolInventoryPickerHead"><b>Choose inventory item</b><button type="button" class="btn small light" id="closeBolInventoryPicker">Close</button></div><input id="bolInventorySearch" class="full" placeholder="Search current stock / SKU / location" value="${esc(term)}"><div class="bolInventoryPickerList">${filtered.map((i,idx)=>`<button type="button" class="bolInventoryPickBtn" data-idx="${items.indexOf(i)}"><b>${esc(i.item||'')}</b><span>${esc([i.sku?`SKU ${i.sku}`:'', i.location||'', i.quantity!==undefined?`Qty ${i.quantity}`:'', i.unit||''].filter(Boolean).join(' • '))}</span></button>`).join('') || '<div class="notice">No matching inventory items.</div>'}</div></div>`;
-    const search=document.getElementById('bolInventorySearch');
-    if(search){ search.focus({preventScroll:true}); search.oninput=()=>render(search.value); }
-    const close=document.getElementById('closeBolInventoryPicker');
-    if(close) close.onclick=()=>{ picker.style.display='none'; };
-    picker.querySelectorAll('.bolInventoryPickBtn').forEach(btn=>{
-      btn.onclick=()=>pickBolInventoryItem(activeBolProductInput, items[Number(btn.dataset.idx)]);
+function showBolInventorySuggestions(input){
+  if(!input) return;
+  const box=getBolInventorySuggestPortal();
+  const q=String(input.value||'').trim();
+  if(q.length<1){ hideBolInventorySuggestions(); return; }
+  bolInventorySuggestInput=input;
+  if(!bolInventoryLoaded){
+    box.innerHTML=`<div style="padding:12px">${bolInventoryLoading?'Loading inventory…':'Loading inventory…'}</div>`;
+    box.style.display='block';
+    positionBolInventorySuggestPortal(input);
+    loadBolInventory(false);
+    return;
+  }
+  const matches=bolInventoryMatchesForQuery(q).slice(0,30);
+  if(!matches.length){ hideBolInventorySuggestions(); return; }
+  box.innerHTML=matches.map((item,idx)=>`<button type="button" data-idx="${idx}"><b>${esc(item.item||'')}</b><span>${esc([item.sku?`SKU ${item.sku}`:'', item.location||'', item.quantity!==undefined?`Qty ${item.quantity}`:'', item.unit||''].filter(Boolean).join(' • '))}</span></button>`).join('');
+  box.style.display='block';
+  positionBolInventorySuggestPortal(input);
+  box.querySelectorAll('button').forEach(btn=>{
+    const choose=(e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      const item=matches[Number(btn.dataset.idx)];
+      pickBolInventoryItem(input,item);
+      const row=input.closest('tr');
+      const unit=row?.querySelector('.bolUnitInput');
+      if(unit) unit.focus();
+    };
+    btn.onpointerdown=choose;
+    btn.onclick=choose;
+  });
+}
+window.addEventListener('resize',()=>{ if(bolInventorySuggestInput) positionBolInventorySuggestPortal(bolInventorySuggestInput); });
+window.addEventListener('scroll',()=>{ if(bolInventorySuggestInput) positionBolInventorySuggestPortal(bolInventorySuggestInput); },true);
+function setBolInventoryMessage(text, canRetry=false){
+  const msg=document.getElementById('bolInventoryMsg');
+  if(!msg) return;
+  msg.innerHTML=canRetry ? `${esc(text)} <button type="button" id="bolInventoryRetry" class="linkBtn">Retry</button>` : esc(text);
+  const retry=document.getElementById('bolInventoryRetry');
+  if(retry) retry.onclick=()=>loadBolInventory(true);
+}
+function loadBolInventory(force=false){
+  if(bolInventoryLoaded && !force) return Promise.resolve(bolInventoryItems);
+  if(bolInventoryLoading && bolInventoryLoadPromise && !force) return bolInventoryLoadPromise;
+  bolInventoryLoading=true;
+  bolInventoryLoaded=false;
+  setBolInventoryMessage('Loading portal inventory list...');
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),30000);
+  bolInventoryLoadPromise=fetch('/api/bol/inventory-items',{signal:controller.signal,cache:'no-store'})
+    .then(async r=>{
+      const json=await r.json().catch(()=>({}));
+      if(!r.ok || !json.ok) throw new Error(json.error||`Inventory request failed (${r.status})`);
+      bolInventoryItems=Array.isArray(json.items)?json.items:[];
+      bolInventoryLoaded=true;
+      const cached=Boolean(json.cached);
+      if(bolInventoryItems.length){
+        setBolInventoryMessage(`${cached?'Saved inventory loaded':'Current stock loaded from portal'} (${bolInventoryItems.length} items). Start typing an item name to search.`);
+      } else {
+        setBolInventoryMessage('No current Warehouse stock items were returned. You can still type materials manually.',true);
+      }
+      return bolInventoryItems;
+    })
+    .catch(err=>{
+      bolInventoryItems=[];
+      bolInventoryLoaded=false;
+      const timeout=err && err.name==='AbortError';
+      setBolInventoryMessage(timeout?'Inventory took too long to load. You can type manually or tap Retry.':'Portal inventory list did not load. You can type manually or tap Retry.',true);
+      return [];
+    })
+    .finally(()=>{
+      clearTimeout(timer);
+      bolInventoryLoading=false;
+      bolInventoryLoadPromise=null;
+      const inp=bolInventorySuggestInput;
+      if(inp && document.body.contains(inp) && String(inp.value||'').trim() && bolInventoryLoaded){
+        setTimeout(()=>showBolInventorySuggestions(inp),0);
+      } else if(!bolInventoryLoaded){
+        hideBolInventorySuggestions();
+      }
     });
-  };
-  picker.style.display='block';
-  render(input.value||'');
+  return bolInventoryLoadPromise;
 }
 function setupBolInventoryAutocomplete(){
   const msg=document.getElementById('bolInventoryMsg');
   const apply=()=>{
     document.querySelectorAll('.bolProductInput').forEach(inp=>{
-      inp.setAttribute('list','bolInventoryProducts');
-      inp.onfocus=()=>showBolInventoryPicker(inp);
-      inp.onclick=()=>showBolInventoryPicker(inp);
-      inp.onchange=()=>{
+      if(inp.dataset.bolReady==='1') return;
+      inp.dataset.bolReady='1';
+      inp.removeAttribute('list');
+      inp.setAttribute('autocomplete','off');
+      inp.setAttribute('autocapitalize','words');
+      inp.setAttribute('spellcheck','false');
+      inp.addEventListener('input',()=>showBolInventorySuggestions(inp));
+      inp.addEventListener('keyup',()=>showBolInventorySuggestions(inp));
+      inp.addEventListener('focus',()=>{ if(String(inp.value||'').trim()) showBolInventorySuggestions(inp); });
+      inp.addEventListener('blur',()=>setTimeout(()=>hideBolInventorySuggestions(),220));
+      inp.addEventListener('change',()=>{
         const match=(bolInventoryItems||[]).find(i=>String(i.item||'').toLowerCase()===String(inp.value||'').toLowerCase());
         if(match){
           inp.dataset.sku=match.sku||'';
@@ -2358,30 +2719,20 @@ function setupBolInventoryAutocomplete(){
           const unit=row?.querySelector('.bolUnitInput');
           if(unit && !unit.value) unit.value=match.unit||'';
         }
-      };
+      });
     });
   };
   apply();
-  if(bolInventoryLoaded){ if(msg) msg.textContent=bolInventoryItems.length ? `Current stock list loaded (${bolInventoryItems.length} items).` : 'No portal inventory items yet.'; return; }
-  fetch('/api/bol/inventory-items').then(r=>r.json()).then(json=>{
-    bolInventoryLoaded=true;
-    bolInventoryItems=Array.isArray(json.items)?json.items:[];
-    const dl=document.getElementById('bolInventoryProducts');
-    if(dl) dl.innerHTML=(bolInventoryItems||[]).map(i=>`<option value="${esc(i.item||'')}">${esc([i.sku,i.location,i.quantity,i.unit].filter(Boolean).join(' - '))}</option>`).join('');
-    apply();
-    if(activeBolProductInput) showBolInventoryPicker(activeBolProductInput);
-    if(msg) msg.textContent=bolInventoryItems.length ? `Current stock list loaded from portal (${bolInventoryItems.length} items). Tap Product / Material to choose from stock.` : 'No current portal stock items yet. You can still type manually.';
-  }).catch(()=>{ bolInventoryLoaded=true; if(msg) msg.textContent='Portal current stock list did not load. You can still type materials manually.'; });
-
-  document.querySelectorAll('.bolProduct').forEach(input=>{
-    input.addEventListener('change',()=>bolApplyCatalogSuggestion(input));
-    input.addEventListener('blur',()=>bolApplyCatalogSuggestion(input));
-  });
+  if(bolInventoryLoaded){
+    if(msg) msg.textContent=bolInventoryItems.length ? `Current stock loaded (${bolInventoryItems.length} items). Start typing an item name to search.` : 'No portal inventory items yet. You can still type manually.';
+    return;
+  }
+  loadBolInventory(false).then(()=>apply());
 }
 function bolItemRows(){
   return Array.from({length:EXTRA_FORM_ROWS},(_,idx)=>{
     const i=idx+1;
-    return `<tr><td><input id="bolQty${i}" inputmode="decimal" placeholder="Qty"></td><td><input id="bolProduct${i}" class="bolProductInput" list="bolInventoryProducts" placeholder="Product / material"></td><td><input id="bolUnit${i}" class="bolUnitInput" placeholder="Unit"></td></tr>`;
+    return `<tr><td><input id="bolQty${i}" inputmode="decimal" placeholder="Qty"></td><td class="bolProductCell"><input id="bolProduct${i}" class="bolProductInput" autocomplete="off" placeholder="Start typing item…"><div id="bolSuggest${i}" class="dwlSuggest bolInventorySuggest"></div></td><td><input id="bolUnit${i}" class="bolUnitInput" placeholder="Unit"></td></tr>`;
   }).join('');
 }
 function collectBolItems(){
@@ -2734,7 +3085,104 @@ function materialFormHtml(m={}, projectDefault=''){
   return `<div class="adminEditForm"><h3>${m.id?'Edit COA Material':'Add Single COA Manually'}</h3><input id="adminMatId" type="hidden" value="${esc(m.id||'')}"><div class="grid four"><div><label>Project / Job</label><select id="adminMatProject"><option value=""></option>${adminProjectOptions(projectValue)}</select></div><div><label>Component</label><select id="adminMatComponent"><option ${m.component==='Base / Paint'?'selected':''}>Base / Paint</option><option ${m.component==='Hardener / Converter'?'selected':''}>Hardener / Converter</option><option ${m.component==='Dust / Powder'?'selected':''}>Dust / Powder</option><option ${m.component==='Accelerator'?'selected':''}>Accelerator</option><option ${m.component==='Thinner'?'selected':''}>Thinner</option><option ${m.component==='Other'?'selected':''}>Other</option></select></div><div><label>Mfr</label><input id="adminMatMfr" value="${esc(m.mfr||'')}"></div><div><label>Product Name</label><input id="adminMatProd" value="${esc(m.prodName||'')}"></div><div><label>Color</label><input id="adminMatColor" value="${esc(m.color||'')}"></div><div><label>Batch #</label><input id="adminMatBatch" value="${esc(m.batch||'')}"></div><div><label>Mfg Date</label><input id="adminMatMfg" value="${esc(m.mfgDate||'')}"></div><div><label>Exp Date</label><input id="adminMatExp" value="${esc(m.expDate||'')}"></div><div><label>Shelf Life</label><input id="adminMatShelf" value="${esc(m.shelfLife||'')}"></div><div><label>Item No.</label><input id="adminMatItem" value="${esc(m.itemNo||'')}"></div><div><label>COA File Name</label><input id="adminMatFile" value="${esc(m.fileName||'')}"></div><div><label>Status</label><select id="adminMatStatus"><option value="active" ${!m.disabled?'selected':''}>Active</option><option value="disabled" ${m.disabled?'selected':''}>Disabled / Needs Review</option></select></div></div><div><label>Description / label notes</label><input id="adminMatDesc" value="${esc(m.description||'')}"></div><div class="actions"><button class="btn" id="adminMatSaveBtn" type="button">Save Material</button><button class="btn light" id="adminMatCancelBtn" type="button">Cancel</button></div><div id="adminMatMsg"></div></div>`;
 }
 function coaImportHtml(project=''){
-  return `<div class="adminEditForm"><h3>Import COAs</h3><p class="tiny">Pick the job first, then upload one or more COA PDFs. The app will create review rows from the file names. Edit each row to confirm product, batch, dates, color, and mark Active before it appears in the PIR helper.</p><div class="grid two"><div><label>Project / Job</label><select id="adminImportProject"><option value=""></option>${adminProjectOptions(project)}</select></div><div><label>COA PDF files</label><input id="adminImportFiles" type="file" accept="application/pdf,.pdf" multiple></div></div><div class="actions"><button class="btn" id="adminImportBtn" type="button">Import Selected COAs</button><button class="btn light" id="adminImportCancelBtn" type="button">Cancel</button></div><div id="adminImportMsg"></div></div>`;
+  return `<div class="adminEditForm"><h3>Import COAs with AWS Textract</h3><p class="tiny">Pick the job, upload one or more COA PDFs, then click Analyze COAs. Nothing is added to the PIR library until you review the extracted batch rows and click Apply Reviewed COAs.</p><div class="grid two"><div><label>Project / Job</label><select id="adminImportProject"><option value=""></option>${adminProjectOptions(project)}</select></div><div><label>COA PDF files</label><input id="adminImportFiles" type="file" accept="application/pdf,.pdf" multiple></div></div><div class="actions"><button class="btn" id="adminImportBtn" type="button">Analyze COAs</button><button class="btn light" id="adminImportCancelBtn" type="button">Cancel</button></div><div id="adminImportMsg"></div><div id="adminImportReview"></div></div>`;
+}
+function coaReviewSelect(id,options,value){return `<select data-coa-field="${id}">${options.map(o=>`<option value="${esc(o)}" ${String(value||'')===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;}
+async function ensurePdfJsForCoa(){
+  if(window.pdfjsLib && window.pdfjsLib.getDocument) return window.pdfjsLib;
+  const src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  await loadScriptOnce(src,()=>window.pdfjsLib&&window.pdfjsLib.getDocument);
+  if(!window.pdfjsLib||!window.pdfjsLib.getDocument) throw new Error('PDF reader did not load. Refresh and try again.');
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  return window.pdfjsLib;
+}
+async function coaRenderPdfPage(file,pageNumber){
+  const pdfjs=await ensurePdfJsForCoa();
+  const bytes=await file.arrayBuffer();
+  const pdf=await pdfjs.getDocument({data:bytes}).promise;
+  if(pageNumber<1||pageNumber>pdf.numPages) throw new Error(`Page ${pageNumber} is outside ${file.name}.`);
+  const page=await pdf.getPage(pageNumber);
+  const base=page.getViewport({scale:1});
+  const targetWidth=2200;
+  const scale=Math.max(1.5,Math.min(3,targetWidth/Math.max(1,base.width)));
+  const viewport=page.getViewport({scale});
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.ceil(viewport.width); canvas.height=Math.ceil(viewport.height);
+  const ctx=canvas.getContext('2d',{alpha:false});
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  await page.render({canvasContext:ctx,viewport}).promise;
+  return {imageDataUrl:canvas.toDataURL('image/jpeg',0.9),pageCount:pdf.numPages};
+}
+function coaCandidateScore(c){
+  let score=0; ['prodName','batch','expDate','mfgDate','itemNo','mfr'].forEach(k=>{if(String(c?.[k]||'').trim())score+=1;});
+  if(c?.sourceType==='Certificate of Analysis') score+=3;
+  return score;
+}
+function coaDedupeAnalyzedCandidates(rows){
+  // One review row per batch. When the same batch appears on a CMTR summary and
+  // a detailed COA, merge the useful fields and prefer the detailed COA as proof.
+  const groups=new Map();
+  (rows||[]).forEach((c,idx)=>{
+    const key=String(c.batch||'').toUpperCase().replace(/[^A-Z0-9-]/g,'') || `NO-BATCH-${idx}`;
+    if(!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(c);
+  });
+  const fieldNames=['project','mfr','prodName','description','color','component','itemNo','batch','mfgDate','expDate','shelfLife'];
+  const merged=[];
+  groups.forEach((items,key)=>{
+    const sorted=[...items].sort((a,b)=>coaCandidateScore(b)-coaCandidateScore(a));
+    const best={...sorted[0]};
+    for(const field of fieldNames){
+      if(!String(best[field]||'').trim()){
+        const donor=sorted.find(x=>String(x?.[field]||'').trim());
+        if(donor) best[field]=donor[field];
+      }
+    }
+    // If another page has a more authoritative Certificate of Analysis source,
+    // use that source page/file while retaining values found on the summary.
+    const detailed=sorted.find(x=>x?.sourceType==='Certificate of Analysis');
+    if(detailed){
+      best.sourceFileName=detailed.sourceFileName||best.sourceFileName;
+      best.sourcePage=detailed.sourcePage||best.sourcePage;
+      best.sourceType=detailed.sourceType||best.sourceType;
+      best.confidence=Math.max(Number(best.confidence||0),Number(detailed.confidence||0));
+    }
+    const existing=sorted.find(x=>x?.duplicateExisting)?.duplicateExisting || best.duplicateExisting || null;
+    best.duplicateExisting=existing;
+    best.duplicateInUpload=false;
+    best.mergedSourceCount=items.length;
+    best.add=!existing;
+    merged.push(best);
+  });
+  return merged;
+}
+function renderCoaImportReview(){
+  const wrap=document.getElementById('adminImportReview'); if(!wrap)return;
+  const state=window.adminCoaImportState||{rows:[]}; const rows=state.rows||[];
+  if(!rows.length){wrap.innerHTML='';return;}
+  const active=rows.filter(r=>r.add&&!r.duplicateExisting&&!r.duplicateInUpload).length;
+  wrap.innerHTML=`<div class="panel" style="margin-top:14px"><h3>Review Textract Results</h3><p class="tiny">${rows.length} row(s) found. ${active} currently selected to apply. Duplicate batches start unchecked. Review/edit every row before applying.</p><div class="adminTableWrap"><table class="adminTable"><tr><th>Add</th><th>Source</th><th>Component</th><th>Manufacturer</th><th>Product</th><th>Batch</th><th>Mfg Date</th><th>Exp Date</th><th>Item No.</th><th>Status</th></tr>${rows.map((r,i)=>`<tr class="${(!r.add||r.duplicateExisting||r.duplicateInUpload)?'mutedRow':''}"><td><input type="checkbox" data-coa-add="${i}" ${r.add?'checked':''} ${r.duplicateExisting?'disabled':''}></td><td><b>${esc(r.sourceFileName||'')}</b><br><small>Page ${Number(r.sourcePage||1)} · ${esc(r.sourceType||'Textract')}${Number(r.mergedSourceCount||1)>1?` · merged from ${Number(r.mergedSourceCount)} matching source pages`:''}</small></td><td>${coaReviewSelect('component-'+i,['Base / Paint','Hardener / Converter','Dust / Powder','Accelerator','Thinner','Other'],r.component)}</td><td><input data-coa-edit="mfr-${i}" value="${esc(r.mfr||'')}"></td><td><input data-coa-edit="prodName-${i}" value="${esc(r.prodName||'')}"></td><td><input data-coa-edit="batch-${i}" value="${esc(r.batch||'')}"></td><td><input data-coa-edit="mfgDate-${i}" value="${esc(r.mfgDate||'')}"></td><td><input data-coa-edit="expDate-${i}" value="${esc(r.expDate||'')}"></td><td><input data-coa-edit="itemNo-${i}" value="${esc(r.itemNo||'')}"></td><td>${r.duplicateExisting?`<b>Already active</b><br><small>${esc(r.duplicateExisting.label||r.duplicateExisting.batch||'')}</small>`:r.duplicateInUpload?'<b>Duplicate in this upload</b><br><small>Better source page selected above/below.</small>':(!String(r.mfgDate||'').trim()?'<b>Ready</b><br><small>Mfg date not shown in analyzed source.</small>':'Ready')}</td></tr>`).join('')}</table></div><div class="actions" style="margin-top:12px"><button class="btn" id="adminApplyAnalyzedCoasBtn" type="button">Apply Reviewed COAs</button></div><div id="adminApplyCoaMsg"></div></div>`;
+  rows.forEach((r,i)=>{
+    const add=document.querySelector(`[data-coa-add="${i}"]`); if(add) add.onchange=()=>{r.add=add.checked;};
+    const comp=document.querySelector(`[data-coa-field="component-${i}"]`); if(comp) comp.onchange=()=>{r.component=comp.value;};
+    ['mfr','prodName','batch','mfgDate','expDate','itemNo'].forEach(k=>{const el=document.querySelector(`[data-coa-edit="${k}-${i}"]`); if(el) el.oninput=()=>{r[k]=el.value;};});
+  });
+  const apply=document.getElementById('adminApplyAnalyzedCoasBtn'); if(apply) apply.onclick=applyReviewedCoas;
+}
+async function applyReviewedCoas(){
+  const state=window.adminCoaImportState||{}; const project=state.project||''; const rows=(state.rows||[]).filter(r=>r.add&&!r.duplicateExisting);
+  const msg=document.getElementById('adminApplyCoaMsg'); const btn=document.getElementById('adminApplyAnalyzedCoasBtn');
+  if(!rows.length){if(msg)msg.innerHTML='<div class="notice">Nothing is selected to apply.</div>';return;}
+  for(const r of rows){if(!String(r.prodName||'').trim()||!String(r.batch||'').trim()){if(msg)msg.innerHTML='<div class="notice">Every selected row needs a Product and Batch before applying.</div>';return;}}
+  if(!confirm(`Apply ${rows.length} reviewed COA batch row(s) to ${project}? They will become available in the PIR helper.`))return;
+  btn.disabled=true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy','true'); btn.textContent='Applying...'; if(msg)msg.innerHTML='<div class="notice">Saving reviewed COAs...</div>';
+  try{
+    const fd=new FormData(); fd.append('project',project); (state.files||[]).forEach(f=>fd.append('coaFiles',f)); fd.append('candidates',JSON.stringify(rows));
+    const res=await fetch('/api/admin/materials/apply-import',{method:'POST',headers:{'x-admin-pin':adminPin()},body:fd}); const json=await res.json(); if(!res.ok||!json.ok)throw new Error(json.error||'Apply failed');
+    serverMaterialsLoaded=false; window.adminCoaSelectedProject=project; window.adminCoaImportState=null;
+    if(msg)msg.innerHTML=`<div class="notice success">Applied ${json.added?.length||0} COA batch row(s). ${json.skipped?.length||0} duplicate/invalid row(s) skipped. These active COAs are now available in the PIR helper.</div>`;
+    setTimeout(()=>{window.adminCoaShowMaterials=true;renderAdminCoa();},900);
+  }catch(e){if(msg)msg.innerHTML=`<div class="notice">${esc(e.message)}</div>`;btn.disabled=false;btn.textContent='Apply Reviewed COAs';}
 }
 async function renderAdminCoa(editMat=null, mode='list'){
   const c=document.getElementById('adminContent'); if(!c)return;
@@ -2748,7 +3196,7 @@ async function renderAdminCoa(editMat=null, mode='list'){
     let workPanel='';
     if(mode==='manual') workPanel=materialFormHtml(editMat||{}, savedProject);
     if(mode==='import') workPanel=coaImportHtml(savedProject);
-    c.innerHTML=`<div class="panel"><h2>COA / Material Library</h2><p class="tiny">Simple view: choose a job, import COA PDFs, add one material manually, or show what is already loaded for that job.</p><div class="adminSimpleBar"><label>Project / Job</label><select id="adminMatFilterProject"><option value="">Choose a job...</option>${adminProjectOptions(savedProject)}</select><button class="btn" id="adminShowMaterialsBtn" type="button">Show Current COAs</button><button class="btn" id="adminImportCoaBtn" type="button">Import COAs</button><button class="btn light" id="adminAddManualCoaBtn" type="button">Add Single COA Manually</button><span>${active.length} active / ${rows.length} total</span></div>${workPanel}<div class="adminToolbar"><input id="adminMatSearch" placeholder="Search product, batch, color"><span id="adminMatVisibleCount"></span></div><div id="adminMatTable"></div></div>`;
+    c.innerHTML=`<div class="panel"><h2>COA / Material Library</h2><p class="tiny">Simple view: choose a job, import COA PDFs, add one material manually, or show what is already loaded for that job.</p><div class="adminSimpleBar"><label>Project / Job</label><select id="adminMatFilterProject"><option value="">Choose a job...</option>${adminProjectOptions(savedProject)}</select><button class="btn" id="adminShowMaterialsBtn" type="button">Show Current COAs</button><button class="btn" id="adminImportCoaBtn" type="button">Import COAs</button><button class="btn light" id="adminAddManualCoaBtn" type="button">Add Single COA Manually</button><span>${active.length} active / ${rows.length} total</span><span id="adminCoaAwsStatus"></span></div>${workPanel}<div class="adminToolbar"><input id="adminMatSearch" placeholder="Search product, batch, color"><span id="adminMatVisibleCount"></span></div><div id="adminMatTable"></div></div>`;
     if(mode==='manual') setupAdminMaterialForm();
     if(mode==='import') setupAdminCoaImport();
     const clearMatTable=(msg='Choose a job, then click Show Current COAs.')=>{
@@ -2786,12 +3234,52 @@ function setupAdminCoaImport(){
   const sel=document.getElementById('adminImportProject'); if(sel) sel.onchange=()=>{window.adminCoaSelectedProject=sel.value;};
   btn.onclick=async()=>{
     const project=val('adminImportProject');
-    const files=document.getElementById('adminImportFiles')?.files;
-    if(!project){document.getElementById('adminImportMsg').innerHTML='<div class="notice">Choose a project/job first.</div>';return;}
-    if(!files || !files.length){document.getElementById('adminImportMsg').innerHTML='<div class="notice">Choose at least one COA PDF.</div>';return;}
-    const fd=new FormData(); fd.append('project',project); Array.from(files).forEach(f=>fd.append('coaFiles',f));
-    btn.disabled=true; btn.textContent='Importing...';
-    try{const res=await fetch('/api/admin/materials/import',{method:'POST',headers:{'x-admin-pin':adminPin()},body:fd}); const json=await res.json(); if(!res.ok) throw new Error(json.error||'Import failed'); serverMaterialsLoaded=false; window.adminCoaSelectedProject=project; document.getElementById('adminImportMsg').innerHTML=`<div class="notice success">Imported ${json.added?.length||0} COA file(s) as review rows. Edit them before making active.</div>`; setTimeout(()=>renderAdminCoa(),900);}catch(e){document.getElementById('adminImportMsg').innerHTML=`<div class="notice">${esc(e.message)}</div>`;}finally{btn.disabled=false; btn.textContent='Import Selected COAs';}
+    const files=Array.from(document.getElementById('adminImportFiles')?.files||[]);
+    const msg=document.getElementById('adminImportMsg');
+    if(!project){msg.innerHTML='<div class="notice">Choose a project/job first.</div>';return;}
+    if(!files.length){msg.innerHTML='<div class="notice">Choose at least one COA PDF.</div>';return;}
+    btn.disabled=true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy','true'); btn.textContent='Analyzing...';
+    const fileInput=document.getElementById('adminImportFiles'); if(fileInput)fileInput.disabled=true;
+    if(sel)sel.disabled=true;
+    window.adminCoaImportState={project,files,rows:[]};
+    renderCoaImportReview();
+    try{
+      await ensurePdfJsForCoa();
+      let pagesTotal=0;
+      const docs=[];
+      for(const file of files){
+        const bytes=await file.arrayBuffer();
+        const pdf=await window.pdfjsLib.getDocument({data:bytes}).promise;
+        docs.push({file,pdf}); pagesTotal+=pdf.numPages;
+      }
+      let done=0; const found=[];
+      for(const doc of docs){
+        for(let pageNumber=1;pageNumber<=doc.pdf.numPages;pageNumber++){
+          done++;
+          msg.innerHTML=`<div class="notice">Analyzing ${esc(doc.file.name)} — page ${pageNumber} of ${doc.pdf.numPages} (${done}/${pagesTotal})...</div>`;
+          const page=await doc.pdf.getPage(pageNumber);
+          const base=page.getViewport({scale:1}); const targetWidth=2200; const scale=Math.max(1.5,Math.min(3,targetWidth/Math.max(1,base.width)));
+          const viewport=page.getViewport({scale}); const canvas=document.createElement('canvas'); canvas.width=Math.ceil(viewport.width); canvas.height=Math.ceil(viewport.height);
+          const ctx=canvas.getContext('2d',{alpha:false}); ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height); await page.render({canvasContext:ctx,viewport}).promise;
+          const imageDataUrl=canvas.toDataURL('image/jpeg',0.9);
+          const res=await fetch('/api/admin/materials/analyze-page',{method:'POST',headers:{'Content-Type':'application/json','x-admin-pin':adminPin()},body:JSON.stringify({project,fileName:doc.file.name,pageNumber,imageDataUrl})});
+          const json=await res.json(); if(!res.ok||!json.ok)throw new Error(`${doc.file.name} page ${pageNumber}: ${json.error||'Textract analysis failed'}`);
+          (json.candidates||[]).forEach(c=>found.push(c));
+        }
+      }
+      const rows=coaDedupeAnalyzedCandidates(found);
+      window.adminCoaImportState={project,files,rows};
+      const selected=rows.filter(r=>r.add&&!r.duplicateExisting).length;
+      const duplicates=rows.filter(r=>r.duplicateExisting||r.duplicateInUpload).length;
+      const noFind=rows.length===0;
+      msg.innerHTML=noFind?'<div class="notice">Textract finished, but no product/batch rows were confidently identified. Nothing has been added. You can cancel and use Add Single COA Manually.</div>':`<div class="notice success">Textract found ${rows.length} batch row(s). ${selected} selected to apply; ${duplicates} duplicate row(s) were left unchecked. Review below before applying.</div>`;
+      renderCoaImportReview();
+      btn.classList.remove('is-busy'); btn.classList.add('is-complete'); btn.removeAttribute('aria-busy'); btn.textContent='Analysis Complete';
+      // Golden rule: keep the completed analysis button disabled so this same batch cannot be started twice accidentally.
+    }catch(e){
+      msg.innerHTML=`<div class="notice">${esc(e.message)}</div>`;
+      btn.disabled=false; btn.classList.remove('is-busy','is-complete'); btn.removeAttribute('aria-busy'); btn.textContent='Analyze COAs'; if(fileInput)fileInput.disabled=false; if(sel)sel.disabled=false;
+    }
   };
 }
 function setupAdminMaterialForm(){
@@ -2804,6 +3292,102 @@ function setupAdminMaterialForm(){
 }
 
 
+
+
+let receiptSelectedFiles=[];
+let receiptCurrentKind='receipt';
+let receiptObjectUrls=[];
+function receiptEscapeAttr(v){return esc(String(v||''));}
+function receiptStatusHtml(text,kind=''){return `<div class="notice ${kind==='success'?'success':''}">${esc(text)}</div>`;}
+async function receiptLoadJobs(selectId){
+  const sel=document.getElementById(selectId); if(!sel)return;
+  // Use the same normalized /api/jobs feed as the rest of Field Forms.
+  // That endpoint intentionally returns job names as strings after Portal normalization/cache.
+  const setOptions=(rows)=>{
+    const names=uniqueList((Array.isArray(rows)?rows:[]).map(row=>
+      typeof row==='string' ? row : (row?.name || row?.jobName || row?.project || row?.contract || row?.id || '')
+    ));
+    if(!names.length)return false;
+    sel.innerHTML='<option value="">Choose job...</option>'+names.map(name=>`<option value="${receiptEscapeAttr(name)}" data-job-name="${receiptEscapeAttr(name)}">${esc(name)}</option>`).join('');
+    return true;
+  };
+  try{
+    const r=await fetch('/api/jobs?t='+Date.now(),{cache:'no-store'});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j?.error||`Job list returned ${r.status}`);
+    if(setOptions(j.rows))return;
+    // Same safe fallback already used by the existing project fields.
+    if(setOptions(portalJobBaseOptions()))return;
+    throw new Error('No jobs were returned.');
+  }catch(e){
+    console.warn('Receipt job list unavailable; using cached/static project list.',e?.message||e);
+    if(setOptions(portalJobBaseOptions()))return;
+    sel.innerHTML='<option value="">Could not load jobs — refresh and try again</option>';
+  }
+}
+async function receiptLoadWorkers(selectId){
+  const sel=document.getElementById(selectId); if(!sel)return;
+  try{const r=await fetch('/api/workers?t='+Date.now(),{cache:'no-store'});const j=await r.json();const rows=(Array.isArray(j.rows)?j.rows:[]).filter(w=>String(w.status||'Active').toLowerCase()==='active'&&!w.disabled);rows.sort((a,b)=>String(a.fullName||a.name||'').localeCompare(String(b.fullName||b.name||'')));sel.innerHTML='<option value="">Choose employee / PM...</option>'+rows.map(w=>{const name=String(w.fullName||w.name||`${w.firstName||''} ${w.lastName||''}`).trim();return `<option value="${receiptEscapeAttr(w.id||w.employeeId||name)}" data-worker-name="${receiptEscapeAttr(name)}">${esc(name)}</option>`;}).join('');}
+  catch(e){sel.innerHTML='<option value="">Could not load employee list</option>';}
+}
+function receiptScreen(kind='receipt'){
+  receiptCurrentKind=kind==='reimbursement'?'reimbursement':'receipt'; receiptSelectedFiles=[]; receiptObjectUrls.forEach(u=>URL.revokeObjectURL(u)); receiptObjectUrls=[];
+  const isReimb=receiptCurrentKind==='reimbursement';
+  app.innerHTML=`<div class="container receiptShell">
+    <section class="receiptHero ${isReimb?'is-reimbursement':''}"><div><span class="formTag">${isReimb?'Personal purchase':'Company card receipt'}</span><h1>${isReimb?'Reimbursements':'Receipts'}</h1><p>${isReimb?'Use this only when someone paid personally and needs to be reimbursed.':'Keep it simple: choose the job, add one or many receipt photos, and submit.'}</p></div><a href="#/" class="btn light">Back to Forms</a></section>
+    <section class="panel receiptPanel">
+      ${isReimb?`<label class="receiptField"><strong>Who is getting reimbursed? *</strong><select id="receiptReimburseTo"><option value="">Loading employees...</option></select></label>`:''}
+      <label class="receiptField"><strong>Project / Job *</strong><select id="receiptJob"><option value="">Loading jobs...</option></select></label>
+      <section class="receiptAddBox"><h2>Add Receipt Photos</h2><p class="tiny">Take a new photo or choose multiple receipts already saved on your phone. Each selected photo is treated as one receipt.</p>
+        <div class="receiptButtons"><label class="btn primary">Take Photo<input id="receiptCamera" class="hiddenFileInput" type="file" accept="image/*" capture="environment"></label><label class="btn">Upload Photos<input id="receiptFiles" class="hiddenFileInput" type="file" accept="image/*" multiple></label></div>
+        <div id="receiptFileCount" class="small muted">No receipts selected.</div><div id="receiptPreview" class="receiptPreview"></div>
+      </section>
+      <div id="receiptSubmitMsg"></div>
+      <button id="receiptSubmitBtn" class="btn primary receiptSubmitBtn" type="button">Submit Receipts</button>
+      <div id="receiptBatchStatus"></div>
+    </section>
+  </div>`;
+  receiptLoadJobs('receiptJob'); if(isReimb)receiptLoadWorkers('receiptReimburseTo');
+  document.getElementById('receiptCamera').onchange=e=>{receiptAddFiles(e.target.files);e.target.value='';};
+  document.getElementById('receiptFiles').onchange=e=>{receiptAddFiles(e.target.files);e.target.value='';};
+  document.getElementById('receiptSubmitBtn').onclick=receiptSubmitBatch;
+}
+function receiptAddFiles(list){
+  for(const f of Array.from(list||[])){if(receiptSelectedFiles.length>=24)break;if(!String(f.type||'').startsWith('image/'))continue;receiptSelectedFiles.push(f);}receiptRenderSelected();
+}
+function receiptRenderSelected(){
+  receiptObjectUrls.forEach(u=>URL.revokeObjectURL(u));receiptObjectUrls=[];const box=document.getElementById('receiptPreview'),count=document.getElementById('receiptFileCount');if(!box||!count)return;
+  count.textContent=receiptSelectedFiles.length?`${receiptSelectedFiles.length} receipt${receiptSelectedFiles.length===1?'':'s'} selected. Maximum 24 per batch.`:'No receipts selected.';
+  if(!receiptSelectedFiles.length){box.innerHTML='';return;}
+  box.innerHTML=receiptSelectedFiles.map((f,i)=>{const u=URL.createObjectURL(f);receiptObjectUrls.push(u);return `<article class="receiptThumb"><img src="${u}" alt="Receipt ${i+1}"><div><strong>Receipt ${i+1}</strong><small>${Math.max(1,Math.round(f.size/1024))} KB original</small></div><button class="btn small danger" type="button" onclick="receiptRemoveFile(${i})">Remove</button></article>`;}).join('');
+}
+function receiptRemoveFile(i){receiptSelectedFiles.splice(i,1);receiptRenderSelected();}
+async function receiptCompressImage(file){
+  const maxSide=2200,quality=.82;
+  let bitmap=null;
+  try{bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});}catch(_){
+    bitmap=await new Promise((resolve,reject)=>{const img=new Image();const url=URL.createObjectURL(file);img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error(`Could not read ${file.name}. If this is HEIC, choose a screenshot/JPG or retake the photo in the form.`));};img.src=url;});
+  }
+  const w=bitmap.width||bitmap.naturalWidth,h=bitmap.height||bitmap.naturalHeight;if(!w||!h)throw new Error(`Could not read ${file.name}.`);const scale=Math.min(1,maxSide/Math.max(w,h));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(w*scale));canvas.height=Math.max(1,Math.round(h*scale));const ctx=canvas.getContext('2d',{alpha:false});ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);if(bitmap.close)bitmap.close();const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));if(!blob)throw new Error(`Could not optimize ${file.name}.`);return new File([blob],`${String(file.name||'receipt').replace(/\.[^.]+$/,'')}.jpg`,{type:'image/jpeg',lastModified:Date.now()});
+}
+async function receiptSubmitBatch(){
+  const btn=document.getElementById('receiptSubmitBtn'),msg=document.getElementById('receiptSubmitMsg'),status=document.getElementById('receiptBatchStatus');const jobSel=document.getElementById('receiptJob');const jobId=jobSel?.value||'';const jobName=jobSel?.selectedOptions?.[0]?.dataset?.jobName||jobSel?.selectedOptions?.[0]?.textContent||jobId;
+  const reimbSel=document.getElementById('receiptReimburseTo');const reimburseToId=reimbSel?.value||'';const reimburseToName=reimbSel?.selectedOptions?.[0]?.dataset?.workerName||reimbSel?.selectedOptions?.[0]?.textContent||'';
+  if(!jobId){msg.innerHTML=receiptStatusHtml('Choose the project / job first.');return;}if(receiptCurrentKind==='reimbursement'&&!reimburseToId){msg.innerHTML=receiptStatusHtml('Choose who is getting reimbursed.');return;}if(!receiptSelectedFiles.length){msg.innerHTML=receiptStatusHtml('Add at least one receipt photo.');return;}
+  btn.disabled=true;btn.classList.add('is-busy');btn.textContent=`Preparing 0 of ${receiptSelectedFiles.length}...`;msg.innerHTML=receiptStatusHtml('Optimizing receipt photos so phone images do not waste storage space.');
+  try{
+    const optimized=[];for(let i=0;i<receiptSelectedFiles.length;i++){btn.textContent=`Preparing ${i+1} of ${receiptSelectedFiles.length}...`;optimized.push(await receiptCompressImage(receiptSelectedFiles[i]));}
+    const fd=new FormData();fd.append('data',JSON.stringify({kind:receiptCurrentKind,jobId,jobName,reimburseToId,reimburseToName}));optimized.forEach(f=>fd.append('files',f));btn.textContent=`Uploading ${optimized.length} receipt${optimized.length===1?'':'s'}...`;msg.innerHTML=receiptStatusHtml('Uploading optimized copies. You only need to wait until we confirm they were received.');
+    const res=await fetch('/api/receipts/upload',{method:'POST',body:fd});const j=await res.json();if(!res.ok||!j.ok)throw new Error(j.error||'Receipt upload failed.');
+    msg.innerHTML=receiptStatusHtml(j.message||'Receipts received. You can leave this page.','success');btn.textContent='Receipts Received';status.innerHTML=`<div class="receiptSuccess"><strong>Batch ${esc(j.batchId||'')}</strong><span>${(j.accepted||[]).length} received${(j.duplicates||[]).length?` · ${(j.duplicates||[]).length} duplicate(s) skipped`:''}</span><span>Textract is reading them in the background. You can leave this page.</span></div>`;receiptSelectedFiles=[];receiptRenderSelected();
+    if(j.batchId)receiptPollBatch(j.batchId);
+  }catch(e){msg.innerHTML=receiptStatusHtml(e.message);btn.disabled=false;btn.classList.remove('is-busy');btn.textContent='Submit Receipts';}
+}
+async function receiptPollBatch(batchId){
+  const box=document.getElementById('receiptBatchStatus');if(!box)return;let tries=0;const poll=async()=>{tries++;try{const r=await fetch('/api/receipts/status/'+encodeURIComponent(batchId),{cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)return;const rows=j.rows||[];const done=rows.filter(x=>x.status!=='processing').length;box.innerHTML=`<div class="receiptSuccess"><strong>Batch ${esc(batchId)}</strong><span>${done} of ${rows.length} read by AWS</span>${rows.slice(0,8).map(x=>`<span>${esc(x.displayFileName||x.id)} — ${esc(x.status==='ready'?'Ready':x.status==='needs_attention'?'Needs attention':'Reading...')}</span>`).join('')}${rows.length>8?`<span>+ ${rows.length-8} more</span>`:''}</div>`;if(done<rows.length&&tries<20)setTimeout(poll,2500);}catch(_){}};setTimeout(poll,1800);
+}
+function receiptsForm(){receiptScreen('receipt');}
+function reimbursementsForm(){receiptScreen('reimbursement');}
 
 let tmSelectedFiles=[];
 function tmInputField(id,label,type='text',extra=''){return `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" ${extra}></div>`;}
@@ -2872,7 +3456,7 @@ async function tmCarryRentals(){const ids=Array.from(document.querySelectorAll('
 async function tmAddProject(){try{await tmJson('/api/admin/tm/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contract:val('tmNewContract'),name:val('tmNewName'),active:true})});alert('Project added.');tmOfficeDashboard();}catch(e){alert(e.message);}}
 function tmExportCsv(){const rows=window.tmOfficeRows||[],head=['Record','Project','Month','Type','Vendor','Date','Amount','Category','Paid With','Purchased By','Submitted By','Description','Status'];const csv=[head,...rows.map(r=>[r.id,r.projectLabel,r.billingMonth,r.type,r.vendor,r.transactionDate,r.amount,r.category,r.paymentMethod,r.purchaser,r.submitter,r.description,r.status])].map(row=>row.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`JAGD_TM_${val('tmOfficeProject')}_${val('tmOfficeMonth')}.csv`;a.click();URL.revokeObjectURL(a.href);}
 
-function router(){const h=location.hash||'#/'; if(h.startsWith('#/tm-office')) tmOfficeView(); else if(h.startsWith('#/tm')) tmFieldView(); else if(h.startsWith('#/admin')) adminView(); else if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/dwl')) dwlForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else if(h.startsWith('#/bill-of-lading')) bolForm(); else if(h.startsWith('#/incident-report')) incidentReportForm(); else if(h.startsWith('#/heavy-accident-report')) heavyAccidentReportForm(); else if(h.startsWith('#/disciplinary-report')) disciplinaryReportForm(); else home();}
+function router(){const h=location.hash||'#/'; if(h.startsWith('#/receipts')) receiptsForm(); else if(h.startsWith('#/reimbursements')) reimbursementsForm(); else if(h.startsWith('#/tm-office')) tmOfficeView(); else if(h.startsWith('#/tm')) tmFieldView(); else if(h.startsWith('#/admin')) adminView(); else if(h.startsWith('#/weekly-sign/')) weeklySignForm(decodeURIComponent(h.split('/').pop())); else if(h.startsWith('#/weekly-safety')) weeklySafetyForm(); else if(h.startsWith('#/dwl')) dwlForm(); else if(h.startsWith('#/daily-equipment')) dailyEquipmentForm(); else if(h.startsWith('#/dsif')) dsifForm(); else if(h.startsWith('#/pir')) pirForm(); else if(h.startsWith('#/mewp')) mewpForm(); else if(h.startsWith('#/bill-of-lading')) bolForm(); else if(h.startsWith('#/incident-report')) incidentReportForm(); else if(h.startsWith('#/heavy-accident-report')) heavyAccidentReportForm(); else if(h.startsWith('#/disciplinary-report')) disciplinaryReportForm(); else home();}
 
 window.addEventListener('beforeprint',()=>{
   const h=location.hash||'#/';
