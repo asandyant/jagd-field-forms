@@ -54,6 +54,7 @@ try {
 } catch (e) {}
 const DAILY_EQUIPMENT_URL = 'https://jagdconstruction.github.io/daily_equipment_inspection/';
 let activeWorkers = [];
+const DWL_MAX_ROWS = 80;
 let serverMaterials = [];
 let serverMaterialsLoaded = false;
 let bolInventoryItems = [];
@@ -1782,8 +1783,8 @@ function applyWorkerToDwlRow(i,w){
   if(!w) return;
   const emp=document.getElementById('dwlEmp'+i);
   if(emp) emp.value = workerDisplayName(w);
-  const cls=document.getElementById('dwlClass'+i); if(cls) cls.value = normalizeDwlClass(w.class || '');
-  const loc=document.getElementById('dwlLocal'+i); if(loc) loc.value = cleanDwlLocal(w.local);
+  const cls=document.getElementById('dwlClass'+i); if(cls) cls.value = normalizeDwlClass(w.class || w.workerClass || w.className || w.classification || '');
+  const loc=document.getElementById('dwlLocal'+i); if(loc) loc.value = cleanDwlLocal(w.local || w.workerLocal || w.unionLocal || '');
 }
 function getDwlSuggestBox(i){
   return document.getElementById('dwlSuggest'+i);
@@ -1876,11 +1877,23 @@ function setupDwlRows(){
 function addDwlPageRows(){
   const tbody=document.getElementById('dwlRows');
   const current=tbody.querySelectorAll('tr').length;
-  if(current>=40) return;
+  if(current>=DWL_MAX_ROWS) return;
   tbody.insertAdjacentHTML('beforeend', Array.from({length:20},(_,idx)=>dwlRow(current+idx+1)).join(''));
   setupDwlWorkerAutofill();
 }
 
+function refreshDwlWorkerMetadata(){
+  for(let i=1;i<=DWL_MAX_ROWS;i++){
+    const emp=document.getElementById('dwlEmp'+i);
+    if(!emp || !emp.value.trim()) continue;
+    const cls=document.getElementById('dwlClass'+i), loc=document.getElementById('dwlLocal'+i);
+    if((cls && cls.value.trim()) && (loc && loc.value.trim())) continue;
+    const worker=findWorkerForCrewName(emp.value);
+    if(!worker) continue;
+    if(cls && !cls.value.trim()) cls.value=normalizeDwlClass(worker.class || worker.workerClass || worker.className || worker.classification || '');
+    if(loc && !loc.value.trim()) loc.value=cleanDwlLocal(worker.local || worker.workerLocal || worker.unionLocal || '');
+  }
+}
 function clearDwlWorkerRows(){
   for(let i=1;i<=80;i++){
     ['Emp','Loc','Act','Class','Local','Straight','Over','NoLunch','PT','RT'].forEach(k=>{
@@ -1937,34 +1950,34 @@ function getDwlLastCrewStorageKey(project, crew){
 async function saveDwlLastCrewToServer(project, crew, names){
   if(!project || !crew || !Array.isArray(names) || !names.length) return;
   try{
-    await fetch('/api/dwl/last-crew', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project, crew, names:names.slice(0,40)})});
+    await fetch('/api/dwl/last-crew', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project, crew, names:names.slice(0,DWL_MAX_ROWS)}), keepalive:true});
   }catch(e){ /* local browser copy remains the fallback */ }
 }
 async function loadDwlLastCrewFromServer(project, crew){
   try{
-    const q=new URLSearchParams({project, crew});
+    const q=new URLSearchParams({project, crew, t:String(Date.now())});
     const res=await fetch('/api/dwl/last-crew?'+q.toString(), {headers:{Accept:'application/json'}});
     const json=await res.json().catch(()=>({}));
     return res.ok && Array.isArray(json.names) ? json.names : [];
   }catch(e){ return []; }
 }
-function saveDwlLastCrewFromRows(){
+async function saveDwlLastCrewFromRows(){
   try{
     const names=getDwlCrewNamesFromRows();
     if(!names.length) return;
     const selected=getDwlSelectedProjectCrew();
     const key=getDwlLastCrewStorageKey(selected.project, selected.crew);
     if(!key) return;
-    const cleanNames=names.map(normalizeCrewName).filter(Boolean).slice(0,40);
+    const cleanNames=names.map(normalizeCrewName).filter(Boolean).slice(0,DWL_MAX_ROWS);
     localStorage.setItem(key, JSON.stringify(cleanNames));
     localStorage.setItem('jagdDwlLastCrewLastKey', key);
-    saveDwlLastCrewToServer(selected.project, selected.crew, cleanNames);
+    await saveDwlLastCrewToServer(selected.project, selected.crew, cleanNames);
   }catch(e){}
 }
 function ensureDwlRows(count){
   const tbody=document.getElementById('dwlRows');
   if(!tbody) return;
-  while(tbody.querySelectorAll('tr').length<count && tbody.querySelectorAll('tr').length<40) addDwlPageRows();
+  while(tbody.querySelectorAll('tr').length<count && tbody.querySelectorAll('tr').length<DWL_MAX_ROWS) addDwlPageRows();
 }
 function applyDwlCrewNames(names){
   const cleanNames=(names||[]).map(normalizeCrewName).filter(Boolean);
@@ -1975,7 +1988,7 @@ function applyDwlCrewNames(names){
   }
   ensureDwlRows(cleanNames.length);
   clearDwlWorkerRows();
-  cleanNames.slice(0,40).forEach((name,idx)=>{
+  cleanNames.slice(0,DWL_MAX_ROWS).forEach((name,idx)=>{
     const row=idx+1;
     const worker=findWorkerForCrewName(name);
     if(worker) applyWorkerToDwlRow(row, worker);
@@ -1986,7 +1999,7 @@ function applyDwlCrewNames(names){
   });
   saveDwlLastCrewFromRows();
   const msg=document.getElementById('dwlMsg');
-  if(msg) msg.innerHTML=`<div class="notice success">Loaded ${Math.min(cleanNames.length,40)} crew member${cleanNames.length===1?'':'s'}.${cleanNames.length>40?' Only the first 40 fit right now.':''}</div>`;
+  if(msg) msg.innerHTML=`<div class="notice success">Loaded ${Math.min(cleanNames.length,DWL_MAX_ROWS)} crew member${cleanNames.length===1?'':'s'}.${cleanNames.length>DWL_MAX_ROWS?` Only the first ${DWL_MAX_ROWS} fit right now.`:''}</div>`;
 }
 function showDwlCrewUpload(){
   document.querySelectorAll('.modalOverlay').forEach(m=>m.remove());
@@ -2013,20 +2026,19 @@ async function loadDwlLastCrew(){
     return;
   }
   if(msg) msg.innerHTML='<div class="notice">Loading the last saved crew...</div>';
-  let names=[];
-  try{ names=JSON.parse(localStorage.getItem(key)||'[]'); }catch(e){ names=[]; }
-  if(!Array.isArray(names) || !names.length){
-    names=await loadDwlLastCrewFromServer(selected.project, selected.crew);
-    if(Array.isArray(names) && names.length){
-      try{ localStorage.setItem(key, JSON.stringify(names)); }catch(e){}
-    }
+  // Cross-device source of truth: always ask the server first so a PC does not use a stale local crew.
+  let names=await loadDwlLastCrewFromServer(selected.project, selected.crew);
+  if(Array.isArray(names) && names.length){
+    try{ localStorage.setItem(key, JSON.stringify(names)); }catch(e){}
+  }else{
+    try{ names=JSON.parse(localStorage.getItem(key)||'[]'); }catch(e){ names=[]; }
   }
   if(!Array.isArray(names) || !names.length){
     if(msg) msg.innerHTML=`<div class="notice">No saved crew found yet for <b>${esc(selected.project)}</b> / <b>${esc(selected.crew)}</b>. Save or upload that crew once, then it can be reloaded from PC or mobile.</div>`;
     return;
   }
   applyDwlCrewNames(names);
-  if(msg) msg.innerHTML=`<div class="notice success">Loaded ${Math.min(names.length,40)} saved crew member${names.length===1?'':'s'} for <b>${esc(selected.project)}</b> / <b>${esc(selected.crew)}</b>.</div>`;
+  if(msg) msg.innerHTML=`<div class="notice success">Loaded ${Math.min(names.length,DWL_MAX_ROWS)} saved crew member${names.length===1?'':'s'} for <b>${esc(selected.project)}</b> / <b>${esc(selected.crew)}</b>.</div>`;
 }
 function resetDwlForm(){
   if(!confirm('Reset this Daily Work Log? This clears the form on this screen.')) return;
@@ -2200,7 +2212,7 @@ function updateDwlShiftUi(){
     box.textContent='';
   }
   const allOt=shift === 'Night' && nightType === 'all_ot';
-  for(let i=1;i<=40;i++){
+  for(let i=1;i<=DWL_MAX_ROWS;i++){
     const st=document.getElementById('dwlStraight'+i);
     const ot=document.getElementById('dwlOver'+i);
     if(!st) continue;
@@ -2257,8 +2269,8 @@ function restoreDwlReturnDraft(){
   const shift=data.shift==='Night'?'Night':'Day';
   document.querySelectorAll('input[name="dwlShiftChoice"]').forEach(el=>el.checked=el.value===shift);
   document.querySelectorAll('input[name="dwlNightChoice"]').forEach(el=>el.checked=shift==='Night' && el.value===data.nightWorkType);
-  const needed=Math.min(40, Math.max(20, data.rows.length)); ensureDwlRows(needed);
-  data.rows.slice(0,40).forEach((r,idx)=>{ const i=idx+1; set('dwlEmp'+i,r.employee); set('dwlLoc'+i,r.location); set('dwlAct'+i,r.activity); set('dwlClass'+i,r.class); set('dwlLocal'+i,r.local); set('dwlStraight'+i,r.straight); set('dwlOver'+i,r.over); set('dwlNoLunch'+i,r.noLunch); set('dwlPT'+i,r.pt); set('dwlRT'+i,r.rt); });
+  const needed=Math.min(DWL_MAX_ROWS, Math.max(20, data.rows.length)); ensureDwlRows(needed);
+  data.rows.slice(0,DWL_MAX_ROWS).forEach((r,idx)=>{ const i=idx+1; set('dwlEmp'+i,r.employee); set('dwlLoc'+i,r.location); set('dwlAct'+i,r.activity); set('dwlClass'+i,r.class); set('dwlLocal'+i,r.local); set('dwlStraight'+i,r.straight); set('dwlOver'+i,r.over); set('dwlNoLunch'+i,r.noLunch); set('dwlPT'+i,r.pt); set('dwlRT'+i,r.rt); });
   if(data.signatureData){ signatureStore.dwlSignature=data.signatureData; const sig=document.getElementById('dwlSignaturePreview'); if(sig) sig.innerHTML=`<img src="${data.signatureData}" alt="Signature">`; }
   updateDwlShiftUi();
   const msg=document.getElementById('dwlMsg'); if(msg) msg.innerHTML='<div class="notice success">Your DWL was restored so you can correct it. Increase the Revision number before saving a corrected DWL.</div>';
@@ -2271,7 +2283,7 @@ async function dwlForm(){
     <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')} ${dwlShiftControlsHtml()}</div><div id="dwlShiftOfficeNote" class="dwlShiftOfficeNote" style="display:none"></div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
-    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project + Crew on this phone.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew for This Job/Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add Additional Page / 20 More Rows</button></div></div>
+    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project + Crew from any device.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew for This Job/Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add 20 More Rows</button></div></div>
     <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the official DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the phone share/save screen should open with the PDF attached. Choose Messages, Mail, Files, or Dropbox from that screen.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
@@ -2300,7 +2312,7 @@ async function dwlForm(){
         btn.textContent = originalText;
         return;
       }
-      saveDwlLastCrewFromRows();
+      await saveDwlLastCrewFromRows();
       const data=collectDwl();
       saveDwlReturnDraft(data);
       const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
@@ -2499,7 +2511,8 @@ async function saveDwlDirectPdf(data, msgId){
 }
 
 function collectDwl(){
-  const rows=[]; for(let i=1;i<=40;i++){
+  refreshDwlWorkerMetadata();
+  const rows=[]; for(let i=1;i<=DWL_MAX_ROWS;i++){
     const emp=document.getElementById('dwlEmp'+i); if(!emp) continue;
     const row={num:i, employee:val('dwlEmp'+i), location:val('dwlLoc'+i), activity:val('dwlAct'+i), class:val('dwlClass'+i), local:val('dwlLocal'+i), straight:val('dwlStraight'+i), over:val('dwlOver'+i), noLunch:val('dwlNoLunch'+i), pt:val('dwlPT'+i), rt:val('dwlRT'+i)};
     rows.push(row);

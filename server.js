@@ -1138,7 +1138,7 @@ app.get('/api/dwl/last-crew', (req,res)=>{
 });
 app.post('/api/dwl/last-crew', (req,res)=>{
   const project=String(req.body?.project||'').trim(), crew=String(req.body?.crew||'').trim();
-  const names=Array.isArray(req.body?.names)?req.body.names.map(v=>String(v||'').trim()).filter(Boolean).slice(0,40):[];
+  const names=Array.isArray(req.body?.names)?req.body.names.map(v=>String(v||'').trim()).filter(Boolean).slice(0,80):[];
   if(!project || !crew || !names.length) return res.status(400).json({ok:false,error:'Project, crew, and names are required.'});
   const all=readJsonSafe(DWL_LAST_CREWS_FILE,{}); all[`${reusableKey(project)}|${reusableKey(crew)}`]={project,crew,names,savedAt:new Date().toISOString()}; writeJsonSafe(DWL_LAST_CREWS_FILE,all);
   res.json({ok:true,count:names.length});
