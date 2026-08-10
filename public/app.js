@@ -3337,10 +3337,59 @@ async function receiptLoadJobs(selectId){
     console.warn('Receipt live job refresh unavailable; keeping cached/static job list.',e.message||e);
   }
 }
-async function receiptLoadWorkers(selectId){
-  const sel=document.getElementById(selectId); if(!sel)return;
-  try{const r=await fetch('/api/workers?t='+Date.now(),{cache:'no-store'});const j=await r.json();const rows=(Array.isArray(j.rows)?j.rows:[]).filter(w=>String(w.status||'Active').toLowerCase()==='active'&&!w.disabled);rows.sort((a,b)=>String(a.fullName||a.name||'').localeCompare(String(b.fullName||b.name||'')));sel.innerHTML='<option value="">Choose employee / PM...</option>'+rows.map(w=>{const name=String(w.fullName||w.name||`${w.firstName||''} ${w.lastName||''}`).trim();return `<option value="${receiptEscapeAttr(w.id||w.employeeId||name)}" data-worker-name="${receiptEscapeAttr(name)}">${esc(name)}</option>`;}).join('');}
-  catch(e){sel.innerHTML='<option value="">Could not load employee list</option>';}
+let receiptReimbursementWorkers=[];
+let receiptSelectedReimbursementWorker=null;
+async function receiptLoadWorkers(){
+  try{
+    const r=await fetch('/api/workers?t='+Date.now(),{cache:'no-store'});
+    const j=await r.json();
+    receiptReimbursementWorkers=(Array.isArray(j.rows)?j.rows:[])
+      .filter(w=>String(w.status||'Active').toLowerCase()==='active'&&!w.disabled)
+      .map(w=>({...w,_receiptName:String(w.fullName||w.name||`${w.firstName||''} ${w.lastName||''}`).trim()}))
+      .filter(w=>w._receiptName)
+      .sort((a,b)=>a._receiptName.localeCompare(b._receiptName));
+  }catch(e){receiptReimbursementWorkers=[];}
+}
+function receiptWorkerMatches(q){
+  const raw=String(q||'').trim().toLowerCase();
+  if(!raw)return [];
+  const starts=[],contains=[];
+  receiptReimbursementWorkers.forEach(w=>{
+    const name=w._receiptName.toLowerCase();
+    const first=String(w.firstName||'').toLowerCase();
+    const last=String(w.lastName||'').toLowerCase();
+    if(name.startsWith(raw)||first.startsWith(raw)||last.startsWith(raw))starts.push(w);
+    else if(name.includes(raw)||first.includes(raw)||last.includes(raw))contains.push(w);
+  });
+  return starts.concat(contains).slice(0,20);
+}
+function receiptHideWorkerSuggestions(){
+  const box=document.getElementById('receiptReimburseSuggest');
+  if(box){box.style.display='none';box.innerHTML='';}
+}
+function receiptShowWorkerSuggestions(){
+  const inp=document.getElementById('receiptReimburseTo');
+  const box=document.getElementById('receiptReimburseSuggest');
+  if(!inp||!box)return;
+  receiptSelectedReimbursementWorker=null;
+  const q=inp.value.trim();
+  if(!q){receiptHideWorkerSuggestions();return;}
+  const matches=receiptWorkerMatches(q);
+  if(!matches.length){box.innerHTML='<div class="receiptNoSuggestion">No active employee matches.</div>';box.style.display='block';return;}
+  box.innerHTML=matches.map((w,i)=>`<button type="button" data-reimb-worker="${i}"><b>${esc(w._receiptName)}</b></button>`).join('');
+  box.style.display='block';
+  box.querySelectorAll('button[data-reimb-worker]').forEach(btn=>{
+    const choose=(e)=>{
+      e.preventDefault();
+      const w=matches[Number(btn.dataset.reimbWorker)];
+      if(!w)return;
+      receiptSelectedReimbursementWorker=w;
+      inp.value=w._receiptName;
+      receiptHideWorkerSuggestions();
+    };
+    btn.onmousedown=choose;
+    btn.onclick=choose;
+  });
 }
 function receiptScreen(kind='receipt'){
   receiptCurrentKind=kind==='reimbursement'?'reimbursement':'receipt'; receiptSelectedFiles=[]; receiptObjectUrls.forEach(u=>URL.revokeObjectURL(u)); receiptObjectUrls=[];
@@ -3348,8 +3397,21 @@ function receiptScreen(kind='receipt'){
   app.innerHTML=`<div class="container receiptShell">
     <section class="receiptHero ${isReimb?'is-reimbursement':''}"><div><span class="formTag">${isReimb?'Personal purchase':'Company card receipt'}</span><h1>${isReimb?'Reimbursements':'Receipts'}</h1><p>${isReimb?'Use this only when someone paid personally and needs to be reimbursed.':'Keep it simple: choose the job, add one or many receipt photos, and submit.'}</p></div><a href="#/" class="btn light">Back to Forms</a></section>
     <section class="panel receiptPanel">
-      ${isReimb?`<label class="receiptField"><strong>Who is getting reimbursed? *</strong><select id="receiptReimburseTo"><option value="">Loading employees...</option></select></label>`:''}
-      <label class="receiptField"><strong>Project / Job *</strong><select id="receiptJob"><option value="">Loading jobs...</option></select></label>
+      ${isReimb?`
+        <label class="receiptField receiptAutocompleteField"><strong>Who is getting reimbursed? *</strong>
+          <input id="receiptReimburseTo" autocomplete="off" autocapitalize="words" spellcheck="false" placeholder="Start typing employee name…">
+          <div id="receiptReimburseSuggest" class="dwlSuggest receiptWorkerSuggest"></div>
+          <span class="tiny">Start typing, then tap the employee name from the suggestions.</span>
+        </label>
+        <fieldset class="receiptPaidWith"><legend>Paid With *</legend>
+          <label><input type="radio" name="receiptPaymentMethod" value="Cash"> Cash</label>
+          <label><input type="radio" name="receiptPaymentMethod" value="Personal Card"> Personal Card</label>
+        </fieldset>`:''}
+      <label class="receiptField"><strong>Project / Job</strong><select id="receiptJob"><option value="">Loading jobs...</option></select></label>
+      <label class="receiptField"><strong>Or type your own job / property / location</strong>
+        <input id="receiptCustomJob" autocomplete="off" placeholder="Example: Deptford house">
+        <span class="tiny">Use this only when the purchase is not for one of the jobs listed above.</span>
+      </label>
       <section class="receiptAddBox"><h2>Add Receipt Photos</h2><p class="tiny">Take a new photo or choose multiple receipts already saved on your phone. Each selected photo is treated as one receipt.</p>
         <div class="receiptButtons"><label class="btn primary">Take Photo<input id="receiptCamera" class="hiddenFileInput" type="file" accept="image/*" capture="environment"></label><label class="btn">Upload Photos<input id="receiptFiles" class="hiddenFileInput" type="file" accept="image/*" multiple></label></div>
         <div id="receiptFileCount" class="small muted">No receipts selected.</div><div id="receiptPreview" class="receiptPreview"></div>
@@ -3359,7 +3421,15 @@ function receiptScreen(kind='receipt'){
       <div id="receiptBatchStatus"></div>
     </section>
   </div>`;
-  receiptLoadJobs('receiptJob'); if(isReimb)receiptLoadWorkers('receiptReimburseTo');
+  receiptLoadJobs('receiptJob');
+  if(isReimb){
+    receiptSelectedReimbursementWorker=null;
+    receiptLoadWorkers();
+    const reimbInp=document.getElementById('receiptReimburseTo');
+    reimbInp?.addEventListener('input',receiptShowWorkerSuggestions);
+    reimbInp?.addEventListener('focus',receiptShowWorkerSuggestions);
+    reimbInp?.addEventListener('blur',()=>setTimeout(receiptHideWorkerSuggestions,220));
+  }
   document.getElementById('receiptCamera').onchange=e=>{receiptAddFiles(e.target.files);e.target.value='';};
   document.getElementById('receiptFiles').onchange=e=>{receiptAddFiles(e.target.files);e.target.value='';};
   document.getElementById('receiptSubmitBtn').onclick=receiptSubmitBatch;
@@ -3383,16 +3453,37 @@ async function receiptCompressImage(file){
   const w=bitmap.width||bitmap.naturalWidth,h=bitmap.height||bitmap.naturalHeight;if(!w||!h)throw new Error(`Could not read ${file.name}.`);const scale=Math.min(1,maxSide/Math.max(w,h));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(w*scale));canvas.height=Math.max(1,Math.round(h*scale));const ctx=canvas.getContext('2d',{alpha:false});ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);if(bitmap.close)bitmap.close();const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));if(!blob)throw new Error(`Could not optimize ${file.name}.`);return new File([blob],`${String(file.name||'receipt').replace(/\.[^.]+$/,'')}.jpg`,{type:'image/jpeg',lastModified:Date.now()});
 }
 async function receiptSubmitBatch(){
-  const btn=document.getElementById('receiptSubmitBtn'),msg=document.getElementById('receiptSubmitMsg'),status=document.getElementById('receiptBatchStatus');const jobSel=document.getElementById('receiptJob');const jobId=jobSel?.value||'';const jobName=jobSel?.selectedOptions?.[0]?.dataset?.jobName||jobSel?.selectedOptions?.[0]?.textContent||jobId;
-  const reimbSel=document.getElementById('receiptReimburseTo');const reimburseToId=reimbSel?.value||'';const reimburseToName=reimbSel?.selectedOptions?.[0]?.dataset?.workerName||reimbSel?.selectedOptions?.[0]?.textContent||'';
-  if(!jobId){msg.innerHTML=receiptStatusHtml('Choose the project / job first.');return;}if(receiptCurrentKind==='reimbursement'&&!reimburseToId){msg.innerHTML=receiptStatusHtml('Choose who is getting reimbursed.');return;}if(!receiptSelectedFiles.length){msg.innerHTML=receiptStatusHtml('Add at least one receipt photo.');return;}
+  const btn=document.getElementById('receiptSubmitBtn'),msg=document.getElementById('receiptSubmitMsg'),status=document.getElementById('receiptBatchStatus');
+  const jobSel=document.getElementById('receiptJob');
+  const selectedJobId=jobSel?.value||'';
+  const selectedJobName=jobSel?.selectedOptions?.[0]?.dataset?.jobName||jobSel?.selectedOptions?.[0]?.textContent||selectedJobId;
+  const customJob=String(document.getElementById('receiptCustomJob')?.value||'').trim();
+  const jobId=customJob?`custom:${customJob}`:selectedJobId;
+  const jobName=customJob||selectedJobName;
+  const reimbursementWorker=receiptSelectedReimbursementWorker;
+  const typedReimburseName=String(document.getElementById('receiptReimburseTo')?.value||'').trim();
+  const reimburseToId=reimbursementWorker?.id||reimbursementWorker?.employeeId||'';
+  const reimburseToName=reimbursementWorker?._receiptName||'';
+  const paymentMethod=receiptCurrentKind==='reimbursement'
+    ? String(document.querySelector('input[name="receiptPaymentMethod"]:checked')?.value||'')
+    : '';
+  if(!jobId){msg.innerHTML=receiptStatusHtml('Choose a project / job or type your own job / property / location.');return;}
+  if(receiptCurrentKind==='reimbursement'&&!reimbursementWorker){msg.innerHTML=receiptStatusHtml(typedReimburseName?'Select the employee from the name suggestions.':'Start typing and select who is getting reimbursed.');return;}
+  if(receiptCurrentKind==='reimbursement'&&!paymentMethod){msg.innerHTML=receiptStatusHtml('Choose Cash or Personal Card under Paid With.');return;}
+  if(!receiptSelectedFiles.length){msg.innerHTML=receiptStatusHtml('Add at least one receipt photo.');return;}
   btn.disabled=true;btn.classList.add('is-busy');btn.textContent=`Preparing 0 of ${receiptSelectedFiles.length}...`;msg.innerHTML=receiptStatusHtml('Optimizing receipt photos so phone images do not waste storage space.');
   try{
     const optimized=[];for(let i=0;i<receiptSelectedFiles.length;i++){btn.textContent=`Preparing ${i+1} of ${receiptSelectedFiles.length}...`;optimized.push(await receiptCompressImage(receiptSelectedFiles[i]));}
-    const fd=new FormData();fd.append('data',JSON.stringify({kind:receiptCurrentKind,jobId,jobName,reimburseToId,reimburseToName}));optimized.forEach(f=>fd.append('files',f));btn.textContent=`Uploading ${optimized.length} receipt${optimized.length===1?'':'s'}...`;msg.innerHTML=receiptStatusHtml('Uploading optimized copies. You only need to wait until we confirm they were received.');
+    const fd=new FormData();fd.append('data',JSON.stringify({kind:receiptCurrentKind,jobId,jobName,customJob,reimburseToId,reimburseToName,paymentMethod}));optimized.forEach(f=>fd.append('files',f));btn.textContent=`Uploading ${optimized.length} receipt${optimized.length===1?'':'s'}...`;msg.innerHTML=receiptStatusHtml('Uploading optimized copies. You only need to wait until we confirm they were received.');
     const res=await fetch('/api/receipts/upload',{method:'POST',body:fd});const j=await res.json();if(!res.ok||!j.ok)throw new Error(j.error||'Receipt upload failed.');
-    msg.innerHTML=receiptStatusHtml(j.message||'Receipts received. You can leave this page.','success');btn.textContent='Receipts Received';status.innerHTML=`<div class="receiptSuccess"><strong>Batch ${esc(j.batchId||'')}</strong><span>${(j.accepted||[]).length} received${(j.duplicates||[]).length?` · ${(j.duplicates||[]).length} duplicate(s) skipped`:''}</span><span>Textract is reading them in the background. You can leave this page.</span></div>`;receiptSelectedFiles=[];receiptRenderSelected();
-    if(j.batchId)receiptPollBatch(j.batchId);
+    const acceptedCount=(j.accepted||[]).length,duplicateCount=(j.duplicates||[]).length;
+    msg.innerHTML=receiptStatusHtml(j.message||'Receipts received. You can leave this page.','success');
+    btn.textContent=acceptedCount?'Receipts Received':'Duplicate Skipped';
+    status.innerHTML=acceptedCount
+      ? `<div class="receiptSuccess"><strong>Batch ${esc(j.batchId||'')}</strong><span>${acceptedCount} new receipt${acceptedCount===1?'':'s'} received${duplicateCount?` · ${duplicateCount} exact duplicate${duplicateCount===1?'':'s'} skipped`:''}</span><span>Textract is reading the new receipt${acceptedCount===1?'':'s'} in the background. You can leave this page.</span></div>`
+      : `<div class="receiptSuccess receiptDuplicateNotice"><strong>No new receipt was added.</strong><span>${duplicateCount} exact duplicate${duplicateCount===1?' was':'s were'} already in the system and ${duplicateCount===1?'was':'were'} skipped.</span><span>If you meant to submit a different receipt, use a different photo.</span></div>`;
+    receiptSelectedFiles=[];receiptRenderSelected();
+    if(j.batchId&&acceptedCount)receiptPollBatch(j.batchId);
   }catch(e){msg.innerHTML=receiptStatusHtml(e.message);btn.disabled=false;btn.classList.remove('is-busy');btn.textContent='Submit Receipts';}
 }
 async function receiptPollBatch(batchId){

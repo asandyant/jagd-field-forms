@@ -1628,24 +1628,37 @@ function receiptRequestTokenOk(req) {
 
 app.post('/api/receipts/upload', upload.array('files', RECEIPT_MAX_FILES), async (req,res)=>{
   const files=Array.isArray(req.files)?req.files:[]; let meta={}; try{meta=JSON.parse(String(req.body.data||'{}'));}catch(_){ }
-  const kind=String(meta.kind||'receipt')==='reimbursement'?'reimbursement':'receipt'; const jobId=String(meta.jobId||'').trim(); const jobName=String(meta.jobName||jobId).trim();
+  const kind=String(meta.kind||'receipt')==='reimbursement'?'reimbursement':'receipt';
+  const customJob=String(meta.customJob||'').trim().slice(0,140);
+  const jobId=String(meta.jobId||'').trim();
+  const jobName=String(meta.jobName||jobId).trim().slice(0,140);
   const reimburseToName=String(meta.reimburseToName||'').trim(); const reimburseToId=String(meta.reimburseToId||'').trim();
-  if(!jobId||!files.length){files.forEach(f=>{try{fs.unlinkSync(f.path)}catch(_){}});return res.status(400).json({ok:false,error:'Choose a job and add at least one receipt photo.'});}
+  const paymentMethod=kind==='reimbursement'?String(meta.paymentMethod||'').trim():'';
+  if(!jobId||!files.length){files.forEach(f=>{try{fs.unlinkSync(f.path)}catch(_){}});return res.status(400).json({ok:false,error:'Choose a job or type your own job / property / location, then add at least one receipt photo.'});}
   if(kind==='reimbursement'&&!reimburseToName){files.forEach(f=>{try{fs.unlinkSync(f.path)}catch(_){}});return res.status(400).json({ok:false,error:'Choose who is being reimbursed.'});}
+  if(kind==='reimbursement'&&!['Cash','Personal Card'].includes(paymentMethod)){files.forEach(f=>{try{fs.unlinkSync(f.path)}catch(_){}});return res.status(400).json({ok:false,error:'Choose Cash or Personal Card.'});}
   try{receiptRequireAws();}catch(e){files.forEach(f=>{try{fs.unlinkSync(f.path)}catch(_){}});return res.status(500).json({ok:false,error:e.message});}
-  const rows=receiptReadRecords(); const batches=receiptReadBatches(); const batchId=`RB-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${nanoid(6).toUpperCase()}`; const accepted=[],duplicates=[],jobs=readJsonSafe(JOBS_FILE,[]); const job=(jobs||[]).find(j=>String(j.id||j.contract||'')===jobId)||{}; const resolvedName=jobName||job.name||job.label||jobId; const jobCode=receiptJobCode(jobId,resolvedName);
+  const rows=receiptReadRecords(); const batches=receiptReadBatches(); const batchId=`RB-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${nanoid(6).toUpperCase()}`; const accepted=[],duplicates=[],jobs=readJsonSafe(JOBS_FILE,[]);
+  const isCustomJob=jobId.startsWith('custom:')||!!customJob;
+  const job=isCustomJob?{}:((jobs||[]).find(j=>String(j.id||j.contract||'')===jobId)||{});
+  const resolvedName=(customJob||jobName||job.name||job.label||jobId).trim();
+  const resolvedJobId=isCustomJob?`custom:${resolvedName}`:jobId;
+  const jobCode=receiptJobCode(isCustomJob?'':resolvedJobId,resolvedName);
   const buffers=[];
   for(const f of files){
     const buf=fs.readFileSync(f.path); try{fs.unlinkSync(f.path)}catch(_){} const hash=crypto.createHash('sha256').update(buf).digest('hex'); const dupe=rows.find(r=>r.sha256===hash);
     if(dupe){duplicates.push({originalName:f.originalname,existingId:dupe.id});continue;}
     const id=`RCP-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${nanoid(7).toUpperCase()}`; const now=new Date(); const key=`${kind==='reimbursement'?'reimbursements':'receipts'}/${now.getUTCFullYear()}/${String(now.getUTCMonth()+1).padStart(2,'0')}/${receiptSafePart(jobCode)}/${id}.jpg`;
     await receiptPutObject(key,buf,f.mimetype||'image/jpeg');
-    const row={id,batchId,kind,jobId,jobName:resolvedName,jobCode,reimburseToId,reimburseToName,createdAt:now.toISOString(),submittedAt:now.toISOString(),status:'processing',reimbursementStatus:kind==='reimbursement'?'Pending':'',s3Key:key,sha256:hash,mimeType:f.mimetype||'image/jpeg',sizeBytes:buf.length,originalName:f.originalname,displayFileName:`${id}.jpg`,parsed:{vendor:'',transactionDate:'',amount:0,tax:0,receiptNumber:'',cardLast4:''},error:''};
+    const row={id,batchId,kind,jobId:resolvedJobId,jobName:resolvedName,customJob:isCustomJob?resolvedName:'',jobCode,reimburseToId,reimburseToName,paymentMethod,createdAt:now.toISOString(),submittedAt:now.toISOString(),status:'processing',reimbursementStatus:kind==='reimbursement'?'Pending':'',s3Key:key,sha256:hash,mimeType:f.mimetype||'image/jpeg',sizeBytes:buf.length,originalName:f.originalname,displayFileName:`${id}.jpg`,parsed:{vendor:'',transactionDate:'',amount:0,tax:0,receiptNumber:'',cardLast4:''},error:''};
     rows.unshift(row); accepted.push({id,status:'processing',originalName:f.originalname}); buffers.push({id,buf});
   }
-  batches.unshift({id:batchId,kind,jobId,jobName:resolvedName,jobCode,reimburseToId,reimburseToName,createdAt:new Date().toISOString(),count:accepted.length,duplicateCount:duplicates.length});
+  batches.unshift({id:batchId,kind,jobId:resolvedJobId,jobName:resolvedName,customJob:isCustomJob?resolvedName:'',jobCode,reimburseToId,reimburseToName,paymentMethod,createdAt:new Date().toISOString(),count:accepted.length,duplicateCount:duplicates.length});
   receiptWriteRecords(rows); receiptWriteBatches(batches.slice(0,5000));
-  res.json({ok:true,batchId,accepted,duplicates,message:`${accepted.length} receipt${accepted.length===1?'':'s'} received${duplicates.length?`; ${duplicates.length} duplicate${duplicates.length===1?'':'s'} skipped`:''}. You can leave this page.`});
+  const uploadMessage=accepted.length
+    ? `${accepted.length} new receipt${accepted.length===1?'':'s'} received${duplicates.length?`; ${duplicates.length} exact duplicate${duplicates.length===1?'':'s'} skipped`:''}. You can leave this page.`
+    : `${duplicates.length} exact duplicate${duplicates.length===1?' was':'s were'} already in the system. No new receipt was added.`;
+  res.json({ok:true,batchId,accepted,duplicates,message:uploadMessage});
   setImmediate(async()=>{for(const item of buffers) await receiptProcessOne(item.id,item.buf);});
 });
 
@@ -1655,7 +1668,7 @@ app.get('/api/receipts/status/:batchId',(req,res)=>{
 
 app.get('/api/admin/receipts', requireAdmin, (req,res)=>{
   const rows=receiptReadRecords(); const kind=String(req.query.kind||'').trim(),jobId=String(req.query.jobId||'').trim(),q=String(req.query.q||'').trim().toLowerCase(); const status=String(req.query.status||'').trim(); const page=Math.max(1,Number(req.query.page||1)); const limit=Math.max(1,Math.min(20,Number(req.query.limit||20)));
-  let filtered=rows.filter(r=>(!kind||r.kind===kind)&&(!jobId||r.jobId===jobId)&&(!status||r.status===status)); if(q)filtered=filtered.filter(r=>[r.id,r.jobName,r.reimburseToName,r.parsed?.vendor,r.displayFileName,String(r.parsed?.amount||'')].join(' ').toLowerCase().includes(q)); const total=filtered.length; const slice=filtered.slice((page-1)*limit,(page-1)*limit+limit); res.json({ok:true,rows:slice,total,page,limit});
+  let filtered=rows.filter(r=>(!kind||r.kind===kind)&&(!jobId||r.jobId===jobId)&&(!status||r.status===status)); if(q)filtered=filtered.filter(r=>[r.id,r.jobName,r.customJob,r.reimburseToName,r.paymentMethod,r.parsed?.vendor,r.displayFileName,String(r.parsed?.amount||'')].join(' ').toLowerCase().includes(q)); const total=filtered.length; const slice=filtered.slice((page-1)*limit,(page-1)*limit+limit); res.json({ok:true,rows:slice,total,page,limit});
 });
 app.patch('/api/admin/receipts/:id', requireAdmin, (req,res)=>{
   const rows=receiptReadRecords(); const row=rows.find(r=>r.id===req.params.id); if(!row)return res.status(404).json({ok:false,error:'Receipt not found.'}); const b=req.body||{}; if(row.kind==='reimbursement'&&['Pending','Paid'].includes(String(b.reimbursementStatus||'')))row.reimbursementStatus=String(b.reimbursementStatus); if(b.jobId)row.jobId=String(b.jobId); if(b.jobName)row.jobName=String(b.jobName); if(b.reimburseToName)row.reimburseToName=String(b.reimburseToName); row.updatedAt=new Date().toISOString(); receiptWriteRecords(rows); res.json({ok:true,row});
@@ -1665,7 +1678,7 @@ app.get('/api/admin/receipts/:id/file', requireAdmin, async (req,res)=>{
 });
 
 app.get('/api/forms/receipts', (req,res)=>{
-  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'}); const rows=receiptReadRecords(); const page=Math.max(1,Number(req.query.page||1));const limit=Math.max(1,Math.min(20,Number(req.query.limit||20)));const kind=String(req.query.kind||'').trim(),jobId=String(req.query.jobId||'').trim(),q=String(req.query.q||'').trim().toLowerCase();let filtered=rows.filter(r=>(!kind||r.kind===kind)&&(!jobId||r.jobId===jobId));if(q)filtered=filtered.filter(r=>[r.id,r.jobName,r.reimburseToName,r.parsed?.vendor,String(r.parsed?.amount||''),r.parsed?.cardLast4].join(' ').toLowerCase().includes(q));const total=filtered.length;res.json({ok:true,rows:filtered.slice((page-1)*limit,(page-1)*limit+limit),total,page,limit});
+  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'}); const rows=receiptReadRecords(); const page=Math.max(1,Number(req.query.page||1));const limit=Math.max(1,Math.min(20,Number(req.query.limit||20)));const kind=String(req.query.kind||'').trim(),jobId=String(req.query.jobId||'').trim(),q=String(req.query.q||'').trim().toLowerCase();let filtered=rows.filter(r=>(!kind||r.kind===kind)&&(!jobId||r.jobId===jobId));if(q)filtered=filtered.filter(r=>[r.id,r.jobName,r.customJob,r.reimburseToName,r.paymentMethod,r.parsed?.vendor,String(r.parsed?.amount||''),r.parsed?.cardLast4].join(' ').toLowerCase().includes(q));const total=filtered.length;res.json({ok:true,rows:filtered.slice((page-1)*limit,(page-1)*limit+limit),total,page,limit});
 });
 app.patch('/api/forms/receipts/:id', (req,res)=>{
   if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});const rows=receiptReadRecords();const row=rows.find(r=>r.id===req.params.id);if(!row)return res.status(404).json({ok:false,error:'Receipt not found.'});const b=req.body||{};if(row.kind==='reimbursement'&&['Pending','Paid'].includes(String(b.reimbursementStatus||'')))row.reimbursementStatus=String(b.reimbursementStatus);row.updatedAt=new Date().toISOString();receiptWriteRecords(rows);res.json({ok:true,row});
