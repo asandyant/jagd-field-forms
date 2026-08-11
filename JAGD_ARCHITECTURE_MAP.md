@@ -32,3 +32,14 @@ Last verified: 2026-08-09
 
 ## Deployment rule
 Verify `server.js` static path before patching. Anthony prefers one Windows CMD chain using `&&`.
+
+
+## T&M / Receipts integration (2026-08-11)
+
+- `Receipts` remains the master receipt archive.
+- Existing active T&M projects in Forms define which jobs auto-route into T&M Billing.
+- A receipt/reimbursement submitted to an active T&M project is kept in Receipts and auto-linked to a T&M billing record.
+- Receipt correction/reassignment re-evaluates T&M routing automatically.
+- Receipt mistake removal is soft-delete with audit history; normal lists hide removed items.
+- Portal Admin/Office has a `T&M Billing` control-center view using Forms sync-token proxy routes.
+- Old Forms T&M records remain readable so the existing tracker history is preserved during migration.

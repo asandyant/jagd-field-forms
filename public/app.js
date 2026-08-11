@@ -1183,7 +1183,7 @@ function home(){
         <div>
           <span class="formTag">Receipts / Billing</span>
           <h2>T&amp;M Cost Tracker</h2>
-          <p>Submit receipt photos, scanned PDFs, rentals, and equipment support by project and billing month.</p>
+          <p>T&amp;M billing support. Receipts submitted through the new Receipts form auto-link here when the selected job is a T&amp;M job.</p>
         </div>
         <strong>Open</strong>
       </a>

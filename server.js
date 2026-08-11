@@ -1511,6 +1511,91 @@ app.post('/api/admin/materials', requireAdmin, (req, res) => {
 
 
 
+
+function tmLooseKey(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+function tmProjectForReceipt(jobId, jobName) {
+  const idKey = tmLooseKey(jobId);
+  const nameKey = tmLooseKey(jobName);
+  return readTmProjects().find(p => {
+    if (!p || p.active === false) return false;
+    const candidates = [p.id, p.contract, p.name, tmProjectLabel(p)].map(tmLooseKey).filter(Boolean);
+    return (idKey && candidates.includes(idKey)) || (nameKey && candidates.includes(nameKey));
+  }) || null;
+}
+function tmLinkedReceiptRecord(receipt, project) {
+  const parsed = receipt.parsed || {};
+  const transactionDate = receiptNormalizeDate(parsed.transactionDate) || String(receipt.createdAt || '').slice(0,10);
+  const billingMonth = transactionDate ? transactionDate.slice(0,7) : String(receipt.createdAt || '').slice(0,7);
+  const paymentMethod = receipt.kind === 'reimbursement'
+    ? (receipt.paymentMethod || 'Personal')
+    : (parsed.cardLast4 ? `Company Card •••• ${parsed.cardLast4}` : 'Company Card / Unknown');
+  return {
+    id: `TM-RCP-${receipt.id}`,
+    projectId: project.id,
+    projectLabel: tmProjectLabel(project),
+    customJob: false,
+    type: receipt.kind === 'reimbursement' ? 'Reimbursement Receipt' : 'Receipt / Materials',
+    vendor: parsed.vendor || '',
+    transactionDate,
+    billingMonth,
+    amount: tmMoney(parsed.amount),
+    description: receipt.kind === 'reimbursement'
+      ? `Receipt reimbursement for ${receipt.reimburseToName || 'employee'}`
+      : 'Receipt captured in JAGD Receipts',
+    category: 'Material',
+    paymentMethod,
+    purchaser: receipt.reimburseToName || 'Field Purchase',
+    submitter: 'JAGD Receipts',
+    status: 'New',
+    notes: '',
+    exactDuplicateIds: [],
+    likelyDuplicateIds: [],
+    files: [],
+    receiptId: receipt.id,
+    receiptSource: true,
+    history: [{ action: 'Auto-linked from Receipts', by: 'System', at: new Date().toISOString() }],
+    createdAt: receipt.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+function tmSyncReceiptLink(receipt) {
+  const tmRows = readTmRows();
+  const existingIndex = tmRows.findIndex(r => r.receiptId === receipt.id || r.id === `TM-RCP-${receipt.id}`);
+  const project = receipt.deletedAt ? null : tmProjectForReceipt(receipt.jobId, receipt.jobName);
+
+  if (!project) {
+    if (existingIndex >= 0) {
+      const row = tmRows[existingIndex];
+      row.status = 'Duplicate / Rejected';
+      row.notes = receipt.deletedAt ? 'Receipt removed from Receipts.' : 'Receipt reassigned to a non-T&M job.';
+      row.updatedAt = new Date().toISOString();
+      row.history = Array.isArray(row.history) ? row.history : [];
+      row.history.push({action:'Unlinked from active T&M',by:'System',at:new Date().toISOString()});
+      writeTmRows(tmRows);
+    }
+    receipt.tmProjectId = '';
+    receipt.tmLinked = false;
+    return;
+  }
+
+  const next = tmLinkedReceiptRecord(receipt, project);
+  if (existingIndex >= 0) {
+    const old = tmRows[existingIndex];
+    next.status = old.status === 'Duplicate / Rejected' ? 'New' : (old.status || 'New');
+    next.notes = old.notes || '';
+    next.history = Array.isArray(old.history) ? old.history : next.history;
+    next.history.push({ action: 'Receipt link refreshed', by: 'System', at: new Date().toISOString() });
+    tmRows[existingIndex] = {...old, ...next};
+  } else {
+    tmRows.push(next);
+  }
+  writeTmRows(tmRows);
+  receipt.tmProjectId = project.id;
+  receipt.tmLinked = true;
+}
+
 function receiptReadRecords() { return readJsonSafe(RECEIPT_RECORDS_FILE, []); }
 function receiptWriteRecords(rows) { writeJsonSafe(RECEIPT_RECORDS_FILE, Array.isArray(rows) ? rows : []); }
 function receiptReadBatches() { return readJsonSafe(RECEIPT_BATCHES_FILE, []); }
@@ -1618,7 +1703,7 @@ function receiptHumanFileName(record) {
 async function receiptProcessOne(recordId, buffer) {
   try{
     const parsed=await receiptAnalyzeImage(buffer); const rows=receiptReadRecords(); const row=rows.find(x=>x.id===recordId); if(!row)return;
-    row.parsed=parsed; row.status=(parsed.vendor&&parsed.amount)?'ready':'needs_attention'; row.displayFileName=receiptHumanFileName(row); row.processedAt=new Date().toISOString(); row.error=''; receiptWriteRecords(rows);
+    row.parsed=parsed; row.status=(parsed.vendor&&parsed.amount)?'ready':'needs_attention'; row.displayFileName=receiptHumanFileName(row); row.processedAt=new Date().toISOString(); row.error=''; tmSyncReceiptLink(row); receiptWriteRecords(rows);
   }catch(err){const rows=receiptReadRecords();const row=rows.find(x=>x.id===recordId);if(row){row.status='needs_attention';row.error=String(err.message||'Textract failed').slice(0,500);row.processedAt=new Date().toISOString();receiptWriteRecords(rows);}}
 }
 function receiptRequestTokenOk(req) {
@@ -1657,7 +1742,8 @@ app.post('/api/receipts/upload', upload.array('files', RECEIPT_MAX_FILES), async
     const id=`RCP-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${nanoid(7).toUpperCase()}`; const now=new Date(); const key=`${kind==='reimbursement'?'reimbursements':'receipts'}/${now.getUTCFullYear()}/${String(now.getUTCMonth()+1).padStart(2,'0')}/${receiptSafePart(jobCode)}/${id}.jpg`;
     await receiptPutObject(key,buf,f.mimetype||'image/jpeg');
     const row={id,batchId,kind,jobId:resolvedJobId,jobName:resolvedName,customJob:isCustomJob?resolvedName:'',jobCode,reimburseToId,reimburseToName,paymentMethod,createdAt:now.toISOString(),submittedAt:now.toISOString(),status:'processing',reimbursementStatus:kind==='reimbursement'?'Pending':'',s3Key:key,sha256:hash,mimeType:f.mimetype||'image/jpeg',sizeBytes:buf.length,originalName:f.originalname,displayFileName:`${id}.jpg`,parsed:{vendor:'',transactionDate:'',amount:0,tax:0,receiptNumber:'',cardLast4:''},error:''};
-    rows.unshift(row); accepted.push({id,status:'processing',originalName:f.originalname}); buffers.push({id,buf});
+    tmSyncReceiptLink(row);
+    rows.unshift(row); accepted.push({id,status:'processing',originalName:f.originalname,tmLinked:!!row.tmLinked,tmProjectId:row.tmProjectId||''}); buffers.push({id,buf});
   }
   const existingBatch=batches.find(b=>b.id===batchId);
   if(existingBatch){
@@ -1692,11 +1778,83 @@ app.get('/api/admin/receipts/:id/file', requireAdmin, async (req,res)=>{
 });
 
 app.get('/api/forms/receipts', (req,res)=>{
-  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'}); const rows=receiptReadRecords(); const page=Math.max(1,Number(req.query.page||1));const limit=Math.max(1,Math.min(20,Number(req.query.limit||20)));const kind=String(req.query.kind||'').trim(),jobId=String(req.query.jobId||'').trim(),q=String(req.query.q||'').trim().toLowerCase();let filtered=rows.filter(r=>(!kind||r.kind===kind)&&(!jobId||r.jobId===jobId));if(q)filtered=filtered.filter(r=>[r.id,r.jobName,r.customJob,r.reimburseToName,r.paymentMethod,r.parsed?.vendor,String(r.parsed?.amount||''),r.parsed?.cardLast4].join(' ').toLowerCase().includes(q));const total=filtered.length;res.json({ok:true,rows:filtered.slice((page-1)*limit,(page-1)*limit+limit),total,page,limit});
+  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'}); const rows=receiptReadRecords(); const page=Math.max(1,Number(req.query.page||1));const limit=Math.max(1,Math.min(20,Number(req.query.limit||20)));const kind=String(req.query.kind||'').trim(),jobId=String(req.query.jobId||'').trim(),q=String(req.query.q||'').trim().toLowerCase();let filtered=rows.filter(r=>!r.deletedAt&&(!kind||r.kind===kind)&&(!jobId||r.jobId===jobId));if(q)filtered=filtered.filter(r=>[r.id,r.jobName,r.customJob,r.reimburseToName,r.paymentMethod,r.parsed?.vendor,String(r.parsed?.amount||''),r.parsed?.cardLast4].join(' ').toLowerCase().includes(q));const total=filtered.length;res.json({ok:true,rows:filtered.slice((page-1)*limit,(page-1)*limit+limit),total,page,limit});
 });
 app.patch('/api/forms/receipts/:id', (req,res)=>{
-  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});const rows=receiptReadRecords();const row=rows.find(r=>r.id===req.params.id);if(!row)return res.status(404).json({ok:false,error:'Receipt not found.'});const b=req.body||{};if(row.kind==='reimbursement'&&['Pending','Paid'].includes(String(b.reimbursementStatus||'')))row.reimbursementStatus=String(b.reimbursementStatus);row.updatedAt=new Date().toISOString();receiptWriteRecords(rows);res.json({ok:true,row});
+  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});
+  const rows=receiptReadRecords();const row=rows.find(r=>r.id===req.params.id);if(!row)return res.status(404).json({ok:false,error:'Receipt not found.'});
+  const b=req.body||{};
+  if(row.kind==='reimbursement'&&['Pending','Paid'].includes(String(b.reimbursementStatus||'')))row.reimbursementStatus=String(b.reimbursementStatus);
+  if(b.jobId!==undefined || b.jobName!==undefined){
+    const newJobId=String(b.jobId||'').trim();
+    const newJobName=String(b.jobName||newJobId).trim().slice(0,140);
+    if(!newJobId||!newJobName)return res.status(400).json({ok:false,error:'Job is required.'});
+    row.jobId=newJobId;row.jobName=newJobName;
+    row.customJob=newJobId.startsWith('custom:')?newJobName:'';
+    row.jobCode=receiptJobCode(row.customJob?'':newJobId,newJobName);
+    row.history=Array.isArray(row.history)?row.history:[];
+    row.history.push({action:'Receipt job corrected',by:String(b.updatedBy||'Portal Office'),at:new Date().toISOString(),jobId:newJobId,jobName:newJobName});
+    tmSyncReceiptLink(row);
+  }
+  row.updatedAt=new Date().toISOString();receiptWriteRecords(rows);res.json({ok:true,row});
 });
+
+app.delete('/api/forms/receipts/:id', (req,res)=>{
+  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});
+  const rows=receiptReadRecords();const row=rows.find(r=>r.id===req.params.id);if(!row)return res.status(404).json({ok:false,error:'Receipt not found.'});
+  const b=req.body||{};
+  row.deletedAt=new Date().toISOString();
+  row.deletedBy=String(b.deletedBy||'Portal Office').slice(0,160);
+  row.deleteReason=String(b.reason||b.deleteReason||'Mistake').slice(0,300);
+  row.duplicateOf=String(b.duplicateOf||'');
+  row.history=Array.isArray(row.history)?row.history:[];
+  row.history.push({action:'Receipt removed',by:row.deletedBy,reason:row.deleteReason,at:row.deletedAt});
+  tmSyncReceiptLink(row);
+  receiptWriteRecords(rows);
+  res.json({ok:true,id:row.id,deletedAt:row.deletedAt});
+});
+
+app.get('/api/forms/tm/projects', (req,res)=>{
+  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});
+  res.json({ok:true,rows:readTmProjects().map(p=>({...p,label:tmProjectLabel(p)}))});
+});
+app.get('/api/forms/tm/records', (req,res)=>{
+  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});
+  const projectId=cleanText(req.query.projectId),month=cleanText(req.query.month),status=cleanText(req.query.status),q=cleanText(req.query.q).toLowerCase();
+  const page=Math.max(1,Number(req.query.page||1)),limit=Math.max(1,Math.min(20,Number(req.query.limit||20)));
+  let rows=readTmRows().filter(r=>(!projectId||r.projectId===projectId)&&(!month||r.billingMonth===month)&&(!status||r.status===status));
+  if(q)rows=rows.filter(r=>[r.id,r.projectLabel,r.vendor,r.description,r.category,r.paymentMethod,r.purchaser,r.submitter].join(' ').toLowerCase().includes(q));
+  rows.sort((a,b)=>String(b.transactionDate||b.createdAt||'').localeCompare(String(a.transactionDate||a.createdAt||'')));
+  const total=rows.length;
+  res.json({ok:true,rows:rows.slice((page-1)*limit,(page-1)*limit+limit),total,page,limit});
+});
+app.patch('/api/forms/tm/records/:id', (req,res)=>{
+  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});
+  const rows=readTmRows(),row=rows.find(r=>r.id===req.params.id);if(!row)return res.status(404).json({ok:false,error:'T&M record not found.'});
+  const b=req.body||{};
+  if(['New','Missing Information','Reviewed','Ready for Billing','Included in Billing','Duplicate / Rejected'].includes(String(b.status||'')))row.status=String(b.status);
+  if(b.notes!==undefined)row.notes=cleanText(b.notes);
+  row.updatedAt=new Date().toISOString();
+  row.history=Array.isArray(row.history)?row.history:[];
+  row.history.push({action:'Updated in Portal T&M Billing',by:String(b.updatedBy||'Portal Office'),at:row.updatedAt});
+  writeTmRows(rows);res.json({ok:true,row});
+});
+app.get('/api/forms/tm/records/:id/file', async (req,res)=>{
+  if(!receiptRequestTokenOk(req))return res.status(403).send('Forms sync token required.');
+  const row=readTmRows().find(r=>r.id===req.params.id);if(!row)return res.status(404).send('T&M record not found.');
+  if(row.receiptId){
+    const receipt=receiptReadRecords().find(r=>r.id===row.receiptId);
+    if(!receipt||receipt.deletedAt)return res.status(404).send('Linked receipt not available.');
+    try{const out=await receiptGetObject(receipt.s3Key);res.setHeader('Content-Type',receipt.mimeType||'image/jpeg');res.setHeader('Content-Disposition',`${req.query.download==='1'?'attachment':'inline'}; filename="${String(receipt.displayFileName||receipt.id+'.jpg').replace(/"/g,'')}"`);return res.send(out.body);}catch(e){return res.status(502).send(e.message||'Linked receipt unavailable.');}
+  }
+  const index=Math.max(0,Number(req.query.index||0));const f=(row.files||[])[index];
+  if(!f)return res.status(404).send('T&M attachment not found.');
+  const fp=path.join(TM_UPLOAD_DIR,path.basename(f.filename));if(!fs.existsSync(fp))return res.status(404).send('T&M attachment file not found.');
+  res.setHeader('Content-Type',f.mimetype||'application/octet-stream');
+  res.setHeader('Content-Disposition',`${req.query.download==='1'?'attachment':'inline'}; filename="${String(f.originalName||f.filename).replace(/"/g,'')}"`);
+  res.sendFile(fp);
+});
+
 app.get('/api/forms/receipts/:id/file', async (req,res)=>{
   if(!receiptRequestTokenOk(req))return res.status(403).send('Forms sync token required.');const row=receiptReadRecords().find(r=>r.id===req.params.id);if(!row)return res.status(404).send('Receipt not found.');try{const out=await receiptGetObject(row.s3Key);res.setHeader('Content-Type',row.mimeType||'image/jpeg');res.setHeader('Content-Disposition',`${req.query.download==='1'?'attachment':'inline'}; filename="${String(row.displayFileName||row.originalName||row.id+'.jpg').replace(/"/g,'')}"`);res.send(out.body);}catch(e){res.status(502).send(e.message||'Receipt file unavailable.');}
 });
