@@ -1782,7 +1782,11 @@ function dwlRow(i){
 function applyWorkerToDwlRow(i,w){
   if(!w) return;
   const emp=document.getElementById('dwlEmp'+i);
-  if(emp) emp.value = workerDisplayName(w);
+  if(emp){
+    emp.value = workerDisplayName(w);
+    emp.dataset.portalWorkerId = String(w.id || w.employeeId || workerDisplayName(w));
+    emp.dataset.portalWorkerName = workerDisplayName(w);
+  }
   const cls=document.getElementById('dwlClass'+i); if(cls) cls.value = normalizeDwlClass(w.class || w.workerClass || w.className || w.classification || '');
   const loc=document.getElementById('dwlLocal'+i); if(loc) loc.value = cleanDwlLocal(w.local || w.workerLocal || w.unionLocal || '');
 }
@@ -1851,11 +1855,23 @@ function setupDwlWorkerAutofill(){
     const emp=document.getElementById('dwlEmp'+i);
     if(!emp || emp.dataset.ready==='1') continue;
     emp.dataset.ready='1';
-    emp.addEventListener('input',()=>showDwlSuggestions(i));
+    emp.addEventListener('input',()=>{
+      delete emp.dataset.portalWorkerId;
+      delete emp.dataset.portalWorkerName;
+      showDwlSuggestions(i);
+    });
     emp.addEventListener('keyup',()=>showDwlSuggestions(i));
     emp.addEventListener('focus',()=>showDwlSuggestions(i));
-    emp.addEventListener('change',()=>{ const w=findWorkerByName(emp.value); if(w) applyWorkerToDwlRow(i,w); });
-    emp.addEventListener('blur',()=>{ setTimeout(()=>hideDwlSuggestions(),220); setTimeout(()=>saveDwlLastCrewFromRows(),250); });
+    emp.addEventListener('change',()=>{
+      const w=findWorkerForCrewName(emp.value);
+      if(w) applyWorkerToDwlRow(i,w);
+    });
+    emp.addEventListener('blur',()=>{
+      const w=findWorkerForCrewName(emp.value);
+      if(w) applyWorkerToDwlRow(i,w);
+      setTimeout(()=>hideDwlSuggestions(),220);
+      setTimeout(()=>saveDwlLastCrewFromRows(),250);
+    });
     const st=document.getElementById('dwlStraight'+i);
     if(st && st.dataset.ready!=='1'){
       st.dataset.ready='1';
@@ -1898,7 +1914,13 @@ function clearDwlWorkerRows(){
   for(let i=1;i<=80;i++){
     ['Emp','Loc','Act','Class','Local','Straight','Over','NoLunch','PT','RT'].forEach(k=>{
       const el=document.getElementById('dwl'+k+i);
-      if(el) el.value='';
+      if(el){
+        el.value='';
+        if(k==='Emp'){
+          delete el.dataset.portalWorkerId;
+          delete el.dataset.portalWorkerName;
+        }
+      }
     });
   }
 }
@@ -1924,6 +1946,33 @@ function findWorkerForCrewName(name){
   const starts=dwlMatchesForQuery(raw).filter(w=>workerDisplayName(w).toLowerCase().startsWith(lower));
   return starts.length===1 ? starts[0] : null;
 }
+function validateDwlPortalWorkersOnly(){
+  const invalid=[];
+  let firstInvalid=null;
+  for(let i=1;i<=DWL_MAX_ROWS;i++){
+    const emp=document.getElementById('dwlEmp'+i);
+    if(!emp || !emp.value.trim()) continue;
+    const worker=findWorkerForCrewName(emp.value);
+    if(worker){
+      applyWorkerToDwlRow(i,worker);
+      continue;
+    }
+    invalid.push({row:i,name:emp.value.trim()});
+    if(!firstInvalid) firstInvalid=emp;
+  }
+  if(!invalid.length) return true;
+  const msg=document.getElementById('dwlMsg');
+  const names=invalid.slice(0,6).map(x=>`Row ${x.row}: ${esc(x.name)}`).join('<br>');
+  const more=invalid.length>6?`<br>+ ${invalid.length-6} more`:``;
+  if(msg) msg.innerHTML=`<div class="notice"><b>Choose workers from the Portal list.</b><br>The DWL can no longer save manually typed workers. Start typing the employee name and tap the matching Portal suggestion.<br><br>${names}${more}</div>`;
+  if(firstInvalid){
+    firstInvalid.focus();
+    try{firstInvalid.select();}catch(e){}
+    showDwlSuggestions(Number(firstInvalid.id.replace('dwlEmp',''))||1);
+  }
+  return false;
+}
+
 function getDwlCrewNamesFromRows(){
   const names=[];
   for(let i=1;i<=80;i++){
@@ -1986,26 +2035,28 @@ function applyDwlCrewNames(names){
     if(msg) msg.innerHTML='<div class="notice">Paste at least one employee name.</div>';
     return;
   }
-  ensureDwlRows(cleanNames.length);
-  clearDwlWorkerRows();
-  cleanNames.slice(0,DWL_MAX_ROWS).forEach((name,idx)=>{
-    const row=idx+1;
+  const matched=[];
+  const unknown=[];
+  cleanNames.slice(0,DWL_MAX_ROWS).forEach(name=>{
     const worker=findWorkerForCrewName(name);
-    if(worker) applyWorkerToDwlRow(row, worker);
-    else {
-      const emp=document.getElementById('dwlEmp'+row);
-      if(emp) emp.value=name;
-    }
+    if(worker) matched.push(worker);
+    else unknown.push(name);
   });
+  ensureDwlRows(matched.length);
+  clearDwlWorkerRows();
+  matched.forEach((worker,idx)=>applyWorkerToDwlRow(idx+1,worker));
   saveDwlLastCrewFromRows();
   const msg=document.getElementById('dwlMsg');
-  if(msg) msg.innerHTML=`<div class="notice success">Loaded ${Math.min(cleanNames.length,DWL_MAX_ROWS)} crew member${cleanNames.length===1?'':'s'}.${cleanNames.length>DWL_MAX_ROWS?` Only the first ${DWL_MAX_ROWS} fit right now.`:''}</div>`;
+  const skipped=unknown.length
+    ? `<br><b>${unknown.length} name${unknown.length===1?' was':'s were'} not loaded because ${unknown.length===1?'it does':'they do'} not match an Active Portal worker:</b><br>${unknown.slice(0,8).map(esc).join('<br>')}${unknown.length>8?`<br>+ ${unknown.length-8} more`:''}`
+    : '';
+  if(msg) msg.innerHTML=`<div class="notice ${unknown.length?'':'success'}">Loaded ${matched.length} Portal worker${matched.length===1?'':'s'}.${skipped}</div>`;
 }
 function showDwlCrewUpload(){
   document.querySelectorAll('.modalOverlay').forEach(m=>m.remove());
   const modal=document.createElement('div');
   modal.className='modalOverlay no-print';
-  modal.innerHTML=`<div class="modalBox crewUploadBox"><h2>Upload Crew</h2><p class="tiny">Paste one employee name per line. Matching workers will auto-fill Class and Local. Unknown names will still load as manual entries.</p><textarea id="dwlCrewPaste" placeholder="One name per line"></textarea><div class="actions right"><button class="btn light" type="button" id="dwlCrewCancel">Cancel</button><button class="btn" type="button" id="dwlCrewApply">Apply</button></div></div>`;
+  modal.innerHTML=`<div class="modalBox crewUploadBox"><h2>Upload Crew</h2><p class="tiny">Paste one employee name per line. Only Active workers found in the Portal will load. Any name that does not match a Portal worker will be skipped and listed for correction.</p><textarea id="dwlCrewPaste" placeholder="One name per line"></textarea><div class="actions right"><button class="btn light" type="button" id="dwlCrewCancel">Cancel</button><button class="btn" type="button" id="dwlCrewApply">Apply</button></div></div>`;
   document.body.appendChild(modal);
   const ta=document.getElementById('dwlCrewPaste');
   setTimeout(()=>ta&&ta.focus(),50);
@@ -2283,7 +2334,7 @@ async function dwlForm(){
     <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')} ${dwlShiftControlsHtml()}</div><div id="dwlShiftOfficeNote" class="dwlShiftOfficeNote" style="display:none"></div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
-    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project + Crew from any device.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew for This Job/Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add 20 More Rows</button></div></div>
+    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project + Crew from any device.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew for This Job/Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div><p class="tiny" style="margin:8px 0 0;"><b>Employees:</b> Start typing a worker name and select the matching Active worker from the Portal. Manually typed workers can no longer be saved.</p></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add 20 More Rows</button></div></div>
     <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the official DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the phone share/save screen should open with the PDF attached. Choose Messages, Mail, Files, or Dropbox from that screen.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
@@ -2308,6 +2359,11 @@ async function dwlForm(){
     btn.textContent = 'Saving DWL...';
     try{
       if(!validateDwlShiftSelection()){
+        btn.disabled = false;
+        btn.textContent = originalText;
+        return;
+      }
+      if(!validateDwlPortalWorkersOnly()){
         btn.disabled = false;
         btn.textContent = originalText;
         return;
