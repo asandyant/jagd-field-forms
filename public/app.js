@@ -3523,27 +3523,91 @@ async function receiptSubmitBatch(){
   const paymentMethod=receiptCurrentKind==='reimbursement'
     ? String(document.querySelector('input[name="receiptPaymentMethod"]:checked')?.value||'')
     : '';
+
   if(!jobId){msg.innerHTML=receiptStatusHtml('Choose a project / job or type your own job / property / location.');return;}
   if(receiptCurrentKind==='reimbursement'&&!reimbursementWorker){msg.innerHTML=receiptStatusHtml(typedReimburseName?'Select the employee from the name suggestions.':'Start typing and select who is getting reimbursed.');return;}
   if(receiptCurrentKind==='reimbursement'&&!paymentMethod){msg.innerHTML=receiptStatusHtml('Choose Cash or Personal Card under Paid With.');return;}
   if(!receiptSelectedFiles.length){msg.innerHTML=receiptStatusHtml('Add at least one receipt photo.');return;}
-  btn.disabled=true;btn.classList.add('is-busy');btn.textContent=`Preparing 0 of ${receiptSelectedFiles.length}...`;msg.innerHTML=receiptStatusHtml('Optimizing receipt photos so phone images do not waste storage space.');
+
+  const sourceFiles=[...receiptSelectedFiles];
+  const clientBatchId=`RB-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${Math.random().toString(36).slice(2,8).toUpperCase()}`;
+  const accepted=[],duplicates=[],failed=[];
+  btn.disabled=true;btn.classList.add('is-busy');
+  msg.innerHTML=receiptStatusHtml(`Preparing ${sourceFiles.length} receipt${sourceFiles.length===1?'':'s'}. Each receipt will upload separately so one bad photo cannot lose the whole batch.`);
+
   try{
-    const optimized=[];for(let i=0;i<receiptSelectedFiles.length;i++){btn.textContent=`Preparing ${i+1} of ${receiptSelectedFiles.length}...`;optimized.push(await receiptCompressImage(receiptSelectedFiles[i]));}
-    const fd=new FormData();fd.append('data',JSON.stringify({kind:receiptCurrentKind,jobId,jobName,customJob,reimburseToId,reimburseToName,paymentMethod}));optimized.forEach(f=>fd.append('files',f));btn.textContent=`Uploading ${optimized.length} receipt${optimized.length===1?'':'s'}...`;msg.innerHTML=receiptStatusHtml('Uploading optimized copies. You only need to wait until we confirm they were received.');
-    const res=await fetch('/api/receipts/upload',{method:'POST',body:fd});const j=await res.json();if(!res.ok||!j.ok)throw new Error(j.error||'Receipt upload failed.');
-    const acceptedCount=(j.accepted||[]).length,duplicateCount=(j.duplicates||[]).length;
-    msg.innerHTML=receiptStatusHtml(j.message||'Receipts received. You can leave this page.','success');
-    btn.textContent=acceptedCount?'Receipts Received':'Duplicate Skipped';
-    status.innerHTML=acceptedCount
-      ? `<div class="receiptSuccess"><strong>Batch ${esc(j.batchId||'')}</strong><span>${acceptedCount} new receipt${acceptedCount===1?'':'s'} received${duplicateCount?` · ${duplicateCount} exact duplicate${duplicateCount===1?'':'s'} skipped`:''}</span><span>Textract is reading the new receipt${acceptedCount===1?'':'s'} in the background. You can leave this page.</span></div>`
-      : `<div class="receiptSuccess receiptDuplicateNotice"><strong>No new receipt was added.</strong><span>${duplicateCount} exact duplicate${duplicateCount===1?' was':'s were'} already in the system and ${duplicateCount===1?'was':'were'} skipped.</span><span>If you meant to submit a different receipt, use a different photo.</span></div>`;
-    receiptSelectedFiles=[];receiptRenderSelected();
-    if(j.batchId&&acceptedCount)receiptPollBatch(j.batchId);
-  }catch(e){msg.innerHTML=receiptStatusHtml(e.message);btn.disabled=false;btn.classList.remove('is-busy');btn.textContent='Submit Receipts';}
+    for(let i=0;i<sourceFiles.length;i++){
+      const sourceFile=sourceFiles[i];
+      btn.textContent=`Receipt ${i+1} of ${sourceFiles.length}: preparing…`;
+      status.innerHTML=`<div class="receiptSuccess"><strong>Batch ${esc(clientBatchId)}</strong><span>${i} of ${sourceFiles.length} attempted</span><span>${accepted.length} received · ${duplicates.length} duplicate${duplicates.length===1?'':'s'} · ${failed.length} failed</span></div>`;
+
+      try{
+        const optimized=await receiptCompressImage(sourceFile);
+        const fd=new FormData();
+        fd.append('data',JSON.stringify({
+          kind:receiptCurrentKind,jobId,jobName,customJob,reimburseToId,reimburseToName,paymentMethod,
+          clientBatchId,
+          batchExpectedCount:sourceFiles.length
+        }));
+        fd.append('files',optimized);
+        btn.textContent=`Receipt ${i+1} of ${sourceFiles.length}: uploading…`;
+        const res=await fetch('/api/receipts/upload',{method:'POST',body:fd});
+        let j={};
+        try{j=await res.json();}catch(_){}
+        if(!res.ok||!j.ok)throw new Error(j.error||`Upload failed (${res.status}).`);
+        accepted.push(...(j.accepted||[]));
+        duplicates.push(...(j.duplicates||[]));
+      }catch(err){
+        failed.push({name:sourceFile.name||`Receipt ${i+1}`,error:String(err.message||'Upload failed')});
+      }
+
+      status.innerHTML=`<div class="receiptSuccess"><strong>Batch ${esc(clientBatchId)}</strong><span>${i+1} of ${sourceFiles.length} attempted</span><span>${accepted.length} received · ${duplicates.length} duplicate${duplicates.length===1?'':'s'} · ${failed.length} failed</span></div>`;
+    }
+
+    const summary=[];
+    if(accepted.length)summary.push(`${accepted.length} new receipt${accepted.length===1?'':'s'} received`);
+    if(duplicates.length)summary.push(`${duplicates.length} exact duplicate${duplicates.length===1?'':'s'} skipped`);
+    if(failed.length)summary.push(`${failed.length} failed`);
+
+    if(accepted.length){
+      msg.innerHTML=receiptStatusHtml(`${summary.join(' · ')}. New receipts are safely stored. You can leave this page.`,'success');
+      btn.textContent=failed.length?'Batch Partially Received':'Receipts Received';
+    }else if(duplicates.length&&!failed.length){
+      msg.innerHTML=receiptStatusHtml(`${duplicates.length} exact duplicate${duplicates.length===1?' was':'s were'} already in the system. No new receipt was added.`,'success');
+      btn.textContent='Duplicate Skipped';
+    }else{
+      throw new Error(failed[0]?.error||'No receipts were received.');
+    }
+
+    status.innerHTML=`<div class="receiptSuccess${failed.length?' receiptDuplicateNotice':''}">
+      <strong>Batch ${esc(clientBatchId)}</strong>
+      <span>${summary.join(' · ')}</span>
+      ${failed.length?`<span><b>Failed:</b> ${failed.slice(0,5).map(x=>`${esc(x.name)} — ${esc(x.error)}`).join('<br>')}${failed.length>5?`<br>+ ${failed.length-5} more`:''}</span>`:''}
+      ${accepted.length?`<span>AWS is reading the ${accepted.length} new receipt${accepted.length===1?'':'s'} in the background.</span>`:''}
+    </div>`;
+
+    receiptSelectedFiles=[];
+    receiptRenderSelected();
+    if(accepted.length)receiptPollBatch(clientBatchId);
+  }catch(e){
+    msg.innerHTML=receiptStatusHtml(e.message);
+    btn.disabled=false;btn.classList.remove('is-busy');btn.textContent='Submit Receipts';
+  }
 }
 async function receiptPollBatch(batchId){
-  const box=document.getElementById('receiptBatchStatus');if(!box)return;let tries=0;const poll=async()=>{tries++;try{const r=await fetch('/api/receipts/status/'+encodeURIComponent(batchId),{cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)return;const rows=j.rows||[];const done=rows.filter(x=>x.status!=='processing').length;box.innerHTML=`<div class="receiptSuccess"><strong>Batch ${esc(batchId)}</strong><span>${done} of ${rows.length} read by AWS</span>${rows.slice(0,8).map(x=>`<span>${esc(x.displayFileName||x.id)} — ${esc(x.status==='ready'?'Ready':x.status==='needs_attention'?'Needs attention':'Reading...')}</span>`).join('')}${rows.length>8?`<span>+ ${rows.length-8} more</span>`:''}</div>`;if(done<rows.length&&tries<20)setTimeout(poll,2500);}catch(_){}};setTimeout(poll,1800);
+  const box=document.getElementById('receiptBatchStatus');if(!box)return;let tries=0;
+  const poll=async()=>{
+    tries++;
+    try{
+      const r=await fetch('/api/receipts/status/'+encodeURIComponent(batchId),{cache:'no-store'});
+      const j=await r.json();if(!r.ok||!j.ok)return;
+      const rows=j.rows||[];
+      const done=rows.filter(x=>x.status!=='processing').length;
+      box.innerHTML=`<div class="receiptSuccess"><strong>Batch ${esc(batchId)}</strong><span>${done} of ${rows.length} read by AWS</span>${rows.slice(0,8).map(x=>`<span>${esc(x.displayFileName||x.id)} — ${esc(x.status==='ready'?'Ready':x.status==='needs_attention'?'Needs attention':'Reading...')}</span>`).join('')}${rows.length>8?`<span>+ ${rows.length-8} more</span>`:''}</div>`;
+      if(done<rows.length&&tries<60)setTimeout(poll,2500);
+    }catch(_){}
+  };
+  setTimeout(poll,1800);
 }
 function receiptsForm(){receiptScreen('receipt');}
 function reimbursementsForm(){receiptScreen('reimbursement');}

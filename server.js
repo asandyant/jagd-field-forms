@@ -1638,7 +1638,13 @@ app.post('/api/receipts/upload', upload.array('files', RECEIPT_MAX_FILES), async
   if(kind==='reimbursement'&&!reimburseToName){files.forEach(f=>{try{fs.unlinkSync(f.path)}catch(_){}});return res.status(400).json({ok:false,error:'Choose who is being reimbursed.'});}
   if(kind==='reimbursement'&&!['Cash','Personal Card'].includes(paymentMethod)){files.forEach(f=>{try{fs.unlinkSync(f.path)}catch(_){}});return res.status(400).json({ok:false,error:'Choose Cash or Personal Card.'});}
   try{receiptRequireAws();}catch(e){files.forEach(f=>{try{fs.unlinkSync(f.path)}catch(_){}});return res.status(500).json({ok:false,error:e.message});}
-  const rows=receiptReadRecords(); const batches=receiptReadBatches(); const batchId=`RB-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${nanoid(6).toUpperCase()}`; const accepted=[],duplicates=[],jobs=readJsonSafe(JOBS_FILE,[]);
+  const rows=receiptReadRecords(); const batches=receiptReadBatches();
+  const requestedBatchId=String(meta.clientBatchId||'').trim();
+  const batchId=/^RB-[A-Z0-9-]{8,40}$/i.test(requestedBatchId)
+    ? requestedBatchId
+    : `RB-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${nanoid(6).toUpperCase()}`;
+  const expectedCount=Math.max(0,Math.min(RECEIPT_MAX_FILES,Number(meta.batchExpectedCount||0)));
+  const accepted=[],duplicates=[],jobs=readJsonSafe(JOBS_FILE,[]);
   const isCustomJob=jobId.startsWith('custom:')||!!customJob;
   const job=isCustomJob?{}:((jobs||[]).find(j=>String(j.id||j.contract||'')===jobId)||{});
   const resolvedName=(customJob||jobName||job.name||job.label||jobId).trim();
@@ -1653,13 +1659,21 @@ app.post('/api/receipts/upload', upload.array('files', RECEIPT_MAX_FILES), async
     const row={id,batchId,kind,jobId:resolvedJobId,jobName:resolvedName,customJob:isCustomJob?resolvedName:'',jobCode,reimburseToId,reimburseToName,paymentMethod,createdAt:now.toISOString(),submittedAt:now.toISOString(),status:'processing',reimbursementStatus:kind==='reimbursement'?'Pending':'',s3Key:key,sha256:hash,mimeType:f.mimetype||'image/jpeg',sizeBytes:buf.length,originalName:f.originalname,displayFileName:`${id}.jpg`,parsed:{vendor:'',transactionDate:'',amount:0,tax:0,receiptNumber:'',cardLast4:''},error:''};
     rows.unshift(row); accepted.push({id,status:'processing',originalName:f.originalname}); buffers.push({id,buf});
   }
-  batches.unshift({id:batchId,kind,jobId:resolvedJobId,jobName:resolvedName,customJob:isCustomJob?resolvedName:'',jobCode,reimburseToId,reimburseToName,paymentMethod,createdAt:new Date().toISOString(),count:accepted.length,duplicateCount:duplicates.length});
+  const existingBatch=batches.find(b=>b.id===batchId);
+  if(existingBatch){
+    existingBatch.count=Number(existingBatch.count||0)+accepted.length;
+    existingBatch.duplicateCount=Number(existingBatch.duplicateCount||0)+duplicates.length;
+    existingBatch.expectedCount=Math.max(Number(existingBatch.expectedCount||0),expectedCount);
+    existingBatch.updatedAt=new Date().toISOString();
+  }else{
+    batches.unshift({id:batchId,kind,jobId:resolvedJobId,jobName:resolvedName,customJob:isCustomJob?resolvedName:'',jobCode,reimburseToId,reimburseToName,paymentMethod,createdAt:new Date().toISOString(),count:accepted.length,duplicateCount:duplicates.length,expectedCount});
+  }
   receiptWriteRecords(rows); receiptWriteBatches(batches.slice(0,5000));
   const uploadMessage=accepted.length
     ? `${accepted.length} new receipt${accepted.length===1?'':'s'} received${duplicates.length?`; ${duplicates.length} exact duplicate${duplicates.length===1?'':'s'} skipped`:''}. You can leave this page.`
     : `${duplicates.length} exact duplicate${duplicates.length===1?' was':'s were'} already in the system. No new receipt was added.`;
   res.json({ok:true,batchId,accepted,duplicates,message:uploadMessage});
-  setImmediate(async()=>{for(const item of buffers) await receiptProcessOne(item.id,item.buf);});
+  setImmediate(async()=>{for(const item of buffers){try{await receiptProcessOne(item.id,item.buf);}catch(err){console.error('Receipt background processing failed',item.id,err);}}});
 });
 
 app.get('/api/receipts/status/:batchId',(req,res)=>{
