@@ -1156,7 +1156,10 @@ app.post('/api/dwl/portal-sync', async (req, res) => {
   const data = req.body && typeof req.body.data === 'object' ? req.body.data : {};
   const title = dwlSyncCleanText(req.body?.title || req.body?.sourceFileName || '', 220);
   const syncId = dwlSyncCleanText(req.body?.syncId || '', 120) || dwlSyncIdFor(data, title);
-  const project = dwlSyncCleanText(data.project || 'No Project', 180) || 'No Project';
+  const project = dwlSyncCleanText(data.project || '', 180);
+  if (!project || /^no[\s_-]*project$/i.test(project)) {
+    return res.status(400).json({ ok: false, status: 'rejected', error: 'Select a Project before saving the DWL.', message: 'DWL was not sent because no Project was selected.' });
+  }
   const reportDate = dwlSyncCleanText(data.reportDate || new Date().toISOString().slice(0, 10), 30);
   const crew = dwlSyncCleanText(data.crew || '', 80);
   const logRow = {

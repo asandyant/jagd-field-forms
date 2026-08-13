@@ -2279,6 +2279,22 @@ function updateDwlShiftUi(){
     }
   }
 }
+function validateDwlProjectSelection(){
+  const project=String(projectValue('dwlProject')||'').trim();
+  const missing=!project || /^no[\s_-]*project$/i.test(project);
+  if(!missing) return true;
+  const msg=document.getElementById('dwlMsg');
+  if(msg) msg.innerHTML='<div class="notice"><b>Select a Project before saving the DWL.</b><br>The DWL was not saved or sent to the Portal.</div>';
+  const sel=document.getElementById('dwlProject');
+  const other=document.getElementById('dwlProjectOther');
+  const target=(sel?.value==='Other' ? other : sel) || sel || other;
+  if(target){
+    try{ target.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
+    try{ target.focus(); }catch(e){}
+  }
+  return false;
+}
+
 function validateDwlShiftSelection(){
   const shift=document.getElementById('dwlShift')?.value || 'Day';
   const nightType=document.getElementById('dwlNightWorkType')?.value || '';
@@ -2358,6 +2374,11 @@ async function dwlForm(){
     const originalText = btn.textContent;
     btn.textContent = 'Saving DWL...';
     try{
+      if(!validateDwlProjectSelection()){
+        btn.disabled = false;
+        btn.textContent = originalText;
+        return;
+      }
       if(!validateDwlShiftSelection()){
         btn.disabled = false;
         btn.textContent = originalText;
