@@ -961,6 +961,9 @@ app.post('/api/tm/submissions', tmUpload.array('files', 24), (req, res) => {
     history: [{ action: 'Submitted', by: submitter, at: new Date().toISOString() }], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
   };
   existing.push(record); writeTmRows(existing);
+  // Preserve new legacy T&M attachments in the private receipts S3 bucket.
+  // Do not block the field submission if S3 archiving is temporarily unavailable.
+  setImmediate(() => tmArchiveLegacyTmRecordFiles(record.id).catch(err => console.error('T&M S3 archive failed', record.id, err.message || err)));
   res.json(tmSafeRecordForPublic(record));
 });
 
@@ -1698,6 +1701,71 @@ async function receiptGetObject(key) {
   const cfg=receiptRequireAws(); const host=receiptS3Host(cfg.bucket,cfg.region);
   return receiptAwsSignedRequest({service:'s3',region:cfg.region,host,method:'GET',pathname:receiptS3Path(key),headers:{},body:Buffer.alloc(0)});
 }
+
+// Legacy T&M Cost Tracker attachments were historically stored on the Forms data disk.
+// Archive every surviving attachment into the same private S3 bucket used by Receipts so
+// future deploys/restarts cannot strand the T&M billing record from its source document.
+function tmArchiveSafePart(value, fallback='file') {
+  const clean=String(value||'').trim().replace(/[^a-zA-Z0-9._-]+/g,'_').replace(/^_+|_+$/g,'');
+  return (clean||fallback).slice(0,120);
+}
+function tmLegacyAttachmentKey(record, file, index=0) {
+  const date=String(record?.transactionDate||record?.createdAt||new Date().toISOString()).slice(0,10);
+  const [year,month]=/^\d{4}-\d{2}/.test(date)?date.split('-'):[new Date().getUTCFullYear(),String(new Date().getUTCMonth()+1).padStart(2,'0')];
+  const project=tmArchiveSafePart(record?.projectId||record?.projectLabel||'TM','TM');
+  const recordId=tmArchiveSafePart(record?.id||'record','record');
+  const name=tmArchiveSafePart(file?.originalName||file?.filename||`attachment-${index+1}`,'attachment');
+  return `tm-legacy/${year}/${month}/${project}/${recordId}/${String(index+1).padStart(2,'0')}-${name}`;
+}
+function tmFindLocalAttachmentByHash(expectedHash='') {
+  const wanted=String(expectedHash||'').trim().toLowerCase();
+  if(!wanted||!fs.existsSync(TM_UPLOAD_DIR))return '';
+  try{
+    for(const name of fs.readdirSync(TM_UPLOAD_DIR)){
+      const full=path.join(TM_UPLOAD_DIR,path.basename(name));
+      let st;try{st=fs.statSync(full);}catch(_){continue;}
+      if(!st.isFile())continue;
+      try{if(tmFileHash(full).toLowerCase()===wanted)return full;}catch(_){ }
+    }
+  }catch(_){ }
+  return '';
+}
+async function tmArchiveLegacyTmRecordFiles(recordId) {
+  const rows=readTmRows();
+  const row=rows.find(r=>String(r.id)===String(recordId));
+  if(!row||row.receiptId||!Array.isArray(row.files)||!row.files.length)return {archived:0,missing:0};
+  let archived=0,missing=0,changed=false;
+  for(let index=0;index<row.files.length;index++){
+    const f=row.files[index]||{};
+    if(f.s3Key)continue;
+    let fp=path.join(TM_UPLOAD_DIR,path.basename(String(f.filename||'')));
+    if(!f.filename||!fs.existsSync(fp))fp=tmFindLocalAttachmentByHash(f.hash);
+    if(!fp){missing++;continue;}
+    const key=tmLegacyAttachmentKey(row,f,index);
+    await receiptPutObject(key,fs.readFileSync(fp),f.mimetype||'application/octet-stream');
+    f.s3Key=key;
+    f.s3ArchivedAt=new Date().toISOString();
+    f.s3ArchiveSource='legacy-tm-local';
+    archived++;changed=true;
+  }
+  if(changed)writeTmRows(rows);
+  return {archived,missing};
+}
+async function tmArchiveAllLegacyTmFiles() {
+  try{receiptRequireAws();}catch(_){return;}
+  const rows=readTmRows().filter(r=>!r.receiptId&&Array.isArray(r.files)&&r.files.some(f=>f&&!f.s3Key));
+  let archived=0,missing=0;
+  for(const row of rows){
+    try{const result=await tmArchiveLegacyTmRecordFiles(row.id);archived+=result.archived||0;missing+=result.missing||0;}
+    catch(err){console.error('T&M legacy attachment archive failed',row.id,err.message||err);}
+  }
+  if(archived||missing)console.log(`T&M legacy attachment archive: ${archived} archived to S3, ${missing} local file(s) unavailable.`);
+}
+function tmSetFileResponseHeaders(res, file, download=false) {
+  res.setHeader('Content-Type',file?.mimetype||'application/octet-stream');
+  res.setHeader('Content-Disposition',`${download?'attachment':'inline'}; filename="${String(file?.originalName||file?.filename||'tm-attachment').replace(/"/g,'')}"`);
+  res.setHeader('Cache-Control','private, no-store');
+}
 function receiptHumanFileName(record) {
   const p=record.parsed||{}; const date=receiptNormalizeDate(p.transactionDate)||String(record.createdAt||'').slice(0,10); const [y,m,d]=date.split('-');
   const shortDate=(m&&d&&y)?`${m}.${d}.${String(y).slice(-2)}`:'NoDate'; const vendor=receiptSafePart(p.vendor,'Receipt'); const amount=Number(p.amount||0); const money=amount?`$${amount.toFixed(2)}`:'Amount-Unknown';
@@ -1844,23 +1912,50 @@ app.patch('/api/forms/tm/records/:id', (req,res)=>{
 });
 app.get('/api/forms/tm/records/:id/file', async (req,res)=>{
   if(!receiptRequestTokenOk(req))return res.status(403).send('Forms sync token required.');
-  const row=readTmRows().find(r=>r.id===req.params.id);if(!row)return res.status(404).send('T&M record not found.');
+  const rows=readTmRows();const row=rows.find(r=>r.id===req.params.id);if(!row)return res.status(404).send('T&M record not found.');
   if(row.receiptId){
     const receipt=receiptReadRecords().find(r=>r.id===row.receiptId);
     if(!receipt||receipt.deletedAt)return res.status(404).send('Linked receipt not available.');
-    try{const out=await receiptGetObject(receipt.s3Key);res.setHeader('Content-Type',receipt.mimeType||'image/jpeg');res.setHeader('Content-Disposition',`${req.query.download==='1'?'attachment':'inline'}; filename="${String(receipt.displayFileName||receipt.id+'.jpg').replace(/"/g,'')}"`);return res.send(out.body);}catch(e){return res.status(502).send(e.message||'Linked receipt unavailable.');}
+    try{const out=await receiptGetObject(receipt.s3Key);res.setHeader('Content-Type',receipt.mimeType||'image/jpeg');res.setHeader('Content-Disposition',`${req.query.download==='1'?'attachment':'inline'}; filename="${String(receipt.displayFileName||receipt.id+'.jpg').replace(/"/g,'')}"`);res.setHeader('Cache-Control','private, no-store');return res.send(out.body);}catch(e){return res.status(502).send(e.message||'Linked receipt unavailable.');}
   }
   const index=Math.max(0,Number(req.query.index||0));const f=(row.files||[])[index];
   if(!f)return res.status(404).send('T&M attachment not found.');
-  const fp=path.join(TM_UPLOAD_DIR,path.basename(f.filename));if(!fs.existsSync(fp))return res.status(404).send('T&M attachment file not found.');
-  res.setHeader('Content-Type',f.mimetype||'application/octet-stream');
-  res.setHeader('Content-Disposition',`${req.query.download==='1'?'attachment':'inline'}; filename="${String(f.originalName||f.filename).replace(/"/g,'')}"`);
-  res.sendFile(fp);
+
+  // Preferred path for legacy T&M files after migration: private S3.
+  if(f.s3Key){
+    try{const out=await receiptGetObject(f.s3Key);tmSetFileResponseHeaders(res,f,req.query.download==='1');return res.send(out.body);}
+    catch(err){console.error('T&M archived S3 file read failed',row.id,index,err.message||err);}
+  }
+
+  // Backward-compatible local file path. If it still exists, serve it now and archive it to S3 in the background.
+  let fp=f.filename?path.join(TM_UPLOAD_DIR,path.basename(f.filename)):'';
+  if(!fp||!fs.existsSync(fp))fp=tmFindLocalAttachmentByHash(f.hash);
+  if(fp&&fs.existsSync(fp)){
+    setImmediate(()=>tmArchiveLegacyTmRecordFiles(row.id).catch(err=>console.error('T&M on-open archive failed',row.id,err.message||err)));
+    tmSetFileResponseHeaders(res,f,req.query.download==='1');
+    return res.sendFile(fp);
+  }
+
+  // Recovery path: if this exact photo also exists in the newer Receipts archive, reuse that protected S3 copy.
+  const exactReceipt=f.hash?receiptReadRecords().find(r=>!r.deletedAt&&String(r.sha256||'').toLowerCase()===String(f.hash||'').toLowerCase()&&r.s3Key):null;
+  if(exactReceipt){
+    try{
+      const out=await receiptGetObject(exactReceipt.s3Key);
+      f.s3Key=exactReceipt.s3Key;f.s3ArchivedAt=new Date().toISOString();f.s3ArchiveSource=`receipt-hash:${exactReceipt.id}`;writeTmRows(rows);
+      tmSetFileResponseHeaders(res,{...f,mimetype:exactReceipt.mimeType||f.mimetype,originalName:f.originalName||exactReceipt.displayFileName},req.query.download==='1');
+      return res.send(out.body);
+    }catch(err){console.error('T&M receipt-hash recovery failed',row.id,index,err.message||err);}
+  }
+
+  return res.status(404).send('This legacy T&M record is still saved, but its original attachment file is not currently available. The record was created before T&M attachments were archived to S3.');
 });
 
 app.get('/api/forms/receipts/:id/file', async (req,res)=>{
   if(!receiptRequestTokenOk(req))return res.status(403).send('Forms sync token required.');const row=receiptReadRecords().find(r=>r.id===req.params.id);if(!row)return res.status(404).send('Receipt not found.');try{const out=await receiptGetObject(row.s3Key);res.setHeader('Content-Type',row.mimeType||'image/jpeg');res.setHeader('Content-Disposition',`${req.query.download==='1'?'attachment':'inline'}; filename="${String(row.displayFileName||row.originalName||row.id+'.jpg').replace(/"/g,'')}"`);res.send(out.body);}catch(e){res.status(502).send(e.message||'Receipt file unavailable.');}
 });
+
+// After startup, protect every surviving pre-S3 T&M attachment without blocking the service from coming online.
+setTimeout(() => tmArchiveAllLegacyTmFiles().catch(err => console.error('T&M legacy archive startup pass failed', err.message || err)), 3000);
 
 app.post('/api/admin/materials/aws-test', requireAdmin, async (req, res) => {
   const region = String(process.env.AWS_REGION || 'us-east-1').trim() || 'us-east-1';
