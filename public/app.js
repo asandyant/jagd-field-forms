@@ -1975,11 +1975,23 @@ function validateDwlPortalWorkersOnly(){
 
 function getDwlCrewNamesFromRows(){
   const names=[];
-  for(let i=1;i<=80;i++){
+  for(let i=1;i<=DWL_MAX_ROWS;i++){
     const emp=document.getElementById('dwlEmp'+i);
     if(emp && emp.value.trim()) names.push(emp.value.trim());
   }
   return names;
+}
+function getDwlCrewEntriesFromRows(){
+  const entries=[];
+  for(let i=1;i<=DWL_MAX_ROWS;i++){
+    const emp=document.getElementById('dwlEmp'+i);
+    if(!emp || !emp.value.trim()) continue;
+    const worker=findWorkerForCrewName(emp.value);
+    const id=String(emp.dataset.portalWorkerId || worker?.id || worker?.employeeId || '').trim();
+    const name=normalizeCrewName(worker ? workerDisplayName(worker) : emp.value);
+    if(name) entries.push({id,name});
+  }
+  return entries;
 }
 function normalizeDwlCrewKeyPart(v){
   return String(v||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
@@ -1992,35 +2004,110 @@ function getDwlSelectedProjectCrew(){
 function getDwlLastCrewStorageKey(project, crew){
   const p=normalizeDwlCrewKeyPart(project);
   const c=normalizeDwlCrewKeyPart(crew);
-  if(!p || !c) return '';
-  return `jagdDwlLastCrewNames:${p}:${c}`;
+  if(!p) return '';
+  return c ? `jagdDwlLastCrewNames:${p}:${c}` : `jagdDwlLastCrewNames:${p}:__project_latest__`;
 }
+function getDwlProjectLatestCrewStorageKey(project){
+  return getDwlLastCrewStorageKey(project,'');
+}
+function normalizeDwlCrewEntry(v){
+  if(v && typeof v==='object'){
+    const name=normalizeCrewName(v.name || v.fullName || '');
+    const id=String(v.id || v.workerId || v.employeeId || '').trim();
+    return name ? {id,name} : null;
+  }
+  const name=normalizeCrewName(v);
+  return name ? {id:'',name} : null;
+}
+function normalizeDwlCrewEntries(values){
+  return (Array.isArray(values)?values:[]).map(normalizeDwlCrewEntry).filter(Boolean).slice(0,DWL_MAX_ROWS);
+}
+function findWorkerForCrewEntry(entry){
+  const e=normalizeDwlCrewEntry(entry);
+  if(!e) return null;
+  if(e.id){
+    const id=String(e.id).toLowerCase();
+    const byId=activeWorkers.find(w=>String(w.id || '').toLowerCase()===id || String(w.employeeId || '').toLowerCase()===id);
+    if(byId) return byId;
+  }
+  const exact=findWorkerForCrewName(e.name);
+  if(exact) return exact;
 
-async function saveDwlLastCrewToServer(project, crew, names){
-  if(!project || !crew || !Array.isArray(names) || !names.length) return;
+  // Legal names were expanded in the Portal in Aug 2026. An older saved crew may contain
+  // "First Last" while today's Portal name is "First Middle Last Suffix". Recover only when
+  // every old token exists in exactly one active Portal worker so we never guess between people.
+  const oldTokens=normalizeDwlCrewKeyPart(e.name).split(' ').filter(Boolean);
+  if(oldTokens.length>=2){
+    const candidates=activeWorkers.filter(w=>{
+      const tokens=normalizeDwlCrewKeyPart(workerDisplayName(w)).split(' ').filter(Boolean);
+      return oldTokens.every(t=>tokens.includes(t));
+    });
+    if(candidates.length===1) return candidates[0];
+  }
+  return null;
+}
+function writeDwlLastCrewLocal(project, crew, entries){
+  const clean=normalizeDwlCrewEntries(entries);
+  if(!project || !clean.length) return;
   try{
-    await fetch('/api/dwl/last-crew', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project, crew, names:names.slice(0,DWL_MAX_ROWS)}), keepalive:true});
-  }catch(e){ /* local browser copy remains the fallback */ }
+    const latestKey=getDwlProjectLatestCrewStorageKey(project);
+    localStorage.setItem(latestKey, JSON.stringify(clean));
+    localStorage.setItem('jagdDwlLastCrewLastKey', latestKey);
+    if(crew){
+      const exactKey=getDwlLastCrewStorageKey(project,crew);
+      localStorage.setItem(exactKey, JSON.stringify(clean));
+      localStorage.setItem('jagdDwlLastCrewLastKey', exactKey);
+    }
+  }catch(e){}
+}
+function readDwlLastCrewLocal(project, crew){
+  const keys=[];
+  if(crew) keys.push(getDwlLastCrewStorageKey(project,crew));
+  keys.push(getDwlProjectLatestCrewStorageKey(project));
+  for(const key of keys.filter(Boolean)){
+    try{
+      const raw=JSON.parse(localStorage.getItem(key)||'[]');
+      const entries=normalizeDwlCrewEntries(raw);
+      if(entries.length) return entries;
+      // Backward compatibility with the original localStorage string-name arrays.
+      if(Array.isArray(raw) && raw.length) return normalizeDwlCrewEntries(raw);
+    }catch(e){}
+  }
+  return [];
+}
+async function saveDwlLastCrewToServer(project, crew, entries){
+  const clean=normalizeDwlCrewEntries(entries);
+  if(!project || !clean.length) return false;
+  try{
+    const res=await fetch('/api/dwl/last-crew', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({project, crew:crew||'', workers:clean, names:clean.map(x=>x.name)}),
+      keepalive:true
+    });
+    return !!res.ok;
+  }catch(e){ return false; }
 }
 async function loadDwlLastCrewFromServer(project, crew){
   try{
-    const q=new URLSearchParams({project, crew, t:String(Date.now())});
-    const res=await fetch('/api/dwl/last-crew?'+q.toString(), {headers:{Accept:'application/json'}});
+    const q=new URLSearchParams({project, t:String(Date.now())});
+    if(crew) q.set('crew',crew);
+    const res=await fetch('/api/dwl/last-crew?'+q.toString(), {headers:{Accept:'application/json'}, cache:'no-store'});
     const json=await res.json().catch(()=>({}));
-    return res.ok && Array.isArray(json.names) ? json.names : [];
+    if(!res.ok) return [];
+    const entries=normalizeDwlCrewEntries(Array.isArray(json.workers)&&json.workers.length ? json.workers : json.names);
+    return entries;
   }catch(e){ return []; }
 }
 async function saveDwlLastCrewFromRows(){
   try{
-    const names=getDwlCrewNamesFromRows();
-    if(!names.length) return;
+    const entries=getDwlCrewEntriesFromRows();
+    if(!entries.length) return;
     const selected=getDwlSelectedProjectCrew();
-    const key=getDwlLastCrewStorageKey(selected.project, selected.crew);
-    if(!key) return;
-    const cleanNames=names.map(normalizeCrewName).filter(Boolean).slice(0,DWL_MAX_ROWS);
-    localStorage.setItem(key, JSON.stringify(cleanNames));
-    localStorage.setItem('jagdDwlLastCrewLastKey', key);
-    await saveDwlLastCrewToServer(selected.project, selected.crew, cleanNames);
+    // Project is the safety boundary. Crew is optional because many field DWLs legitimately leave Crew blank.
+    if(!selected.project) return;
+    writeDwlLastCrewLocal(selected.project, selected.crew, entries);
+    await saveDwlLastCrewToServer(selected.project, selected.crew, entries);
   }catch(e){}
 }
 function ensureDwlRows(count){
@@ -2028,30 +2115,35 @@ function ensureDwlRows(count){
   if(!tbody) return;
   while(tbody.querySelectorAll('tr').length<count && tbody.querySelectorAll('tr').length<DWL_MAX_ROWS) addDwlPageRows();
 }
-function applyDwlCrewNames(names){
-  const cleanNames=(names||[]).map(normalizeCrewName).filter(Boolean);
-  if(!cleanNames.length){
+function applyDwlCrewEntries(values){
+  const entries=normalizeDwlCrewEntries(values);
+  if(!entries.length){
     const msg=document.getElementById('dwlMsg');
-    if(msg) msg.innerHTML='<div class="notice">Paste at least one employee name.</div>';
-    return;
+    if(msg) msg.innerHTML='<div class="notice">No saved employee names were found.</div>';
+    return {matched:0,unknown:[]};
   }
   const matched=[];
   const unknown=[];
-  cleanNames.slice(0,DWL_MAX_ROWS).forEach(name=>{
-    const worker=findWorkerForCrewName(name);
+  entries.slice(0,DWL_MAX_ROWS).forEach(entry=>{
+    const worker=findWorkerForCrewEntry(entry);
     if(worker) matched.push(worker);
-    else unknown.push(name);
+    else unknown.push(entry.name);
   });
-  ensureDwlRows(matched.length);
-  clearDwlWorkerRows();
-  matched.forEach((worker,idx)=>applyWorkerToDwlRow(idx+1,worker));
+  if(matched.length){
+    ensureDwlRows(matched.length);
+    clearDwlWorkerRows();
+    matched.forEach((worker,idx)=>applyWorkerToDwlRow(idx+1,worker));
+  }
+  // Refresh both project-level and optional Project+Crew caches with current legal Portal names/IDs.
   saveDwlLastCrewFromRows();
   const msg=document.getElementById('dwlMsg');
   const skipped=unknown.length
-    ? `<br><b>${unknown.length} name${unknown.length===1?' was':'s were'} not loaded because ${unknown.length===1?'it does':'they do'} not match an Active Portal worker:</b><br>${unknown.slice(0,8).map(esc).join('<br>')}${unknown.length>8?`<br>+ ${unknown.length-8} more`:''}`
+    ? `<br><b>${unknown.length} saved name${unknown.length===1?' was':'s were'} not loaded because ${unknown.length===1?'it does':'they do'} not uniquely match an Active Portal worker:</b><br>${unknown.slice(0,8).map(esc).join('<br>')}${unknown.length>8?`<br>+ ${unknown.length-8} more`:''}`
     : '';
   if(msg) msg.innerHTML=`<div class="notice ${unknown.length?'':'success'}">Loaded ${matched.length} Portal worker${matched.length===1?'':'s'}.${skipped}</div>`;
+  return {matched:matched.length,unknown};
 }
+function applyDwlCrewNames(names){ return applyDwlCrewEntries(names); }
 function showDwlCrewUpload(){
   document.querySelectorAll('.modalOverlay').forEach(m=>m.remove());
   const modal=document.createElement('div');
@@ -2064,32 +2156,39 @@ function showDwlCrewUpload(){
   modal.addEventListener('click',e=>{ if(e.target===modal) modal.remove(); });
   document.getElementById('dwlCrewApply').onclick=()=>{
     const names=String(ta.value||'').split(/\r?\n/).map(normalizeCrewName).filter(Boolean);
-    applyDwlCrewNames(names);
+    applyDwlCrewEntries(names);
     modal.remove();
   };
 }
 async function loadDwlLastCrew(){
   const msg=document.getElementById('dwlMsg');
+  const btn=document.getElementById('dwlLoadLastCrewBtn');
   const selected=getDwlSelectedProjectCrew();
-  const key=getDwlLastCrewStorageKey(selected.project, selected.crew);
-  if(!key){
-    if(msg) msg.innerHTML='<div class="notice">Choose the Project and Crew first, then tap Load Last Crew. Crews are saved separately by Project + Crew so the wrong job crew is not loaded.</div>';
+  if(!selected.project){
+    if(msg) msg.innerHTML='<div class="notice">Choose the Project first, then tap Load Last Crew.</div>';
+    const projectEl=document.getElementById('dwlProject');
+    if(projectEl){ projectEl.focus(); try{projectEl.scrollIntoView({behavior:'smooth',block:'center'});}catch(e){} }
     return;
   }
-  if(msg) msg.innerHTML='<div class="notice">Loading the last saved crew...</div>';
-  // Cross-device source of truth: always ask the server first so a PC does not use a stale local crew.
-  let names=await loadDwlLastCrewFromServer(selected.project, selected.crew);
-  if(Array.isArray(names) && names.length){
-    try{ localStorage.setItem(key, JSON.stringify(names)); }catch(e){}
-  }else{
-    try{ names=JSON.parse(localStorage.getItem(key)||'[]'); }catch(e){ names=[]; }
+  const original=btn?.textContent || 'Load Last Crew';
+  if(btn){ btn.disabled=true; btn.textContent='Loading Crew...'; }
+  try{
+    if(msg) msg.innerHTML=`<div class="notice">Loading the last saved crew for <b>${esc(selected.project)}</b>${selected.crew?` / <b>${esc(selected.crew)}</b>`:''}...</div>`;
+
+    // Cross-device source first. Server falls back from exact Project+Crew to the most recent crew for the Project.
+    let entries=await loadDwlLastCrewFromServer(selected.project, selected.crew);
+    if(entries.length) writeDwlLastCrewLocal(selected.project, selected.crew, entries);
+    else entries=readDwlLastCrewLocal(selected.project, selected.crew);
+
+    if(!entries.length){
+      if(msg) msg.innerHTML=`<div class="notice">No saved crew found yet for <b>${esc(selected.project)}</b>${selected.crew?` / <b>${esc(selected.crew)}</b>`:''}. Fill the employee rows once and save the DWL; after that Load Last Crew will work from PC or mobile.</div>`;
+      return;
+    }
+    const result=applyDwlCrewEntries(entries);
+    if(msg && !result.unknown.length) msg.innerHTML=`<div class="notice success">Loaded ${result.matched} saved crew member${result.matched===1?'':'s'} for <b>${esc(selected.project)}</b>${selected.crew?` / <b>${esc(selected.crew)}</b>`:''}.</div>`;
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent=original; }
   }
-  if(!Array.isArray(names) || !names.length){
-    if(msg) msg.innerHTML=`<div class="notice">No saved crew found yet for <b>${esc(selected.project)}</b> / <b>${esc(selected.crew)}</b>. Save or upload that crew once, then it can be reloaded from PC or mobile.</div>`;
-    return;
-  }
-  applyDwlCrewNames(names);
-  if(msg) msg.innerHTML=`<div class="notice success">Loaded ${Math.min(names.length,DWL_MAX_ROWS)} saved crew member${names.length===1?'':'s'} for <b>${esc(selected.project)}</b> / <b>${esc(selected.crew)}</b>.</div>`;
 }
 function resetDwlForm(){
   if(!confirm('Reset this Daily Work Log? This clears the form on this screen.')) return;
@@ -2350,10 +2449,14 @@ async function dwlForm(){
     <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')} ${dwlShiftControlsHtml()}</div><div id="dwlShiftOfficeNote" class="dwlShiftOfficeNote" style="display:none"></div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
-    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project + Crew from any device.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew for This Job/Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div><p class="tiny" style="margin:8px 0 0;"><b>Employees:</b> Start typing a worker name and select the matching Active worker from the Portal. Manually typed workers can no longer be saved.</p></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add 20 More Rows</button></div></div>
+    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project from any device. If Crew is selected, the exact Project + Crew is preferred.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div><p class="tiny" style="margin:8px 0 0;"><b>Employees:</b> Start typing a worker name and select the matching Active worker from the Portal. Manually typed workers can no longer be saved.</p></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add 20 More Rows</button></div></div>
     <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the official DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the phone share/save screen should open with the PDF attached. Choose Messages, Mail, Files, or Dropbox from that screen.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
+  ['dwlProject','dwlCrew','dwlProjectOther','dwlCrewOther'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.addEventListener('change',()=>setTimeout(()=>saveDwlLastCrewFromRows(),50));
+  });
   const dateEl=document.getElementById('dwlReportDate'), dayEl=document.getElementById('dwlDay');
   const updateDay=()=>{ if(!dateEl.value){dayEl.value='';return;} const d=new Date(dateEl.value+'T00:00:00'); dayEl.value=d.toLocaleDateString(undefined,{weekday:'long'}); };
   dateEl.value=new Date().toISOString().slice(0,10); updateDay(); dateEl.addEventListener('change',updateDay);

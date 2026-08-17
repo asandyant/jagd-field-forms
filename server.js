@@ -1133,18 +1133,71 @@ app.get('/api/dwl/generated-pdf/:id/download', (req, res) => {
 
 
 function reusableKey(v){ return String(v||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim(); }
+function dwlLastCrewProjectLatestKey(project){ return `${reusableKey(project)}|__project_latest__`; }
+function normalizeDwlLastCrewWorkers(body = {}) {
+  const fromWorkers = Array.isArray(body.workers) ? body.workers : [];
+  const workers = fromWorkers.map(v => {
+    if (v && typeof v === 'object') {
+      const name = String(v.name || v.fullName || '').trim();
+      const id = String(v.id || v.workerId || v.employeeId || '').trim();
+      return name ? { id, name } : null;
+    }
+    const name = String(v || '').trim();
+    return name ? { id: '', name } : null;
+  }).filter(Boolean).slice(0, 80);
+  if (workers.length) return workers;
+  return (Array.isArray(body.names) ? body.names : []).map(v => String(v || '').trim()).filter(Boolean).slice(0, 80).map(name => ({ id: '', name }));
+}
+function dwlLastCrewRowPayload(row) {
+  const workers = normalizeDwlLastCrewWorkers(row || {});
+  return {
+    workers,
+    names: workers.map(w => w.name),
+    savedAt: String(row?.savedAt || ''),
+    project: String(row?.project || ''),
+    crew: String(row?.crew || '')
+  };
+}
 app.get('/api/dwl/last-crew', (req,res)=>{
   const project=String(req.query.project||'').trim(), crew=String(req.query.crew||'').trim();
-  if(!project || !crew) return res.status(400).json({ok:false,error:'Project and crew are required.'});
-  const all=readJsonSafe(DWL_LAST_CREWS_FILE,{}), row=all[`${reusableKey(project)}|${reusableKey(crew)}`]||null;
-  res.json({ok:true,names:Array.isArray(row?.names)?row.names:[],savedAt:row?.savedAt||''});
+  if(!project) return res.status(400).json({ok:false,error:'Project is required.'});
+  const all=readJsonSafe(DWL_LAST_CREWS_FILE,{});
+  let row=null, source='';
+  if(crew){
+    row=all[`${reusableKey(project)}|${reusableKey(crew)}`]||null;
+    if(row) source='project-crew';
+  }
+  if(!row){
+    row=all[dwlLastCrewProjectLatestKey(project)]||null;
+    if(row) source='project-latest';
+  }
+  // Backward compatibility: older builds only stored Project+Crew keys. If no project-latest
+  // pointer exists yet, find the newest historical row for this Project and return it.
+  if(!row){
+    const projectKey=reusableKey(project);
+    const candidates=Object.values(all||{}).filter(v=>v && reusableKey(v.project)===projectKey && normalizeDwlLastCrewWorkers(v).length);
+    candidates.sort((a,b)=>String(b.savedAt||'').localeCompare(String(a.savedAt||'')));
+    row=candidates[0]||null;
+    if(row) source='project-history';
+  }
+  const payload=dwlLastCrewRowPayload(row);
+  res.setHeader('Cache-Control','no-store');
+  res.json({ok:true,...payload,source});
 });
 app.post('/api/dwl/last-crew', (req,res)=>{
   const project=String(req.body?.project||'').trim(), crew=String(req.body?.crew||'').trim();
-  const names=Array.isArray(req.body?.names)?req.body.names.map(v=>String(v||'').trim()).filter(Boolean).slice(0,80):[];
-  if(!project || !crew || !names.length) return res.status(400).json({ok:false,error:'Project, crew, and names are required.'});
-  const all=readJsonSafe(DWL_LAST_CREWS_FILE,{}); all[`${reusableKey(project)}|${reusableKey(crew)}`]={project,crew,names,savedAt:new Date().toISOString()}; writeJsonSafe(DWL_LAST_CREWS_FILE,all);
-  res.json({ok:true,count:names.length});
+  const workers=normalizeDwlLastCrewWorkers(req.body||{});
+  if(!project || !workers.length) return res.status(400).json({ok:false,error:'Project and worker names are required.'});
+  const names=workers.map(w=>w.name);
+  const savedAt=new Date().toISOString();
+  const row={project,crew,workers,names,savedAt};
+  const all=readJsonSafe(DWL_LAST_CREWS_FILE,{});
+  // Always maintain a Project-level latest crew because Crew is optional on real field DWLs.
+  all[dwlLastCrewProjectLatestKey(project)]=row;
+  // When a Crew is selected, keep the more-specific Project+Crew copy too.
+  if(crew) all[`${reusableKey(project)}|${reusableKey(crew)}`]=row;
+  writeJsonSafe(DWL_LAST_CREWS_FILE,all);
+  res.json({ok:true,count:names.length,project,crew,savedAt});
 });
 app.get('/api/pir/last-instrument-serials', (req,res)=>{
   const saved=readJsonSafe(PIR_LAST_SERIALS_FILE,{}); res.json({ok:true,...saved});

@@ -1,6 +1,6 @@
 # JAGD Architecture Map
 
-Last verified: 2026-08-09
+Last verified: 2026-08-17
 
 ## Field Forms
 - Local repo: `C:\Users\asand\Downloads\jagd-field-forms`
@@ -26,7 +26,7 @@ Last verified: 2026-08-09
 ## DWL production-sensitive rules
 - Portal is source of truth for active worker names, class/local/job.
 - Forms worker feed: `/api/workers` -> Portal `/api/forms/active-workers`.
-- DWL last crew server store: `DATA_DIR/dwl-last-crews.json`, keyed by Project + Crew.
+- DWL last crew server store: `DATA_DIR/dwl-last-crews.json`. Project is the required safety boundary; Crew is optional. The store keeps a Project-level latest crew and, when Crew is selected, a Project + Crew copy. Older Project + Crew records remain readable through project-history fallback. Saved crew entries now include stable Portal worker IDs plus names so legal-name changes do not break reloads.
 - DWL field UI supports up to 80 worker rows after 2026-08-09 patch.
 - Do not casually alter DWL payroll math, Portal sync, PDF layout, revision behavior, Day/Night rules, or Save/Share workflow while fixing unrelated features.
 
