@@ -1693,6 +1693,19 @@ async function receiptAnalyzeImage(buffer) {
     const parsed=JSON.parse(out.text||'{}'); const summary=receiptDocumentSummary(parsed); summary.fallbackReason=String(err.message||'AnalyzeExpense unavailable').slice(0,240); return summary;
   }
 }
+async function receiptAnalyzeS3Object(key) {
+  const cfg=receiptRequireAws(); const host=`textract.${cfg.region}.amazonaws.com`;
+  try{
+    const body=Buffer.from(JSON.stringify({Document:{S3Object:{Bucket:cfg.bucket,Name:String(key||'')}}}),'utf8');
+    const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeExpense'},body});
+    return receiptExpenseSummary(JSON.parse(out.text||'{}'));
+  }catch(err){
+    const body=Buffer.from(JSON.stringify({Document:{S3Object:{Bucket:cfg.bucket,Name:String(key||'')}},FeatureTypes:['FORMS','TABLES']}),'utf8');
+    const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeDocument'},body});
+    const parsed=JSON.parse(out.text||'{}'); const summary=receiptDocumentSummary(parsed); summary.fallbackReason=String(err.message||'AnalyzeExpense unavailable').slice(0,240); return summary;
+  }
+}
+
 async function receiptPutObject(key, buffer, contentType='image/jpeg') {
   const cfg=receiptRequireAws(); const host=receiptS3Host(cfg.bucket,cfg.region);
   await receiptAwsSignedRequest({service:'s3',region:cfg.region,host,method:'PUT',pathname:receiptS3Path(key),headers:{'content-type':contentType,'cache-control':'private, max-age=0, no-store'},body:buffer});
@@ -1889,6 +1902,73 @@ app.get('/api/forms/tm/projects', (req,res)=>{
   if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});
   res.json({ok:true,rows:readTmProjects().map(p=>({...p,label:tmProjectLabel(p)}))});
 });
+async function tmReadLegacyReceiptDetails(recordId) {
+  // The original field T&M tracker only captured job/category + the attachment.
+  // Recover vendor/total from the preserved receipt image without rewriting the file or BOL/inventory history.
+  let rows=readTmRows();
+  let row=rows.find(r=>String(r.id)===String(recordId));
+  if(!row)throw new Error('T&M record not found.');
+  if(row.receiptId)return {row,changed:false,skipped:'receipt-linked'};
+  if(!Array.isArray(row.files)||!row.files.length)throw new Error('This T&M record has no attachment to read.');
+
+  // Make the surviving legacy file durable first, then reload the row so any new S3 keys are visible here.
+  try{await tmArchiveLegacyTmRecordFiles(row.id);}catch(err){console.error('T&M detail-read archive warning',row.id,err.message||err);}
+  rows=readTmRows(); row=rows.find(r=>String(r.id)===String(recordId));
+
+  const summaries=[];
+  const files=(row.files||[]).slice(0,6);
+  for(let index=0;index<files.length;index++){
+    const f=files[index]||{};
+    try{
+      let summary=null;
+      if(f.s3Key){
+        summary=await receiptAnalyzeS3Object(f.s3Key);
+      }else{
+        let fp=f.filename?path.join(TM_UPLOAD_DIR,path.basename(f.filename)):'';
+        if(!fp||!fs.existsSync(fp))fp=tmFindLocalAttachmentByHash(f.hash);
+        if(fp&&fs.existsSync(fp))summary=await receiptAnalyzeImage(fs.readFileSync(fp));
+        else if(f.hash){
+          const exactReceipt=receiptReadRecords().find(r=>!r.deletedAt&&String(r.sha256||'').toLowerCase()===String(f.hash||'').toLowerCase()&&r.s3Key);
+          if(exactReceipt)summary=await receiptAnalyzeS3Object(exactReceipt.s3Key);
+        }
+      }
+      if(summary)summaries.push(summary);
+    }catch(err){console.error('T&M legacy receipt Textract failed',row.id,index,err.message||err);}
+  }
+  if(!summaries.length)throw new Error('The attachment opened, but its receipt details could not be read automatically.');
+
+  const vendor=summaries.map(x=>String(x.vendor||'').trim()).find(Boolean)||'';
+  const amounts=summaries.map(x=>Number(x.amount||0)).filter(x=>Number.isFinite(x)&&x>0);
+  const amount=amounts.length?Math.max(...amounts):0;
+  const cardLast4=summaries.map(x=>String(x.cardLast4||'').replace(/\D/g,'').slice(-4)).find(x=>x.length===4)||'';
+  const receiptNumber=summaries.map(x=>String(x.receiptNumber||'').trim()).find(Boolean)||'';
+
+  let changed=false; const before={vendor:row.vendor||'',amount:Number(row.amount||0),paymentMethod:row.paymentMethod||'',description:row.description||''};
+  if(!String(row.vendor||'').trim()&&vendor){row.vendor=vendor;changed=true;}
+  if(!(Number(row.amount||0)>0)&&amount>0){row.amount=tmMoney(amount);changed=true;}
+  if((!String(row.paymentMethod||'').trim()||String(row.paymentMethod||'').toLowerCase()==='unknown')&&cardLast4){row.paymentMethod=`Card •••• ${cardLast4}`;changed=true;}
+  if(!String(row.description||'').trim()&&receiptNumber){row.description=`Receipt ${receiptNumber}`;changed=true;}
+  row.legacyReceiptDetailsReadAt=new Date().toISOString();
+  row.legacyReceiptDetailsStatus=(String(row.vendor||'').trim()||Number(row.amount||0)>0)?'read':'needs-manual-review';
+  row.updatedAt=new Date().toISOString();
+  row.history=Array.isArray(row.history)?row.history:[];
+  row.history.push({action:'Read legacy receipt details',before,after:{vendor:row.vendor||'',amount:Number(row.amount||0),paymentMethod:row.paymentMethod||'',description:row.description||''},by:'System / Textract',at:row.updatedAt});
+  writeTmRows(rows);
+  return {row,changed,found:{vendor:!!String(row.vendor||'').trim(),amount:Number(row.amount||0)>0,cardLast4:!!cardLast4}};
+}
+
+app.post('/api/forms/tm/read-details', async (req,res)=>{
+  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});
+  const ids=[...new Set((Array.isArray(req.body?.ids)?req.body.ids:[]).map(cleanText).filter(Boolean))].slice(0,20);
+  if(!ids.length)return res.status(400).json({ok:false,error:'Choose at least one T&M record to read.'});
+  const results=[],errors=[];
+  for(const id of ids){
+    try{const result=await tmReadLegacyReceiptDetails(id);results.push(result.row);}
+    catch(err){errors.push({id,error:String(err.message||'Could not read receipt details.').slice(0,300)});}
+  }
+  res.json({ok:true,rows:results,errors,read:results.length,failed:errors.length});
+});
+
 app.get('/api/forms/tm/records', (req,res)=>{
   if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});
   const projectId=cleanText(req.query.projectId),month=cleanText(req.query.month),status=cleanText(req.query.status),q=cleanText(req.query.q).toLowerCase();
