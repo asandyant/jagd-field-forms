@@ -1212,6 +1212,7 @@ app.post('/api/dwl/portal-sync', async (req, res) => {
   const data = req.body && typeof req.body.data === 'object' ? req.body.data : {};
   const title = dwlSyncCleanText(req.body?.title || req.body?.sourceFileName || '', 220);
   const syncId = dwlSyncCleanText(req.body?.syncId || '', 120) || dwlSyncIdFor(data, title);
+  const generatedPdfId = String(req.body?.generatedPdfId || '').replace(/[^a-zA-Z0-9_-]/g, '');
   const project = dwlSyncCleanText(data.project || '', 180);
   if (!project || /^no[\s_-]*project$/i.test(project)) {
     return res.status(400).json({ ok: false, status: 'rejected', error: 'Select a Project before saving the DWL.', message: 'DWL was not sent because no Project was selected.' });
@@ -1247,6 +1248,19 @@ app.post('/api/dwl/portal-sync', async (req, res) => {
       submittedAt: new Date().toISOString()
     }
   };
+  // If the browser just staged the official jsPDF, attach those exact bytes to the Portal sync.
+  // This makes the Portal's Download/Open/ZIP copy identical to what the field shared or saved.
+  if (generatedPdfId) {
+    const generatedPdfPath = path.join(DWL_GENERATED_PDF_DIR, `${generatedPdfId}.pdf`);
+    if (fs.existsSync(generatedPdfPath)) {
+      const pdfBuffer = fs.readFileSync(generatedPdfPath);
+      if (pdfBuffer.length && pdfBuffer.length <= 20 * 1024 * 1024 && pdfBuffer.slice(0, 4).toString() === '%PDF') {
+        payload.originalPdfBase64 = pdfBuffer.toString('base64');
+        logRow.originalPdfAttached = true;
+        logRow.originalPdfBytes = pdfBuffer.length;
+      }
+    }
+  }
   const rows = readDwlPortalSyncLog();
   rows.push(logRow);
   try {
@@ -1254,10 +1268,11 @@ app.post('/api/dwl/portal-sync', async (req, res) => {
     logRow.status = 'synced';
     logRow.portalId = portal.id || '';
     logRow.portalWeekEnding = portal.weekEnding || logRow.weekEnding;
+    logRow.portalOriginalPdfStored = !!portal.originalPdfStored;
     logRow.syncedAt = new Date().toISOString();
     logRow.updatedAt = logRow.syncedAt;
     writeDwlPortalSyncLog(rows);
-    res.json({ ok: true, status: 'synced', id: syncId, portalId: logRow.portalId, weekEnding: logRow.portalWeekEnding });
+    res.json({ ok: true, status: 'synced', id: syncId, portalId: logRow.portalId, weekEnding: logRow.portalWeekEnding, originalPdfAttached: !!logRow.originalPdfAttached, originalPdfStored: !!logRow.portalOriginalPdfStored });
   } catch (err) {
     logRow.status = 'failed';
     logRow.error = err.message || 'Portal sync failed';

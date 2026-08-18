@@ -52,3 +52,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Very long multi-part legal names use a balanced two-line fallback inside the same worker row rather than shrinking the entire DWL or changing row height.
 - This applies to both the primary jsPDF DWL save path and the browser-print fallback.
 - Do not change payroll fields, row heights, Local/Class behavior, Day/Night logic, Portal sync, or the rest of the PDF layout when adjusting name fitting.
+
+## DWL exact Portal PDF sync (2026-08-18)
+- The jsPDF produced by `saveDwlDirectPdf()` is the single official DWL PDF source of truth.
+- Save flow stages that PDF first through `/api/dwl/generated-pdf`; only after staging does the browser call `/api/dwl/portal-sync` with the generated PDF ID.
+- Forms server reads the exact staged bytes and forwards them to Portal as `originalPdfBase64` with the same DWL data payload. Portal can therefore store the exact file that the field user then downloads/shares/texts/Dropbox-saves.
+- Do not start Portal sync before the official PDF exists; otherwise Portal can fall back to a separately rendered document that does not match the field copy.
+- If jsPDF is unavailable and the browser-print fallback is used, the existing data-only Portal sync remains as a safety fallback. Exact PDF matching is guaranteed only when the normal official jsPDF path succeeds.
+- Field PDF save/share must still succeed even if Portal sync fails. Portal failure remains an Office-review/manual-upload condition and must never block the field from receiving the PDF.

@@ -460,7 +460,7 @@ function safePdfFileName(){
 function base64FromDataUrl(dataUrl){
   return String(dataUrl||'').replace(/^data:application\/pdf;?base64,/i,'');
 }
-async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
+async function downloadPdfDocThroughServer(pdfDoc, filename, msgId, portalSync=null){
   const msg = msgId ? document.getElementById(msgId) : null;
   const safeName = String(filename || safePdfFileName()).replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').trim() || 'JAGD Field Form.pdf';
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -477,6 +477,18 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
     const json = await res.json().catch(()=>({}));
     if(!res.ok || !json.ok || !json.downloadUrl) throw new Error(json.error || 'Server PDF download was not ready.');
     const shareUrl = json.downloadUrl;
+
+    // The Portal must receive the exact same PDF bytes the field is about to save/share.
+    // Sync only after this official PDF has been staged on the Forms server, then pass its
+    // generatedPdfId so the Forms server can attach those exact bytes to the Portal record.
+    let portalSyncResult = null;
+    if(portalSync && portalSync.data){
+      portalSyncResult = await syncDwlToPortal(portalSync.data, portalSync.title || safeName.replace(/\.pdf$/i,''), {
+        syncId: portalSync.syncId || '',
+        generatedPdfId: json.id || '',
+        keepalive:false
+      });
+    }
 
     // Mobile/iPhone: go directly to the real server PDF screen.
     // This prevents the field from accidentally sharing the website URL or a blob page from Safari.
@@ -497,7 +509,10 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId){
       a.click();
       setTimeout(()=>{ try{ a.remove(); }catch(e){} }, 1000);
     }
-    if(msg) msg.innerHTML = '<div class="success">Official DWL PDF is ready. If the PDF screen opens, use the Share button from that PDF screen.</div>';
+    if(msg){
+      const portalText = portalSyncResult && portalSyncResult.ok ? ' The same PDF was sent to the office portal.' : (portalSync ? ' The PDF saved, but the portal copy needs Office review.' : '');
+      msg.innerHTML = `<div class="success">Official DWL PDF is ready.${portalText} If the PDF screen opens, use the Share button from that PDF screen.</div>`;
+    }
     return true;
   }catch(err){
     console.warn('Server named PDF download failed, falling back to browser save:', err);
@@ -2308,23 +2323,27 @@ async function syncDwlToPortal(data, title, options = {}) {
   if (!data || (!data.project && !data.reportDate && !rows.length)) return;
   const syncId = options.syncId || makeDwlSyncId(data, title);
   const payload = dwlPortalPayload(data, title, syncId);
+  if(options.generatedPdfId) payload.generatedPdfId = String(options.generatedPdfId || '').trim();
   try {
     const body = JSON.stringify(payload);
     const res = await fetch('/api/dwl/portal-sync', { method:'POST', headers:{'Content-Type':'application/json', Accept:'application/json'}, body, keepalive: !!options.keepalive });
     const json = await res.json().catch(()=>({}));
     if (res.ok && json.ok) {
       appendDwlSyncMessage('<div class="success">DWL sent to portal.</div>');
+      return {ok:true, ...json};
     } else {
       appendDwlSyncMessage(`<div class="notice">DWL PDF saved, but portal import needs attention. ${esc(json.message || json.error || 'Office may need manual upload.')}</div>`);
+      return {ok:false, ...json};
     }
   } catch (err) {
     try{
       if(navigator.sendBeacon){
         const ok = navigator.sendBeacon('/api/dwl/portal-sync', new Blob([JSON.stringify(payload)], {type:'application/json'}));
-        if(ok){ appendDwlSyncMessage('<div class="notice">DWL portal send was queued in the background.</div>'); return; }
+        if(ok){ appendDwlSyncMessage('<div class="notice">DWL portal send was queued in the background.</div>'); return {ok:true, queued:true}; }
       }
     }catch(e){}
     appendDwlSyncMessage(`<div class="notice">DWL PDF saved, but portal import failed. Office may need manual upload. ${esc(err.message || '')}</div>`);
+    return {ok:false,error:String(err.message||'Portal sync failed')};
   }
 }
 
@@ -2541,10 +2560,13 @@ async function dwlForm(){
       markDwlSubmittedLocally(data,dwlFileTitle);
       logGeneratedForm('dwl', data.project, data.reportDate, dwlFileTitle);
       const syncId = makeDwlSyncId(data, dwlFileTitle);
-      const portalSend = syncDwlToPortal(data, dwlFileTitle, { syncId, keepalive:true });
-      const savedDirect = await saveDwlDirectPdf(data,'dwlMsg');
-      if(!savedDirect){ buildDwlPrint(data); await openPrintNow('dwlMsg'); }
-      portalSend.catch(()=>{});
+      const savedDirect = await saveDwlDirectPdf(data,'dwlMsg',{data,title:dwlFileTitle,syncId});
+      if(!savedDirect){
+        const portalSend = syncDwlToPortal(data, dwlFileTitle, { syncId, keepalive:true });
+        buildDwlPrint(data);
+        await openPrintNow('dwlMsg');
+        portalSend.catch(()=>{});
+      }
       btn.textContent = 'DWL Saved';
     }catch(err){
       document.getElementById('dwlMsg').innerHTML=`<div class="notice">DWL print/save could not open: ${esc(err.message)}.</div>`;
@@ -2672,7 +2694,7 @@ function dwlPdfShiftBanner(doc, x, y, w, data){
   dwlPdfText(doc,note.text,x+w/2,y+16,{size:12.5,style:'bold',align:'center',maxWidth:w-12,noEllipsis:true});
   return 24;
 }
-async function saveDwlDirectPdf(data, msgId){
+async function saveDwlDirectPdf(data, msgId, portalSync=null){
   if(!window.jspdf || !window.jspdf.jsPDF) return false;
   const msg=document.getElementById(msgId);
   if(msg) msg.innerHTML='<div class="notice">Building clean DWL PDF...</div>';
@@ -2791,7 +2813,7 @@ async function saveDwlDirectPdf(data, msgId){
   }
 
   const filename = safePdfFileName();
-  await downloadPdfDocThroughServer(doc, filename, msgId);
+  await downloadPdfDocThroughServer(doc, filename, msgId, portalSync);
   return true;
 }
 
