@@ -1779,15 +1779,26 @@ function cleanDwlLocal(v){
 function dwlRow(i){
   return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" list="dwlActivityList" inputmode="numeric"></td><td><input id="dwlClass${i}" list="dwlClassList" autocapitalize="characters"></td><td><input id="dwlLocal${i}" list="dwlLocalList" inputmode="numeric"></td><td><input id="dwlStraight${i}" class="dwlStraightBox" inputmode="decimal" title="Tap to set 8 hours; edit if needed"></td><td><input id="dwlOver${i}" inputmode="decimal"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" inputmode="decimal"></td><td><input id="dwlRT${i}" inputmode="decimal"></td></tr>`;
 }
-function applyWorkerToDwlRow(i,w){
+function applyWorkerToDwlRow(i,w,options={}){
   if(!w) return;
   const emp=document.getElementById('dwlEmp'+i);
+  const incomingName=workerDisplayName(w);
+  const previousName=String(emp?.dataset?.portalWorkerName || '').trim();
+  const sameWorker=!!previousName && previousName.toLowerCase()===incomingName.toLowerCase();
   if(emp){
-    emp.value = workerDisplayName(w);
-    emp.dataset.portalWorkerId = String(w.id || w.employeeId || workerDisplayName(w));
-    emp.dataset.portalWorkerName = workerDisplayName(w);
+    emp.value = incomingName;
+    emp.dataset.portalWorkerId = String(w.id || w.employeeId || incomingName);
+    emp.dataset.portalWorkerName = incomingName;
   }
-  const cls=document.getElementById('dwlClass'+i); if(cls) cls.value = normalizeDwlClass(w.class || w.workerClass || w.className || w.classification || '');
+  const cls=document.getElementById('dwlClass'+i);
+  if(cls){
+    const preserveClass = options.preserveClass === true && sameWorker && cls.dataset.dwlClassOverride === '1';
+    if(!preserveClass){
+      cls.value = normalizeDwlClass(w.class || w.workerClass || w.className || w.classification || '');
+      delete cls.dataset.dwlClassOverride;
+    }
+  }
+  // Local remains Portal-controlled. Only Class may be overridden on a DWL.
   const loc=document.getElementById('dwlLocal'+i); if(loc) loc.value = cleanDwlLocal(w.local || w.workerLocal || w.unionLocal || '');
 }
 function getDwlSuggestBox(i){
@@ -1864,14 +1875,26 @@ function setupDwlWorkerAutofill(){
     emp.addEventListener('focus',()=>showDwlSuggestions(i));
     emp.addEventListener('change',()=>{
       const w=findWorkerForCrewName(emp.value);
-      if(w) applyWorkerToDwlRow(i,w);
+      if(w) applyWorkerToDwlRow(i,w,{preserveClass:true});
     });
     emp.addEventListener('blur',()=>{
       const w=findWorkerForCrewName(emp.value);
-      if(w) applyWorkerToDwlRow(i,w);
+      if(w) applyWorkerToDwlRow(i,w,{preserveClass:true});
       setTimeout(()=>hideDwlSuggestions(),220);
       setTimeout(()=>saveDwlLastCrewFromRows(),250);
     });
+    const cls=document.getElementById('dwlClass'+i);
+    if(cls && cls.dataset.ready!=='1'){
+      cls.dataset.ready='1';
+      cls.addEventListener('input',()=>{
+        const selectedWorker=String(emp.dataset.portalWorkerName || '').trim();
+        if(selectedWorker) cls.dataset.dwlClassOverride='1';
+      });
+      cls.addEventListener('change',()=>{
+        const selectedWorker=String(emp.dataset.portalWorkerName || '').trim();
+        if(selectedWorker) cls.dataset.dwlClassOverride='1';
+      });
+    }
     const st=document.getElementById('dwlStraight'+i);
     if(st && st.dataset.ready!=='1'){
       st.dataset.ready='1';
@@ -1954,7 +1977,7 @@ function validateDwlPortalWorkersOnly(){
     if(!emp || !emp.value.trim()) continue;
     const worker=findWorkerForCrewName(emp.value);
     if(worker){
-      applyWorkerToDwlRow(i,worker);
+      applyWorkerToDwlRow(i,worker,{preserveClass:true});
       continue;
     }
     invalid.push({row:i,name:emp.value.trim()});
@@ -2436,7 +2459,19 @@ function restoreDwlReturnDraft(){
   document.querySelectorAll('input[name="dwlShiftChoice"]').forEach(el=>el.checked=el.value===shift);
   document.querySelectorAll('input[name="dwlNightChoice"]').forEach(el=>el.checked=shift==='Night' && el.value===data.nightWorkType);
   const needed=Math.min(DWL_MAX_ROWS, Math.max(20, data.rows.length)); ensureDwlRows(needed);
-  data.rows.slice(0,DWL_MAX_ROWS).forEach((r,idx)=>{ const i=idx+1; set('dwlEmp'+i,r.employee); set('dwlLoc'+i,r.location); set('dwlAct'+i,r.activity); set('dwlClass'+i,r.class); set('dwlLocal'+i,r.local); set('dwlStraight'+i,r.straight); set('dwlOver'+i,r.over); set('dwlNoLunch'+i,r.noLunch); set('dwlPT'+i,r.pt); set('dwlRT'+i,r.rt); });
+  data.rows.slice(0,DWL_MAX_ROWS).forEach((r,idx)=>{
+    const i=idx+1;
+    set('dwlEmp'+i,r.employee); set('dwlLoc'+i,r.location); set('dwlAct'+i,r.activity); set('dwlClass'+i,r.class); set('dwlLocal'+i,r.local); set('dwlStraight'+i,r.straight); set('dwlOver'+i,r.over); set('dwlNoLunch'+i,r.noLunch); set('dwlPT'+i,r.pt); set('dwlRT'+i,r.rt);
+    const worker=findWorkerForCrewName(r.employee);
+    const emp=document.getElementById('dwlEmp'+i);
+    const cls=document.getElementById('dwlClass'+i);
+    if(worker && emp){
+      emp.dataset.portalWorkerId=String(worker.id || worker.employeeId || workerDisplayName(worker));
+      emp.dataset.portalWorkerName=workerDisplayName(worker);
+      const portalClass=normalizeDwlClass(worker.class || worker.workerClass || worker.className || worker.classification || '');
+      if(cls && String(r.class||'').trim() && String(r.class||'').trim()!==portalClass) cls.dataset.dwlClassOverride='1';
+    }
+  });
   if(data.signatureData){ signatureStore.dwlSignature=data.signatureData; const sig=document.getElementById('dwlSignaturePreview'); if(sig) sig.innerHTML=`<img src="${data.signatureData}" alt="Signature">`; }
   updateDwlShiftUi();
   const msg=document.getElementById('dwlMsg'); if(msg) msg.innerHTML='<div class="notice success">Your DWL was restored so you can correct it. Increase the Revision number before saving a corrected DWL.</div>';
@@ -2449,7 +2484,7 @@ async function dwlForm(){
     <div class="panel dwlBossPanel"><h2>Project / Report Information</h2><div class="grid three dwlTopGrid">${projectField('dwlProject','Project')} ${field('dwlReportDate','Report Date','date')} ${field('dwlDay','Day','text','readonly')} ${crewField('dwlCrew','Crew')} ${field('dwlWeather','Weather')} ${field('dwlForeman','Foreman / Field Person')} ${field('dwlRevision','Revision','text','value="0" inputmode="numeric"')} ${dwlShiftControlsHtml()}</div><div id="dwlShiftOfficeNote" class="dwlShiftOfficeNote" style="display:none"></div><p class="tiny"><b>Revision:</b> Use 0 for the first DWL. If a saved DWL needs to be corrected/re-sent, use Revision 1, 2, etc.</p></div>
     <div class="panel dwlActivitiesPanel"><h2>Activities Performed</h2><table class="dwlActivityInfo"><tbody>${activityCodesTable()}</tbody></table></div>
     <div class="panel"><h2>Work Performed</h2>${textarea('dwlDescription','Location / Description of Work')}${textarea('dwlNotes','Additional Notes')}${textarea('dwlSafetyTopic','Safety Huddle Topic')}</div>
-    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project from any device. If Crew is selected, the exact Project + Crew is preferred.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div><p class="tiny" style="margin:8px 0 0;"><b>Employees:</b> Start typing a worker name and select the matching Active worker from the Portal. Manually typed workers can no longer be saved.</p></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add 20 More Rows</button></div></div>
+    <div class="panel dwlBossPanel"><h2>Crew / Employees</h2><div class="dwlCrewTools"><div><b>Crew Tools</b><span>Upload a pasted crew list or reload the last crew saved for the selected Project from any device. If Crew is selected, the exact Project + Crew is preferred.</span></div><div class="actions"><button class="btn light" type="button" id="dwlUploadCrewBtn">Upload Crew</button><button class="btn light" type="button" id="dwlLoadLastCrewBtn">Load Last Crew</button><button class="btn danger" type="button" id="dwlResetBtn">Reset Form</button></div><p class="tiny" style="margin:8px 0 0;"><b>Employees:</b> Start typing a worker name and select the matching Active worker from the Portal. Manually typed workers can no longer be saved. <b>Class:</b> defaults from the Portal but may be changed for this DWL only (for example, temporary Foreman duty).</p></div><div class="dwlTableWrap"><table class="dwlEntryTable"><thead><tr><th>#</th><th>Employee</th><th>Location</th><th>Activity</th><th>Class</th><th>Local</th><th>Straight</th><th>Over</th><th>No Lunch</th><th>P.T.</th><th>R.T.</th></tr></thead><tbody id="dwlRows"></tbody></table></div><div class="actions"><button class="btn light" type="button" id="dwlAddPageBtn">Add 20 More Rows</button></div></div>
     <div class="panel"><h2>Signature</h2>${field('dwlPrintName','Print Name')} ${sigField('dwlSignature','Signature')}<div class="actions"><button class="btn" id="dwlPrintBtn" type="button">Save PDF / Print DWL</button></div><p class="tiny saveHelp"><b>Save / send:</b> This saves the official DWL PDF and sends the DWL to the office portal. On iPhone, after you click OK, the phone share/save screen should open with the PDF attached. Choose Messages, Mail, Files, or Dropbox from that screen.</p><div id="dwlMsg"></div></div>
   </div>`;
   setupOtherProject('dwlProject'); setupOtherCrew('dwlCrew');
