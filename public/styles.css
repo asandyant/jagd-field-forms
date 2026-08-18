@@ -1164,3 +1164,22 @@
 .receiptPaidWith label{display:inline-flex;align-items:center;gap:8px;margin-right:22px;font-weight:700}
 .receiptPaidWith input[type="radio"]{width:18px;height:18px}
 .receiptDuplicateNotice{border-color:#f7c948;background:#fff9df}
+
+/* 2026-08-18 DWL legal-name print protection.
+   Employee names keep the approved large font when they fit; only an overlong name is auto-fitted.
+   The official jsPDF path does the same measurement directly. This CSS supports the browser-print fallback. */
+@media print{
+  .dwlPrintTable td:nth-child(2) .dwlEmployeePrintName{
+    display:block!important;
+    max-width:100%!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    font-weight:900!important;
+    letter-spacing:0!important;
+    text-align:left!important;
+  }
+  .dwlPrintTable td:nth-child(2) .dwlEmployeePrintNameTwoLine{
+    white-space:normal!important;
+    line-height:.94!important;
+  }
+}

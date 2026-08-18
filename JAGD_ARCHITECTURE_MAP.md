@@ -44,3 +44,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Receipt mistake removal is soft-delete with audit history; normal lists hide removed items.
 - Portal Admin/Office has a `T&M Billing` control-center view using Forms sync-token proxy routes.
 - Old Forms T&M records remain readable so the existing tracker history is preserved during migration.
+
+## DWL legal-name PDF rule (2026-08-18)
+- Employee legal names must never be shortened with `...` / ellipsis or clipped in the official DWL PDF.
+- Normal employee names keep the approved large DWL font.
+- Only an Employee cell whose full legal name is too wide is auto-fitted using actual text width.
+- Very long multi-part legal names use a balanced two-line fallback inside the same worker row rather than shrinking the entire DWL or changing row height.
+- This applies to both the primary jsPDF DWL save path and the browser-print fallback.
+- Do not change payroll fields, row heights, Local/Class behavior, Day/Night logic, Portal sync, or the rest of the PDF layout when adjusting name fitting.

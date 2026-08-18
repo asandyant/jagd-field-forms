@@ -2582,6 +2582,72 @@ function dwlPdfCell(doc, x, y, w, h, text, opts={}){
   const ty = y + h/2 + size*0.34;
   dwlPdfText(doc, text, tx, ty, {maxWidth:w-6, size, style, align, noEllipsis:!!opts.noEllipsis});
 }
+
+// DWL legal-name protection: employee names must never be shortened with an ellipsis in the official PDF.
+// Keep the approved large font for normal names, auto-fit only the individual Employee cell when needed,
+// and use a balanced two-line fallback for unusually long legal names so the full name remains readable.
+function dwlPdfFitSingleLineSize(doc, text, maxWidth, maxSize, style='bold'){
+  const value=String(text||'').trim();
+  if(!value) return maxSize;
+  doc.setFont('helvetica',style);
+  doc.setFontSize(maxSize);
+  const width=doc.getTextWidth(value);
+  if(!width || width<=maxWidth) return maxSize;
+  return Math.max(1.5, Math.min(maxSize, maxSize*(maxWidth/width)*0.975));
+}
+function dwlBalancedNameSplit(doc, text, size){
+  const words=String(text||'').trim().split(/\s+/).filter(Boolean);
+  if(words.length<2) return null;
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(size);
+  let best=null;
+  for(let i=1;i<words.length;i++){
+    const a=words.slice(0,i).join(' ');
+    const b=words.slice(i).join(' ');
+    const aw=doc.getTextWidth(a), bw=doc.getTextWidth(b);
+    const score=Math.max(aw,bw) + Math.abs(aw-bw)*0.18;
+    if(!best || score<best.score) best={a,b,maxWidth:Math.max(aw,bw),score};
+  }
+  return best;
+}
+function dwlPdfEmployeeCell(doc, x, y, w, h, text, opts={}){
+  if(opts.fill){ doc.setFillColor(opts.fill[0], opts.fill[1], opts.fill[2]); doc.rect(x,y,w,h,'F'); }
+  doc.setDrawColor(0); doc.setLineWidth(opts.lineWidth || 0.7); doc.rect(x,y,w,h);
+  const value=String(text||'').trim();
+  if(!value) return;
+
+  const maxWidth=w-6;
+  const maxSize=opts.size || 13.6;
+  const oneLineSize=dwlPdfFitSingleLineSize(doc,value,maxWidth,maxSize,'bold');
+
+  // Most long legal names (including four-part names) remain on one line around 10-12pt.
+  if(oneLineSize>=8.4){
+    const tx=x+3;
+    const ty=y+h/2+oneLineSize*0.34;
+    dwlPdfText(doc,value,tx,ty,{maxWidth,size:oneLineSize,style:'bold',align:'left',noEllipsis:true});
+    return;
+  }
+
+  // Very long names are more readable on two balanced lines than at a tiny one-line font.
+  const twoLineMax=Math.min(8.8, Math.max(7.2,(h-3)/2));
+  const split=dwlBalancedNameSplit(doc,value,twoLineMax);
+  if(split){
+    const fitScale=split.maxWidth>maxWidth ? (maxWidth/split.maxWidth)*0.97 : 1;
+    const twoLineSize=Math.max(1.5, twoLineMax*fitScale);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(twoLineSize);
+    const lineGap=twoLineSize*0.98;
+    const center=y+h/2;
+    doc.text(split.a,x+3,center-lineGap/2+twoLineSize*0.31);
+    doc.text(split.b,x+3,center+lineGap/2+twoLineSize*0.31);
+    return;
+  }
+
+  // Single-word edge case: mathematically fit the complete value rather than ever truncating it.
+  const tx=x+3;
+  const ty=y+h/2+oneLineSize*0.34;
+  dwlPdfText(doc,value,tx,ty,{maxWidth,size:oneLineSize,style:'bold',align:'left',noEllipsis:true});
+}
 function dwlPdfWrapText(doc, text, x, y, w, h, opts={}){
   const size=opts.size || 8;
   const style=opts.style || 'normal';
@@ -2701,7 +2767,11 @@ async function saveDwlDirectPdf(data, msgId){
         if(c===1){ size=13.6; align='left'; }
         if(c===2){ size=10.8; style='normal'; }
         if(c===3){ size=11.2; }
-        dwlPdfCell(doc,x,y,cols[c],rowH,vals[c]||'',{size,style,align,lineWidth:1.0,noEllipsis:c===0});
+        if(c===1){
+          dwlPdfEmployeeCell(doc,x,y,cols[c],rowH,vals[c]||'',{size,lineWidth:1.0});
+        }else{
+          dwlPdfCell(doc,x,y,cols[c],rowH,vals[c]||'',{size,style,align,lineWidth:1.0,noEllipsis:c===0});
+        }
         x += cols[c];
       }
       y += rowH;
@@ -2734,10 +2804,52 @@ function collectDwl(){
   }
   return normalizeDwlDataForSave({project:projectValue('dwlProject'),reportDate:val('dwlReportDate'),day:val('dwlDay'),crew:crewValue('dwlCrew'),revision:cleanDwlRevision(val('dwlRevision')||'0')||'0',weather:val('dwlWeather'),foreman:val('dwlForeman'),shift:val('dwlShift')||'Day',nightWorkType:val('dwlNightWorkType'),activities:[],description:val('dwlDescription'),notes:val('dwlNotes'),additionalNotes:val('dwlNotes'),safetyTopic:val('dwlSafetyTopic'),safetyHuddleTopic:val('dwlSafetyTopic'),printName:val('dwlPrintName'),signatureData:signatureStore.dwlSignature||'',rows});
 }
+function dwlHtmlMeasureName(text, size){
+  const value=String(text||'');
+  try{
+    if(!dwlHtmlMeasureName.canvas) dwlHtmlMeasureName.canvas=document.createElement('canvas');
+    const ctx=dwlHtmlMeasureName.canvas.getContext('2d');
+    ctx.font=`900 ${size}px Arial, Helvetica, sans-serif`;
+    return ctx.measureText(value).width;
+  }catch(e){
+    return value.length*size*0.56;
+  }
+}
+function dwlHtmlBalancedNameSplit(text, size){
+  const words=String(text||'').trim().split(/\s+/).filter(Boolean);
+  if(words.length<2) return null;
+  let best=null;
+  for(let i=1;i<words.length;i++){
+    const a=words.slice(0,i).join(' '), b=words.slice(i).join(' ');
+    const aw=dwlHtmlMeasureName(a,size), bw=dwlHtmlMeasureName(b,size);
+    const score=Math.max(aw,bw)+Math.abs(aw-bw)*0.18;
+    if(!best||score<best.score) best={a,b,maxWidth:Math.max(aw,bw),score};
+  }
+  return best;
+}
+function dwlEmployeePrintCell(name){
+  const value=String(name||'').trim();
+  if(!value) return '<td></td>';
+  const maxWidth=210;
+  const maxSize=18.4;
+  const measured=dwlHtmlMeasureName(value,maxSize);
+  const oneLineSize=measured>maxWidth ? Math.max(1.5,maxSize*(maxWidth/measured)*0.965) : maxSize;
+  if(oneLineSize>=11.5){
+    return `<td><span class="dwlEmployeePrintName" style="font-size:${oneLineSize.toFixed(2)}px!important;white-space:nowrap!important;">${esc(value)}</span></td>`;
+  }
+  const twoLineMax=12.4;
+  const split=dwlHtmlBalancedNameSplit(value,twoLineMax);
+  if(split){
+    const fit=split.maxWidth>maxWidth ? (maxWidth/split.maxWidth)*0.965 : 1;
+    const size=Math.max(1.5,twoLineMax*fit);
+    return `<td><span class="dwlEmployeePrintName dwlEmployeePrintNameTwoLine" style="font-size:${size.toFixed(2)}px!important;">${esc(split.a)}<br>${esc(split.b)}</span></td>`;
+  }
+  return `<td><span class="dwlEmployeePrintName" style="font-size:${oneLineSize.toFixed(2)}px!important;white-space:nowrap!important;">${esc(value)}</span></td>`;
+}
 function dwlWorkerRowsPrint(rows, start, count){
   const slice=rows.slice(start,start+count);
   while(slice.length<count) slice.push({num:start+slice.length+1});
-  return slice.map(r=>`<tr><td>${esc(r.num||'')}</td><td>${esc(r.employee||'')}</td><td>${esc(r.location||'')}</td><td>${esc(r.activity||'')}</td><td>${esc(r.class||'')}</td><td>${esc(r.local||'')}</td><td>${esc(r.straight||'')}</td><td>${esc(r.over||'')}</td><td class="dwlNoLunchPrint">${esc(r.noLunch||'')}</td><td>${esc(r.pt||'')}</td><td>${esc(r.rt||'')}</td></tr>`).join('');
+  return slice.map(r=>`<tr><td>${esc(r.num||'')}</td>${dwlEmployeePrintCell(r.employee||'')}<td>${esc(r.location||'')}</td><td>${esc(r.activity||'')}</td><td>${esc(r.class||'')}</td><td>${esc(r.local||'')}</td><td>${esc(r.straight||'')}</td><td>${esc(r.over||'')}</td><td class="dwlNoLunchPrint">${esc(r.noLunch||'')}</td><td>${esc(r.pt||'')}</td><td>${esc(r.rt||'')}</td></tr>`).join('');
 }
 function buildDwlSheet(data, pageIndex, totalPages){
   data = normalizeDwlDataForSave(data);
