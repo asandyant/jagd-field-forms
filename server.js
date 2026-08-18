@@ -1102,7 +1102,7 @@ app.post('/api/dwl/generated-pdf', (req, res) => {
   try {
     cleanupOldGeneratedDwlPdfs();
     const fileName = dwlDownloadSafeFileName(req.body?.fileName || 'JAGD DWL.pdf');
-    const pdfBase64 = String(req.body?.pdfBase64 || '').replace(/^data:application\/pdf;?base64,/i, '');
+    const pdfBase64 = String(req.body?.pdfBase64 || '').replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '');
     if (!pdfBase64) return res.status(400).json({ ok: false, error: 'PDF data missing.' });
     const buffer = Buffer.from(pdfBase64, 'base64');
     if (!buffer.length || buffer.length > 20 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'PDF is empty or too large.' });

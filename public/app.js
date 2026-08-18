@@ -458,7 +458,11 @@ function safePdfFileName(){
   return (String(title).replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').trim() || 'JAGD Field Form') + '.pdf';
 }
 function base64FromDataUrl(dataUrl){
-  return String(dataUrl||'').replace(/^data:application\/pdf;?base64,/i,'');
+  const value = String(dataUrl || '');
+  const marker = ';base64,';
+  const markerIndex = value.toLowerCase().indexOf(marker);
+  if(markerIndex >= 0) return value.slice(markerIndex + marker.length);
+  return value.replace(/^data:application\/pdf[^,]*,/i,'');
 }
 async function downloadPdfDocThroughServer(pdfDoc, filename, msgId, portalSync=null){
   const msg = msgId ? document.getElementById(msgId) : null;
@@ -516,7 +520,31 @@ async function downloadPdfDocThroughServer(pdfDoc, filename, msgId, portalSync=n
     return true;
   }catch(err){
     console.warn('Server named PDF download failed, falling back to browser save:', err);
-    try{ pdfDoc.save(safeName); if(msg) msg.innerHTML='<div class="success">Official DWL PDF saved. If iPhone changes the file name, office can rename it from the PDF contents.</div>'; return true; }
+    // Never let the exact-PDF staging step prevent the DWL data record from reaching the Portal.
+    // If staging fails for any browser/server reason, send the normal DWL record without the PDF
+    // attachment so Office still sees the DWL and the existing failed-sync/manual-upload safety net
+    // can handle the source PDF separately.
+    let fallbackPortalResult = null;
+    if(portalSync && portalSync.data){
+      try{
+        fallbackPortalResult = await syncDwlToPortal(portalSync.data, portalSync.title || safeName.replace(/\.pdf$/i,''), {
+          syncId: portalSync.syncId || '',
+          keepalive:false
+        });
+      }catch(syncErr){
+        console.warn('Fallback DWL portal data sync failed:', syncErr);
+      }
+    }
+    try{
+      pdfDoc.save(safeName);
+      if(msg){
+        const portalNote = fallbackPortalResult && fallbackPortalResult.ok
+          ? ' The DWL record was sent to the Portal, but the exact PDF attachment needs Office review.'
+          : (portalSync ? ' The field PDF saved, but Portal import still needs Office review.' : '');
+        msg.innerHTML=`<div class="success">Official DWL PDF saved.${portalNote}</div>`;
+      }
+      return true;
+    }
     catch(e){ if(msg) msg.innerHTML=`<div class="notice">PDF save failed: ${esc(e.message || err.message || '')}</div>`; return false; }
   }
 }

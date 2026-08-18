@@ -60,3 +60,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Do not start Portal sync before the official PDF exists; otherwise Portal can fall back to a separately rendered document that does not match the field copy.
 - If jsPDF is unavailable and the browser-print fallback is used, the existing data-only Portal sync remains as a safety fallback. Exact PDF matching is guaranteed only when the normal official jsPDF path succeeds.
 - Field PDF save/share must still succeed even if Portal sync fails. Portal failure remains an Office-review/manual-upload condition and must never block the field from receiving the PDF.
+
+
+## 2026-08-18 — DWL exact-PDF staging hotfix
+- Live test after the exact-PDF source-of-truth deployment showed newly saved DWLs could disappear from Portal review entirely.
+- Root cause: jsPDF 2.5.1 `output('datauristring')` may include metadata such as `;filename=...;base64,`, while the client/server staging parser only accepted the narrower `data:application/pdf;base64,` prefix. When staging failed, the desktop fallback saved the field PDF but skipped Portal sync because Portal sync lived after the staging request inside the same try block.
+- Client `base64FromDataUrl()` now strips any PDF data-URI metadata before `;base64,`; server `/api/dwl/generated-pdf` accepts the same valid form.
+- Safety rule strengthened: exact-PDF staging can never be allowed to suppress the DWL data sync. If staging fails, Forms now immediately performs a data-only Portal sync before saving the local PDF. The Office record therefore remains visible even if the exact source-PDF attachment needs follow-up/manual upload.
+- Normal successful path is unchanged: stage official jsPDF -> sync DWL plus exact staged bytes -> save/share the same official PDF.
