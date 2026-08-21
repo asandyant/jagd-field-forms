@@ -1820,7 +1820,7 @@ function cleanDwlLocal(v){
 }
 
 function dwlRow(i){
-  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" list="dwlActivityList" inputmode="numeric"></td><td><input id="dwlClass${i}" list="dwlClassList" autocapitalize="characters"></td><td><input id="dwlLocal${i}" list="dwlLocalList" inputmode="numeric"></td><td><input id="dwlStraight${i}" class="dwlStraightBox" inputmode="decimal" title="Tap to set 8 hours; edit if needed"></td><td><input id="dwlOver${i}" inputmode="decimal"></td><td class="dwlDoubleCol"><input id="dwlDouble${i}" inputmode="decimal" readonly title="Double time is calculated by the DWL rules"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" inputmode="decimal"></td><td><input id="dwlRT${i}" inputmode="decimal"></td></tr>`;
+  return `<tr data-row="${i}"><td class="dwlNum">${i}</td><td class="dwlEmpCell"><input id="dwlEmp${i}" class="dwlEmpInput" autocomplete="off" autocapitalize="words" spellcheck="false"><div id="dwlSuggest${i}" class="dwlSuggest"></div></td><td><input id="dwlLoc${i}"></td><td><input id="dwlAct${i}" list="dwlActivityList" inputmode="numeric"></td><td><input id="dwlClass${i}" list="dwlClassList" autocapitalize="characters"></td><td><input id="dwlLocal${i}" list="dwlLocalList" inputmode="numeric"></td><td><input id="dwlStraight${i}" class="dwlStraightBox" inputmode="decimal" title="Tap to set 8 hours; edit if needed"></td><td><input id="dwlOver${i}" inputmode="decimal"></td><td class="dwlDoubleCol"><input id="dwlDouble${i}" inputmode="decimal" title="Double time"></td><td class="center"><input id="dwlNoLunch${i}" class="dwlNoLunchBox" readonly inputmode="decimal" title="Tap to toggle .5"></td><td><input id="dwlPT${i}" inputmode="decimal"></td><td><input id="dwlRT${i}" inputmode="decimal"></td></tr>`;
 }
 function applyWorkerToDwlRow(i,w,options={}){
   if(!w) return;
@@ -1953,10 +1953,22 @@ function setupDwlWorkerAutofill(){
         const dbl=document.getElementById('dwlDouble'+i);
         // A fresh edit of Over represents "hours after 8"; clear the prior calculated
         // Double so the next blur can split the newly-entered amount deterministically.
-        if(dbl) dbl.value='';
+        if(dbl){ dbl.value=''; delete dbl.dataset.manualNightDouble; }
         refreshDwlDoubleVisibility();
       });
       ot.addEventListener('blur',()=>{ applyDwlIwHoursFromOverField(i); });
+    }
+    const dbl=document.getElementById('dwlDouble'+i);
+    if(dbl && dbl.dataset.nightDoubleReady!=='1'){
+      dbl.dataset.nightDoubleReady='1';
+      dbl.addEventListener('input',()=>{
+        const shift=document.getElementById('dwlShift')?.value==='Night'?'Night':'Day';
+        const local=document.getElementById('dwlLocal'+i)?.value||'';
+        if(shift==='Night' && DWL_IRONWORKER_LOCALS.has(dwlLocalKey(local))){
+          dbl.dataset.manualNightDouble = dbl.value.trim() ? '1' : '';
+          const st=document.getElementById('dwlStraight'+i); if(st) st.value='';
+        }
+      });
     }
     const nl=document.getElementById('dwlNoLunch'+i);
     if(nl && nl.dataset.ready!=='1'){
@@ -2367,10 +2379,28 @@ function applyDwlPayrollRulesToRow(row, data={}){
   const shift=String(data.shift||'Day')==='Night'?'Night':'Day';
   const iwNightCrewDayRule=shift==='Day' && data.iwDayNightCrewRule===true;
   if(isDwlIronworkerRow(next)){
+    if(shift==='Night'){
+      const enteredStraight=dwlHourNumber(next.straight);
+      const enteredOver=dwlHourNumber(next.over);
+      const enteredDouble=dwlHourNumber(next.double);
+      if(enteredDouble>0 && enteredOver===0 && enteredStraight===0){
+        next.straight='';
+        next.over='';
+        next.double=dwlHourText(enteredDouble);
+        next.payrollRule='iw_night_manual_double';
+        return next;
+      }
+      const nightTotal=enteredStraight+enteredOver+enteredDouble;
+      next.straight='';
+      next.over=dwlHourText(Math.min(nightTotal,8));
+      next.double=dwlHourText(Math.max(nightTotal-8,0));
+      next.payrollRule='iw_night';
+      return next;
+    }
     const base=Math.min(total,8);
     const ot=iwNightCrewDayRule ? 0 : Math.min(Math.max(total-8,0),2);
     const dbl=iwNightCrewDayRule ? Math.max(total-8,0) : Math.max(total-10,0);
-    next.straight=dwlHourText(base); // Night PDF/UI labels this column 10%.
+    next.straight=dwlHourText(base);
     next.over=dwlHourText(ot);
     next.double=dwlHourText(dbl);
     next.payrollRule=iwNightCrewDayRule?'iw_day_with_night_crew':'iw_standard';
@@ -2496,18 +2526,29 @@ function applyDwlIwHoursFromOverField(i){
   const ot=document.getElementById('dwlOver'+i);
   const dbl=document.getElementById('dwlDouble'+i);
   if(!ot || !dbl) return false;
-  // Field workflow: Straight is the first 8; the foreman can type all hours after 8
-  // into Over. On blur we split that value into max 2 OT + remaining Double.
-  const afterEight=dwlHourNumber(ot.value);
-  if(afterEight<=0){
+  const shift=document.getElementById('dwlShift')?.value==='Night'?'Night':'Day';
+  const entered=dwlHourNumber(ot.value);
+  if(shift==='Night'){
+    if(st) st.value='';
+    if(entered<=0){
+      if(dbl.dataset.manualNightDouble!=='1') dbl.value='';
+      refreshDwlDoubleVisibility();
+      return true;
+    }
+    ot.value=dwlHourText(Math.min(entered,8));
+    if(dbl.dataset.manualNightDouble!=='1') dbl.value=dwlHourText(Math.max(entered-8,0));
+    refreshDwlDoubleVisibility();
+    return true;
+  }
+  if(entered<=0){
     dbl.value='';
     refreshDwlDoubleVisibility();
     return true;
   }
   if(st && !st.value.trim()) st.value='8';
   if(st && dwlHourNumber(st.value)>8) st.value='8';
-  ot.value=dwlHourText(Math.min(afterEight,2));
-  dbl.value=dwlHourText(Math.max(afterEight-2,0));
+  ot.value=dwlHourText(Math.min(entered,2));
+  dbl.value=dwlHourText(Math.max(entered-2,0));
   refreshDwlDoubleVisibility();
   return true;
 }
@@ -2525,9 +2566,18 @@ function updateDwlShiftUi(){
   if(straightHeader) straightHeader.textContent=shift==='Night'?'10%':'Straight';
   for(let i=1;i<=DWL_MAX_ROWS;i++){
     const st=document.getElementById('dwlStraight'+i);
+    const dbl=document.getElementById('dwlDouble'+i);
+    const local=document.getElementById('dwlLocal'+i)?.value||'';
+    const isIw=DWL_IRONWORKER_LOCALS.has(dwlLocalKey(local));
     if(st){
       st.disabled=false;
       st.title=shift==='Night'?'Night shift: this column is the 10% differential hours':'Tap to set 8 hours; edit if needed';
+      if(shift==='Night' && isIw){ st.value=''; st.title='Night Ironworker: use Over; first 8 are OT and hours after 8 are Double'; }
+    }
+    if(dbl){
+      dbl.readOnly = shift!=='Night';
+      dbl.title = shift==='Night' ? 'Double time (editable for Sunday/other valid Double Time)' : 'Double time is calculated by the DWL rules';
+      if(shift!=='Night') delete dbl.dataset.manualNightDouble;
     }
   }
 }
@@ -2652,7 +2702,8 @@ async function dwlForm(){
       await saveDwlLastCrewFromRows();
       const data=collectDwl();
       saveDwlReturnDraft(data);
-      const baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
+      let baseTitle=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew'));
+      if(data.shift==='Night') baseTitle += ' NIGHT';
       const dwlFileTitle=dwlFileTitleWithRevision(baseTitle, data.revision);
       if(!confirmDwlSaveAndSend(data,dwlFileTitle)) {
         btn.disabled = false;
@@ -4146,7 +4197,7 @@ window.addEventListener('beforeprint',()=>{
   if(h.startsWith('#/mewp') && document.getElementById('mewpJobName')) { const data=collectMewp(); document.title=formSaveTitle('mewp', data.inspectionDate, data.jobName); buildMewpPrint(data, localPhotoFiles('mewpPhotos')); }
   if(h.startsWith('#/daily-equipment') && document.getElementById('dailyProject')) { const data=collectDailyEquipment(); document.title=formSaveTitle('daily', data.date, data.project); buildDailyEquipmentPrint(data); }
   if(h.startsWith('#/dsif') && document.getElementById('dsifProject')) { const data=collectDsif(); document.title=formSaveTitle('dsif', data.reportDate, data.project); buildDsifPrint(data); }
-  if(h.startsWith('#/dwl') && document.getElementById('dwlProject')) { const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew')); buildDwlPrint(data); }
+  if(h.startsWith('#/dwl') && document.getElementById('dwlProject')) { const data=collectDwl(); document.title=formSaveTitle('dwl', data.reportDate, data.project, data.crew || crewValue('dwlCrew')) + (data.shift==='Night'?' NIGHT':''); buildDwlPrint(data); }
   if(h.startsWith('#/bill-of-lading') && document.getElementById('bolProject')) buildBolPrint();
   if(h.startsWith('#/incident-report') && document.getElementById('irProject')) buildIncidentPrint();
   if(h.startsWith('#/heavy-accident-report') && document.getElementById('harProject')) buildHeavyAccidentPrint();

@@ -88,3 +88,10 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Example: Straight 8 + Over 3 becomes Straight 8 / Over 2 / Double 1 on blur/change.
 - Editing Over clears the prior calculated Double first, so re-entry recalculates deterministically.
 - Night Shift still always shows the Double column. Existing PDF/save payroll normalization remains unchanged.
+## 2026-08-21 DWL night Ironworker correction
+- Night Ironworkers are Locals 11, 40, and 361. The 10%/Straight column is not used for their night hours.
+- Normal night IW rule: first 8 hours go to Over (time-and-a-half); hours after 8 go to Double. Example: entering 10 total night IW hours in Over resolves to Over 8 / Double 2.
+- Night Double remains editable so legitimate all-Double situations such as Sunday Ironworker work can be entered directly. Day Double remains rule-calculated/read-only.
+- Saved night DWL filenames now include `NIGHT`; day filenames remain unchanged.
+- This patch does not alter one-page PDF geometry, legal-name auto-fit, Class override, No Lunch/PT/RT, multiline notes, Load Last Crew, exact Portal PDF sync, revisions, or Save/Share behavior.
+
