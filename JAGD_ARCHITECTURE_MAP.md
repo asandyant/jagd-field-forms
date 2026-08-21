@@ -95,3 +95,9 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Saved night DWL filenames now include `NIGHT`; day filenames remain unchanged.
 - This patch does not alter one-page PDF geometry, legal-name auto-fit, Class override, No Lunch/PT/RT, multiline notes, Load Last Crew, exact Portal PDF sync, revisions, or Save/Share behavior.
 
+
+### 2026-08-21 — DWL night Ironworker 10% guardrail
+- Night Shift + Ironworker Local 11/40/361: the 10%/Straight entry cell is disabled because night Ironworkers do not receive the 10% differential.
+- If hours were entered in 10% before the row became identified as an Ironworker, those hours are automatically migrated into Over and the existing night IW split applies: first 8 Over, hours after 8 Double.
+- Double remains editable on Night Shift for valid all-Double situations such as Sunday Ironworker work.
+- Guard is re-applied immediately when the Portal worker/local is populated, reducing field-entry error risk.

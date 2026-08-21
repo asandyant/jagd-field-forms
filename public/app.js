@@ -1843,6 +1843,10 @@ function applyWorkerToDwlRow(i,w,options={}){
   }
   // Local remains Portal-controlled. Only Class may be overridden on a DWL.
   const loc=document.getElementById('dwlLocal'+i); if(loc) loc.value = cleanDwlLocal(w.local || w.workerLocal || w.unionLocal || '');
+  // Re-apply shift-specific row guards after Portal Local is populated.
+  // This is critical for Night IW rows: the 10% cell must be disabled and any
+  // value already there must be moved safely into Over instead of remaining editable.
+  if(document.getElementById('dwlShift')) updateDwlShiftUi();
 }
 function getDwlSuggestBox(i){
   return document.getElementById('dwlSuggest'+i);
@@ -2570,9 +2574,26 @@ function updateDwlShiftUi(){
     const local=document.getElementById('dwlLocal'+i)?.value||'';
     const isIw=DWL_IRONWORKER_LOCALS.has(dwlLocalKey(local));
     if(st){
-      st.disabled=false;
-      st.title=shift==='Night'?'Night shift: this column is the 10% differential hours':'Tap to set 8 hours; edit if needed';
-      if(shift==='Night' && isIw){ st.value=''; st.title='Night Ironworker: use Over; first 8 are OT and hours after 8 are Double'; }
+      const isNightIw = shift==='Night' && isIw;
+      if(isNightIw){
+        // Night Ironworkers never use the 10% column. If hours were already entered
+        // there (for example before Local was selected), migrate them into Over and
+        // let the IW night rule split anything above 8 into Double.
+        const misplaced=dwlHourNumber(st.value);
+        st.value='';
+        st.disabled=true;
+        st.title='Night Ironworker: 10% does not apply. First 8 hours are Over; hours after 8 are Double.';
+        if(misplaced>0){
+          const ot=document.getElementById('dwlOver'+i);
+          if(ot){
+            ot.value=dwlHourText(dwlHourNumber(ot.value)+misplaced);
+            applyDwlIwHoursFromOverField(i);
+          }
+        }
+      }else{
+        st.disabled=false;
+        st.title=shift==='Night'?'Night shift: this column is the 10% differential hours':'Tap to set 8 hours; edit if needed';
+      }
     }
     if(dbl){
       dbl.readOnly = shift!=='Night';
