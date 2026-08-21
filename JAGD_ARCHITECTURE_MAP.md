@@ -70,3 +70,13 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Normal successful path is unchanged: stage official jsPDF -> sync DWL plus exact staged bytes -> save/share the same official PDF.
 - 2026-08-21 DWL PDF multiline notes fix: official portrait PDF keeps the same one-page 142pt Work Performed section budget but dynamically reallocates height among Description / Additional Notes / Safety Topic and auto-fits multiline body text down to a safe minimum font. This prevents long pasted Additional Notes (e.g. hazardous-waste weight logs) from printing only the first line/date while preserving the worker table and one-page DWL layout.
 
+
+
+### 2026-08-21 — DWL Ironworker / Double-Time shift rules
+- Removed the field-level **All OT** and **10% Differential** night-pay choices. The DWL now asks only **Day Shift** or **Night Shift**.
+- The PDF/print header prominently labels **DAY SHIFT** or **NIGHT SHIFT**; vague office pay-instruction banners were removed.
+- Ironworker Locals **11, 40, 361** use the normal split: first 8 hours base, next 2 overtime, hours over 10 double time. On Night Shift the base column is labeled **10%** instead of Straight.
+- Night Shift shows a compact **Double** column immediately after Over. Day Shift keeps the existing field table clean; Double appears on the saved PDF only when a rule actually produces Double hours.
+- The rare daytime IW rule (day crew has an IW night crew) is supported internally via `iwDayNightCrewRule` but deliberately has no field checkbox; it is reserved for a later Office-only payroll adjustment.
+- Painter double time is restricted to the user-specified actual holidays: New Year’s Day, Memorial Day, July 4, Labor Day, Thanksgiving, and Christmas. Existing Portal worker trade metadata is used to identify painters.
+- Existing DWL one-page PDF geometry, 20-row pagination, long-name fitting, Class override, Local protection, PT/RT, No Lunch, multiline notes, Load Last Crew, revisioning, exact Portal PDF sync, and Save/Share paths were preserved.

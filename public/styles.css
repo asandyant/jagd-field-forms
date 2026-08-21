@@ -1183,3 +1183,49 @@
     line-height:.94!important;
   }
 }
+
+
+/* 2026-08-21 DWL payroll columns: keep Day layout unchanged; Night exposes calculated Double. */
+.dwlEntryTable .dwlDoubleCol{display:none}
+.dwlEntryTable.showDwlDouble .dwlDoubleCol{display:table-cell}
+.dwlEntryTable .dwlDoubleCol input{font-weight:900;text-align:center;background:#f8fafc!important}
+@media(max-width:700px){
+  .dwlEntryTable th:nth-child(1),.dwlEntryTable td:nth-child(1){width:4%!important}
+  .dwlEntryTable th:nth-child(2),.dwlEntryTable td:nth-child(2){width:28%!important}
+  .dwlEntryTable th:nth-child(3),.dwlEntryTable td:nth-child(3){width:10%!important}
+  .dwlEntryTable th:nth-child(4),.dwlEntryTable td:nth-child(4){width:8%!important}
+  .dwlEntryTable th:nth-child(5),.dwlEntryTable td:nth-child(5){width:8%!important}
+  .dwlEntryTable th:nth-child(6),.dwlEntryTable td:nth-child(6){width:8%!important}
+  .dwlEntryTable th:nth-child(7),.dwlEntryTable td:nth-child(7){width:8%!important}
+  .dwlEntryTable th:nth-child(8),.dwlEntryTable td:nth-child(8){width:7%!important}
+  .dwlEntryTable:not(.showDwlDouble) th:nth-child(10),.dwlEntryTable:not(.showDwlDouble) td:nth-child(10){width:8%!important}
+  .dwlEntryTable:not(.showDwlDouble) th:nth-child(11),.dwlEntryTable:not(.showDwlDouble) td:nth-child(11){width:5.5%!important}
+  .dwlEntryTable:not(.showDwlDouble) th:nth-child(12),.dwlEntryTable:not(.showDwlDouble) td:nth-child(12){width:5.5%!important}
+  .dwlEntryTable.showDwlDouble th:nth-child(1),.dwlEntryTable.showDwlDouble td:nth-child(1){width:4%!important}
+  .dwlEntryTable.showDwlDouble th:nth-child(2),.dwlEntryTable.showDwlDouble td:nth-child(2){width:26%!important}
+  .dwlEntryTable.showDwlDouble th:nth-child(3),.dwlEntryTable.showDwlDouble td:nth-child(3){width:8%!important}
+  .dwlEntryTable.showDwlDouble th:nth-child(4),.dwlEntryTable.showDwlDouble td:nth-child(4),
+  .dwlEntryTable.showDwlDouble th:nth-child(5),.dwlEntryTable.showDwlDouble td:nth-child(5),
+  .dwlEntryTable.showDwlDouble th:nth-child(6),.dwlEntryTable.showDwlDouble td:nth-child(6),
+  .dwlEntryTable.showDwlDouble th:nth-child(7),.dwlEntryTable.showDwlDouble td:nth-child(7),
+  .dwlEntryTable.showDwlDouble th:nth-child(11),.dwlEntryTable.showDwlDouble td:nth-child(11),
+  .dwlEntryTable.showDwlDouble th:nth-child(12),.dwlEntryTable.showDwlDouble td:nth-child(12){width:7%!important}
+  .dwlEntryTable.showDwlDouble th:nth-child(8),.dwlEntryTable.showDwlDouble td:nth-child(8),
+  .dwlEntryTable.showDwlDouble th:nth-child(9),.dwlEntryTable.showDwlDouble td:nth-child(9){width:6%!important}
+  .dwlEntryTable.showDwlDouble th:nth-child(10),.dwlEntryTable.showDwlDouble td:nth-child(10){width:8%!important}
+}
+@media print{
+  .dwlPrintTable.dwlPrintHasDouble th,.dwlPrintTable.dwlPrintHasDouble td{padding-left:1px!important;padding-right:1px!important}
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(1),.dwlPrintTable.dwlPrintHasDouble td:nth-child(1){width:.23in!important}
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(2),.dwlPrintTable.dwlPrintHasDouble td:nth-child(2){width:2.02in!important}
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(3),.dwlPrintTable.dwlPrintHasDouble td:nth-child(3){width:.50in!important}
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(4),.dwlPrintTable.dwlPrintHasDouble td:nth-child(4){width:.47in!important}
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(5),.dwlPrintTable.dwlPrintHasDouble td:nth-child(5){width:.48in!important}
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(6),.dwlPrintTable.dwlPrintHasDouble td:nth-child(6){width:.49in!important}
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(7),.dwlPrintTable.dwlPrintHasDouble td:nth-child(7),
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(8),.dwlPrintTable.dwlPrintHasDouble td:nth-child(8),
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(9),.dwlPrintTable.dwlPrintHasDouble td:nth-child(9){width:.49in!important;text-align:center}
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(10),.dwlPrintTable.dwlPrintHasDouble td:nth-child(10){width:.60in!important;text-align:center}
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(11),.dwlPrintTable.dwlPrintHasDouble td:nth-child(11){width:.45in!important;text-align:center}
+  .dwlPrintTable.dwlPrintHasDouble th:nth-child(12),.dwlPrintTable.dwlPrintHasDouble td:nth-child(12){width:.39in!important;text-align:center}
+}
