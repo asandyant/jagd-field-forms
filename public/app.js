@@ -1947,16 +1947,16 @@ function setupDwlWorkerAutofill(){
     const ot=document.getElementById('dwlOver'+i);
     if(ot && ot.dataset.iwPayrollReady!=='1'){
       ot.dataset.iwPayrollReady='1';
-      ot.addEventListener('blur',()=>{
-        const shift=document.getElementById('dwlShift')?.value||'Day';
-        if(shift!=='Night') return;
+      ot.addEventListener('input',()=>{
         const local=document.getElementById('dwlLocal'+i)?.value||'';
         if(!DWL_IRONWORKER_LOCALS.has(dwlLocalKey(local))) return;
-        const rawAfterEight=dwlHourNumber(ot.value);
         const dbl=document.getElementById('dwlDouble'+i);
-        ot.value=dwlHourText(Math.min(rawAfterEight,2));
-        if(dbl) dbl.value=dwlHourText(Math.max(rawAfterEight-2,0));
+        // A fresh edit of Over represents "hours after 8"; clear the prior calculated
+        // Double so the next blur can split the newly-entered amount deterministically.
+        if(dbl) dbl.value='';
+        refreshDwlDoubleVisibility();
       });
+      ot.addEventListener('blur',()=>{ applyDwlIwHoursFromOverField(i); });
     }
     const nl=document.getElementById('dwlNoLunch'+i);
     if(nl && nl.dataset.ready!=='1'){
@@ -2476,6 +2476,41 @@ function dwlShiftControlsHtml(){
 function dwlShiftNoteForValues(shift){
   return shift === 'Night' ? {text:'NIGHT SHIFT',mode:'night'} : {text:'DAY SHIFT',mode:'day'};
 }
+function refreshDwlDoubleVisibility(){
+  const table=document.querySelector('.dwlEntryTable');
+  if(!table) return;
+  const shift=document.getElementById('dwlShift')?.value==='Night'?'Night':'Day';
+  let hasCalculatedDouble=false;
+  if(shift==='Day'){
+    for(let i=1;i<=DWL_MAX_ROWS;i++){
+      const dbl=document.getElementById('dwlDouble'+i);
+      if(dbl && dwlHourNumber(dbl.value)>0){ hasCalculatedDouble=true; break; }
+    }
+  }
+  table.classList.toggle('showDwlDouble', shift==='Night' || hasCalculatedDouble);
+}
+function applyDwlIwHoursFromOverField(i){
+  const local=document.getElementById('dwlLocal'+i)?.value||'';
+  if(!DWL_IRONWORKER_LOCALS.has(dwlLocalKey(local))) return false;
+  const st=document.getElementById('dwlStraight'+i);
+  const ot=document.getElementById('dwlOver'+i);
+  const dbl=document.getElementById('dwlDouble'+i);
+  if(!ot || !dbl) return false;
+  // Field workflow: Straight is the first 8; the foreman can type all hours after 8
+  // into Over. On blur we split that value into max 2 OT + remaining Double.
+  const afterEight=dwlHourNumber(ot.value);
+  if(afterEight<=0){
+    dbl.value='';
+    refreshDwlDoubleVisibility();
+    return true;
+  }
+  if(st && !st.value.trim()) st.value='8';
+  if(st && dwlHourNumber(st.value)>8) st.value='8';
+  ot.value=dwlHourText(Math.min(afterEight,2));
+  dbl.value=dwlHourText(Math.max(afterEight-2,0));
+  refreshDwlDoubleVisibility();
+  return true;
+}
 function updateDwlShiftUi(){
   const shiftEl=document.getElementById('dwlShift');
   const nightEl=document.getElementById('dwlNightWorkType');
@@ -2485,7 +2520,7 @@ function updateDwlShiftUi(){
   shiftEl.value=shift;
   nightEl.value=shift==='Night'?'standard':'';
   const table=document.querySelector('.dwlEntryTable');
-  if(table) table.classList.toggle('showDwlDouble',shift==='Night');
+  refreshDwlDoubleVisibility();
   const straightHeader=table?.querySelector('th.dwlStraightHeader');
   if(straightHeader) straightHeader.textContent=shift==='Night'?'10%':'Straight';
   for(let i=1;i<=DWL_MAX_ROWS;i++){

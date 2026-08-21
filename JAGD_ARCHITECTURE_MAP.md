@@ -80,3 +80,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - The rare daytime IW rule (day crew has an IW night crew) is supported internally via `iwDayNightCrewRule` but deliberately has no field checkbox; it is reserved for a later Office-only payroll adjustment.
 - Painter double time is restricted to the user-specified actual holidays: New Year’s Day, Memorial Day, July 4, Labor Day, Thanksgiving, and Christmas. Existing Portal worker trade metadata is used to identify painters.
 - Existing DWL one-page PDF geometry, 20-row pagination, long-name fitting, Class override, Local protection, PT/RT, No Lunch, multiline notes, Load Last Crew, revisioning, exact Portal PDF sync, and Save/Share paths were preserved.
+
+
+### 2026-08-21 DWL IW daytime Double live recalculation hotfix
+- IW Locals 11/40/361 now split the field-entered hours-after-8 value on both Day and Night: max 2 hours Over, remainder Double.
+- On Day Shift the Double column remains hidden until an IW row actually calculates Double, then it appears without changing unrelated DWLs.
+- Example: Straight 8 + Over 3 becomes Straight 8 / Over 2 / Double 1 on blur/change.
+- Editing Over clears the prior calculated Double first, so re-entry recalculates deterministically.
+- Night Shift still always shows the Double column. Existing PDF/save payroll normalization remains unchanged.
