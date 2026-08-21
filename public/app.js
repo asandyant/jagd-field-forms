@@ -2699,19 +2699,80 @@ function dwlPdfEmployeeCell(doc, x, y, w, h, text, opts={}){
   dwlPdfText(doc,value,tx,ty,{maxWidth,size:oneLineSize,style:'bold',align:'left',noEllipsis:true});
 }
 function dwlPdfWrapText(doc, text, x, y, w, h, opts={}){
-  const size=opts.size || 8;
+  const value=String(text||'');
+  if(!value.trim()) return;
+  const maxSize=opts.size || 8;
+  const minSize=opts.minSize || 6.4;
   const style=opts.style || 'normal';
+  const usableW=Math.max(10,w-8), usableH=Math.max(4,h-5);
+  let size=maxSize, lines=[];
+  // Fit multiline field text inside its assigned box instead of silently clipping
+  // everything after the first line. This is especially important for pasted
+  // waste-weight / work-order notes on mobile.
+  for(; size>=minSize; size-=0.35){
+    doc.setFont('helvetica', style); doc.setFontSize(size);
+    lines=doc.splitTextToSize(value, usableW);
+    const lineH=size*1.12;
+    if(lines.length*lineH <= usableH) break;
+  }
+  size=Math.max(minSize,size);
   doc.setFont('helvetica', style); doc.setFontSize(size);
-  const lines=doc.splitTextToSize(String(text||''), w-8);
-  const lineH=size*1.15;
-  let cy=y+size+3;
-  for(const line of lines){ if(cy > y+h-3) break; doc.text(line, x+4, cy); cy += lineH; }
+  lines=doc.splitTextToSize(value, usableW);
+  const lineH=size*1.12;
+  let cy=y+size+2;
+  for(const line of lines){ if(cy > y+h-2) break; doc.text(line, x+4, cy); cy += lineH; }
 }
 function dwlPdfBox(doc, x, y, w, h, label, value, bodySize=9){
   doc.setLineWidth(0.8); doc.rect(x,y,w,h);
   doc.setFillColor(217,217,217); doc.rect(x,y,w,13,'F'); doc.rect(x,y,w,13);
   dwlPdfText(doc, label, x+3, y+9.5, {size:8, style:'bold', maxWidth:w-6});
-  dwlPdfWrapText(doc, value, x, y+13, w, h-13, {size:bodySize, style:'normal'});
+  dwlPdfWrapText(doc, value, x, y+13, w, h-13, {size:bodySize, minSize:6.4, style:'normal'});
+}
+function dwlPdfWorkSectionHeights(doc, w, data={}){
+  // Preserve the approved one-page DWL height budget (72 + 40 + 30 = 142pt),
+  // but lend unused space from short/blank fields to a long field.
+  const total=142;
+  const fields=[
+    {key:'description', value:String(data.description||''), min:34, base:72, size:14.5},
+    {key:'notes', value:String(data.notes||data.additionalNotes||''), min:34, base:40, size:14.5},
+    {key:'safety', value:String(data.safetyTopic||data.safetyHuddleTopic||''), min:22, base:30, size:14.5}
+  ];
+  const need=f=>{
+    if(!f.value.trim()) return f.min;
+    doc.setFont('helvetica','normal'); doc.setFontSize(f.size);
+    const lines=doc.splitTextToSize(f.value, Math.max(10,w-8));
+    return Math.max(f.min, 13 + 5 + lines.length*(f.size*1.12));
+  };
+  fields.forEach(f=>f.need=need(f));
+  let heights=fields.map(f=>Math.max(f.min, Math.min(f.base,f.need)));
+  let used=heights.reduce((a,b)=>a+b,0);
+  // Give spare room first to whichever fields actually need it most.
+  while(used < total-0.1){
+    let best=-1, deficit=0;
+    fields.forEach((f,i)=>{ const d=f.need-heights[i]; if(d>deficit+0.1){deficit=d; best=i;} });
+    if(best<0) break;
+    const add=Math.min(total-used, deficit);
+    heights[best]+=add; used+=add;
+  }
+  // Any leftover space keeps the classic visual proportions, favoring description.
+  const preference=[0,1,2];
+  for(const i of preference){
+    if(used>=total-0.1) break;
+    const cap=fields[i].base-heights[i];
+    if(cap>0){const add=Math.min(total-used,cap); heights[i]+=add; used+=add;}
+  }
+  if(used<total) heights[0]+=total-used;
+  // If required heights exceed the budget, take space back proportionally above minima;
+  // text itself will then auto-fit down to the safe minimum font rather than disappear.
+  if(used>total){
+    let excess=used-total;
+    for(const i of [0,2,1]){
+      const can=Math.max(0,heights[i]-fields[i].min);
+      const take=Math.min(can,excess); heights[i]-=take; excess-=take;
+      if(excess<=0.1) break;
+    }
+  }
+  return {description:heights[0], notes:heights[1], safety:heights[2]};
 }
 function dwlPdfShiftBanner(doc, x, y, w, data){
   const note=dwlShiftNoteForValues(data.shift, data.nightWorkType);
@@ -2792,10 +2853,13 @@ async function saveDwlDirectPdf(data, msgId, portalSync=null){
     y += dwlPdfShiftBanner(doc,m,y,w,data);
     y = drawActivityGrid(y);
 
-    // Keep the one-page layout while giving the office a full-width shift/payroll banner.
-    dwlPdfBox(doc,m,y,w,72,'Location/Description of work',data.description,14.5); y += 72;
-    dwlPdfBox(doc,m,y,w,40,'Additional Notes',data.notes || data.additionalNotes,14.5); y += 40;
-    dwlPdfBox(doc,m,y,w,30,'Safety Huddle Topic',data.safetyTopic || data.safetyHuddleTopic,14.5); y += 30;
+    // Keep the exact same one-page vertical budget, but dynamically lend space to
+    // whichever work field contains the most text. Long Additional Notes no longer
+    // collapse to only the first visible line/date in the generated PDF.
+    const workHeights=dwlPdfWorkSectionHeights(doc,w,data);
+    dwlPdfBox(doc,m,y,w,workHeights.description,'Location/Description of work',data.description,14.5); y += workHeights.description;
+    dwlPdfBox(doc,m,y,w,workHeights.notes,'Additional Notes',data.notes || data.additionalNotes,14.5); y += workHeights.notes;
+    dwlPdfBox(doc,m,y,w,workHeights.safety,'Safety Huddle Topic',data.safetyTopic || data.safetyHuddleTopic,14.5); y += workHeights.safety;
 
     // Worker table header and rows. Keep 20 rows per page like the boss DWL, but do not shrink the font.
     let x=m; const headerH=18;

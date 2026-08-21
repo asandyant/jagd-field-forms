@@ -68,3 +68,5 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Client `base64FromDataUrl()` now strips any PDF data-URI metadata before `;base64,`; server `/api/dwl/generated-pdf` accepts the same valid form.
 - Safety rule strengthened: exact-PDF staging can never be allowed to suppress the DWL data sync. If staging fails, Forms now immediately performs a data-only Portal sync before saving the local PDF. The Office record therefore remains visible even if the exact source-PDF attachment needs follow-up/manual upload.
 - Normal successful path is unchanged: stage official jsPDF -> sync DWL plus exact staged bytes -> save/share the same official PDF.
+- 2026-08-21 DWL PDF multiline notes fix: official portrait PDF keeps the same one-page 142pt Work Performed section budget but dynamically reallocates height among Description / Additional Notes / Safety Topic and auto-fits multiline body text down to a safe minimum font. This prevents long pasted Additional Notes (e.g. hazardous-waste weight logs) from printing only the first line/date while preserving the worker table and one-page DWL layout.
+
