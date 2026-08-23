@@ -1952,8 +1952,7 @@ function setupDwlWorkerAutofill(){
     if(ot && ot.dataset.iwPayrollReady!=='1'){
       ot.dataset.iwPayrollReady='1';
       ot.addEventListener('input',()=>{
-        const local=document.getElementById('dwlLocal'+i)?.value||'';
-        if(!DWL_IRONWORKER_LOCALS.has(dwlLocalKey(local))) return;
+        if(!isDwlIronworkerInputRow(i)) return;
         const dbl=document.getElementById('dwlDouble'+i);
         // A fresh edit of Over represents "hours after 8"; clear the prior calculated
         // Double so the next blur can split the newly-entered amount deterministically.
@@ -1967,8 +1966,7 @@ function setupDwlWorkerAutofill(){
       dbl.dataset.nightDoubleReady='1';
       dbl.addEventListener('input',()=>{
         const shift=document.getElementById('dwlShift')?.value==='Night'?'Night':'Day';
-        const local=document.getElementById('dwlLocal'+i)?.value||'';
-        if(shift==='Night' && DWL_IRONWORKER_LOCALS.has(dwlLocalKey(local))){
+        if(shift==='Night' && isDwlIronworkerInputRow(i)){
           dbl.dataset.manualNightDouble = dbl.value.trim() ? '1' : '';
           const st=document.getElementById('dwlStraight'+i); if(st) st.value='';
         }
@@ -2346,7 +2344,11 @@ function dwlHourText(value){
   return Number.isInteger(n) ? String(n) : String(n).replace(/0+$/,'').replace(/\.$/,'');
 }
 function dwlLocalKey(value){ return String(value||'').replace(/[^0-9]/g,'').replace(/^0+/,''); }
-function isDwlIronworkerRow(row){ return DWL_IRONWORKER_LOCALS.has(dwlLocalKey(row?.local)); }
+function isDwlIronworkerRow(row){
+  const trade=dwlWorkerTradeForRow(row).toLowerCase().replace(/[^a-z]+/g,' ');
+  const isIronworker=trade.includes('iron worker') || trade.includes('ironworker') || /\biron\b/.test(trade);
+  return isIronworker && DWL_IRONWORKER_LOCALS.has(dwlLocalKey(row?.local));
+}
 function dwlWorkerTradeForRow(row){
   const explicit=String(row?.trade||'').trim();
   if(explicit) return explicit;
@@ -2358,6 +2360,12 @@ function dwlWorkerTradeForRow(row){
 function isDwlPainterRow(row){
   const trade=dwlWorkerTradeForRow(row).toLowerCase();
   return trade.includes('paint');
+}
+function isDwlIronworkerInputRow(i){
+  return isDwlIronworkerRow({
+    employee:document.getElementById('dwlEmp'+i)?.value||'',
+    local:document.getElementById('dwlLocal'+i)?.value||''
+  });
 }
 function dwlPainterHoliday(reportDate){
   const raw=String(reportDate||'').trim();
@@ -2374,6 +2382,12 @@ function dwlPainterHoliday(reportDate){
   // Thanksgiving: fourth Thursday in November.
   if(month===11 && date.getDay()===4 && day>=22 && day<=28) return 'Thanksgiving';
   return '';
+}
+function dwlReportDayOfWeek(reportDate){
+  const raw=String(reportDate||'').trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return -1;
+  const [year,month,day]=raw.split('-').map(Number);
+  return new Date(year,month-1,day).getDay();
 }
 function applyDwlPayrollRulesToRow(row, data={}){
   const next={...row};
@@ -2417,6 +2431,15 @@ function applyDwlPayrollRulesToRow(row, data={}){
     next.double=dwlHourText(total);
     next.payrollRule='painter_holiday_double';
     next.payrollHoliday=holiday;
+    return next;
+  }
+  // Painters are time-and-a-half for all Saturday hours. This is intentionally
+  // evaluated after the holiday rule so a listed holiday still wins if it falls on Saturday.
+  if(isDwlPainterRow(next) && dwlReportDayOfWeek(data.reportDate)===6){
+    next.straight='';
+    next.over=dwlHourText(total);
+    next.double='';
+    next.payrollRule='painter_saturday_ot';
     return next;
   }
   // Non-IW normal rows keep the field-entered Straight/Over split. Double is reserved
@@ -2524,8 +2547,7 @@ function refreshDwlDoubleVisibility(){
   table.classList.toggle('showDwlDouble', shift==='Night' || hasCalculatedDouble);
 }
 function applyDwlIwHoursFromOverField(i){
-  const local=document.getElementById('dwlLocal'+i)?.value||'';
-  if(!DWL_IRONWORKER_LOCALS.has(dwlLocalKey(local))) return false;
+  if(!isDwlIronworkerInputRow(i)) return false;
   const st=document.getElementById('dwlStraight'+i);
   const ot=document.getElementById('dwlOver'+i);
   const dbl=document.getElementById('dwlDouble'+i);
@@ -2571,8 +2593,7 @@ function updateDwlShiftUi(){
   for(let i=1;i<=DWL_MAX_ROWS;i++){
     const st=document.getElementById('dwlStraight'+i);
     const dbl=document.getElementById('dwlDouble'+i);
-    const local=document.getElementById('dwlLocal'+i)?.value||'';
-    const isIw=DWL_IRONWORKER_LOCALS.has(dwlLocalKey(local));
+    const isIw=isDwlIronworkerInputRow(i);
     if(st){
       const isNightIw = shift==='Night' && isIw;
       if(isNightIw){

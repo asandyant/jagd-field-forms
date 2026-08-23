@@ -101,3 +101,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - If hours were entered in 10% before the row became identified as an Ironworker, those hours are automatically migrated into Over and the existing night IW split applies: first 8 Over, hours after 8 Double.
 - Double remains editable on Night Shift for valid all-Double situations such as Sunday Ironworker work.
 - Guard is re-applied immediately when the Portal worker/local is populated, reducing field-entry error risk.
+
+
+### 2026-08-23 — DWL trade-aware Ironworker detection + Painter Saturday OT
+- Corrected Ironworker detection so Locals 11/40/361 are **not** sufficient by themselves. Ironworker payroll rules now require both an Ironworker trade value from the Portal worker record and one of those IW locals. This prevents Painter Local 11 (including Connecticut) from being misclassified as Ironworker.
+- The same trade-aware check is used by live field guardrails, including night 10% blocking, Over-to-Double splitting, and manual night Double handling.
+- Painter Saturday rule is explicit: all Saturday hours are time-and-a-half (Over), with no Double. If the date is one of the six configured Painter holidays, the holiday Double rule takes precedence even when it falls on a Saturday.
+- Example: Painter Local 11 on Saturday with 11 total hours -> Straight 0 / Over 11 / Double 0. Ironworker Local 11 with 11 daytime hours remains 8 Straight / 2 Over / 1 Double.
+- Existing night IW rules, Painter holiday rules, one-page PDF layout, exact Portal PDF sync, multiline notes, Class override, long-name fit, Load Last Crew, revisioning, and Save/Share behavior remain unchanged.
