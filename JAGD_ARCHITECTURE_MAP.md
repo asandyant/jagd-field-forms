@@ -109,3 +109,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Painter Saturday rule is explicit: all Saturday hours are time-and-a-half (Over), with no Double. If the date is one of the six configured Painter holidays, the holiday Double rule takes precedence even when it falls on a Saturday.
 - Example: Painter Local 11 on Saturday with 11 total hours -> Straight 0 / Over 11 / Double 0. Ironworker Local 11 with 11 daytime hours remains 8 Straight / 2 Over / 1 Double.
 - Existing night IW rules, Painter holiday rules, one-page PDF layout, exact Portal PDF sync, multiline notes, Class override, long-name fit, Load Last Crew, revisioning, and Save/Share behavior remain unchanged.
+
+
+## 2026-08-24 — DWL Load Last Crew isolation
+- `Load Last Crew` is scoped to **Project + Foreman / Field Person**; optional Crew narrows it further.
+- Multiple foremen can submit separate DWLs on Warehouse / 8 Bridges / other shared jobs without loading another person's crew.
+- There is intentionally no fallback to a project-wide latest crew. If a person has never saved a crew on that project, the UI says no previous crew was found for that person.
+- Foreman / Field Person must be entered before Load Last Crew. Crew remains optional.
+- Cross-device server storage uses v2 preparer-scoped keys; localStorage uses matching v2 keys. Existing old project-wide caches are not reused because they cannot be safely attributed to a person.

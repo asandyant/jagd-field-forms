@@ -1133,7 +1133,8 @@ app.get('/api/dwl/generated-pdf/:id/download', (req, res) => {
 
 
 function reusableKey(v){ return String(v||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim(); }
-function dwlLastCrewProjectLatestKey(project){ return `${reusableKey(project)}|__project_latest__`; }
+function dwlLastCrewPreparerLatestKey(project,preparer){ return `v2|${reusableKey(project)}|${reusableKey(preparer)}|__preparer_latest__`; }
+function dwlLastCrewPreparerCrewKey(project,preparer,crew){ return `v2|${reusableKey(project)}|${reusableKey(preparer)}|${reusableKey(crew)}`; }
 function normalizeDwlLastCrewWorkers(body = {}) {
   const fromWorkers = Array.isArray(body.workers) ? body.workers : [];
   const workers = fromWorkers.map(v => {
@@ -1155,49 +1156,42 @@ function dwlLastCrewRowPayload(row) {
     names: workers.map(w => w.name),
     savedAt: String(row?.savedAt || ''),
     project: String(row?.project || ''),
+    preparer: String(row?.preparer || ''),
     crew: String(row?.crew || '')
   };
 }
 app.get('/api/dwl/last-crew', (req,res)=>{
-  const project=String(req.query.project||'').trim(), crew=String(req.query.crew||'').trim();
-  if(!project) return res.status(400).json({ok:false,error:'Project is required.'});
+  const project=String(req.query.project||'').trim(), preparer=String(req.query.preparer||'').trim(), crew=String(req.query.crew||'').trim();
+  if(!project || !preparer) return res.status(400).json({ok:false,error:'Project and Foreman / Field Person are required.'});
   const all=readJsonSafe(DWL_LAST_CREWS_FILE,{});
   let row=null, source='';
   if(crew){
-    row=all[`${reusableKey(project)}|${reusableKey(crew)}`]||null;
-    if(row) source='project-crew';
+    row=all[dwlLastCrewPreparerCrewKey(project,preparer,crew)]||null;
+    if(row) source='project-preparer-crew';
   }
   if(!row){
-    row=all[dwlLastCrewProjectLatestKey(project)]||null;
-    if(row) source='project-latest';
+    row=all[dwlLastCrewPreparerLatestKey(project,preparer)]||null;
+    if(row) source='project-preparer-latest';
   }
-  // Backward compatibility: older builds only stored Project+Crew keys. If no project-latest
-  // pointer exists yet, find the newest historical row for this Project and return it.
-  if(!row){
-    const projectKey=reusableKey(project);
-    const candidates=Object.values(all||{}).filter(v=>v && reusableKey(v.project)===projectKey && normalizeDwlLastCrewWorkers(v).length);
-    candidates.sort((a,b)=>String(b.savedAt||'').localeCompare(String(a.savedAt||'')));
-    row=candidates[0]||null;
-    if(row) source='project-history';
-  }
+  // Deliberately do NOT fall back to project-only or another preparer's history.
+  // Multiple foremen can submit separate DWLs on the same project on the same day.
   const payload=dwlLastCrewRowPayload(row);
   res.setHeader('Cache-Control','no-store');
   res.json({ok:true,...payload,source});
 });
 app.post('/api/dwl/last-crew', (req,res)=>{
-  const project=String(req.body?.project||'').trim(), crew=String(req.body?.crew||'').trim();
+  const project=String(req.body?.project||'').trim(), preparer=String(req.body?.preparer||'').trim(), crew=String(req.body?.crew||'').trim();
   const workers=normalizeDwlLastCrewWorkers(req.body||{});
-  if(!project || !workers.length) return res.status(400).json({ok:false,error:'Project and worker names are required.'});
+  if(!project || !preparer || !workers.length) return res.status(400).json({ok:false,error:'Project, Foreman / Field Person, and worker names are required.'});
   const names=workers.map(w=>w.name);
   const savedAt=new Date().toISOString();
-  const row={project,crew,workers,names,savedAt};
+  const row={project,preparer,crew,workers,names,savedAt};
   const all=readJsonSafe(DWL_LAST_CREWS_FILE,{});
-  // Always maintain a Project-level latest crew because Crew is optional on real field DWLs.
-  all[dwlLastCrewProjectLatestKey(project)]=row;
-  // When a Crew is selected, keep the more-specific Project+Crew copy too.
-  if(crew) all[`${reusableKey(project)}|${reusableKey(crew)}`]=row;
+  // Maintain only preparer-scoped records. Never overwrite a shared project-only crew.
+  all[dwlLastCrewPreparerLatestKey(project,preparer)]=row;
+  if(crew) all[dwlLastCrewPreparerCrewKey(project,preparer,crew)]=row;
   writeJsonSafe(DWL_LAST_CREWS_FILE,all);
-  res.json({ok:true,count:names.length,project,crew,savedAt});
+  res.json({ok:true,count:names.length,project,preparer,crew,savedAt});
 });
 app.get('/api/pir/last-instrument-serials', (req,res)=>{
   const saved=readJsonSafe(PIR_LAST_SERIALS_FILE,{}); res.json({ok:true,...saved});
