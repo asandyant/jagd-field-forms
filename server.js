@@ -1711,11 +1711,66 @@ function receiptMoneyNumber(value) {
 }
 function receiptLast4FromText(text) {
   const t=String(text||'');
-  const pats=[/(?:AMEX|AMERICAN\s*EXPRESS|CARD|ACCT|ACCOUNT|ENDING|XXXX|\*{2,})[^\d]{0,18}(\d{4})\b/i,/\b(?:X{4,}|\*{4,})[- ]?(\d{4})\b/i];
-  for(const p of pats){const m=t.match(p);if(m)return m[1];} return '';
+  const lines=t.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  const strong=lines.filter(x=>/(?:AMEX|AMERICAN\s*EXPRESS|CARD|ACCT|ACCOUNT|LAST\s*4|ENDING|ENDS\s*IN|X{4,}|\*{4,})/i.test(x));
+  const candidates=[...strong,t];
+  const pats=[
+    /(?:AMEX|AMERICAN\s*EXPRESS|CARD|ACCT|ACCOUNT|LAST\s*4|ENDING|ENDS\s*IN)[^\dX*]{0,24}(?:X{2,}|\*{2,}|\d[\s-]*)*?(\d{4})\b/i,
+    /\b(?:X{4,}|\*{4,})[\s-]?(\d{4})\b/i,
+    /\b(?:X[\s-]*){4,}(\d{4})\b/i
+  ];
+  for(const source of candidates){
+    for(const p of pats){const m=String(source).match(p);if(m)return m[1];}
+  }
+  return '';
 }
 function receiptAllBlockText(parsed) {
   return (Array.isArray(parsed?.Blocks)?parsed.Blocks:[]).filter(b=>b&&b.Text).map(b=>String(b.Text)).join('\n');
+}
+function receiptExpenseAllText(parsed) {
+  const parts=[receiptAllBlockText(parsed)];
+  for(const doc of (Array.isArray(parsed?.ExpenseDocuments)?parsed.ExpenseDocuments:[])){
+    for(const f of (doc?.SummaryFields||[])){
+      const label=String(f?.LabelDetection?.Text||'').trim();
+      const value=String(f?.ValueDetection?.Text||'').trim();
+      if(label)parts.push(label);
+      if(value)parts.push(value);
+    }
+    for(const group of (doc?.LineItemGroups||[])){
+      for(const item of (group?.LineItems||[])){
+        for(const f of (item?.LineItemExpenseFields||[])){
+          const label=String(f?.LabelDetection?.Text||'').trim();
+          const value=String(f?.ValueDetection?.Text||'').trim();
+          if(label)parts.push(label);
+          if(value)parts.push(value);
+        }
+      }
+    }
+  }
+  return parts.filter(Boolean).join('\n');
+}
+function receiptNormalizeVendor(value, allText='') {
+  let v=String(value||'').replace(/\s+/g,' ').trim();
+  const full=String(allText||'');
+  if(/\bTHE\s+HOME\s+DEPOT\b|\bHOME\s+DEPOT\b/i.test(full))return 'Home Depot';
+  if(/\bSPEEDWAY\b/i.test(full))return 'Speedway';
+  if(/^the\s+home\s+depot$/i.test(v))return 'Home Depot';
+  if(/^speedway(?:\s+speedway)+$/i.test(v))return 'Speedway';
+  const words=v.split(/\s+/).filter(Boolean);
+  if(words.length>=2 && words.length%2===0){
+    const half=words.length/2;
+    if(words.slice(0,half).join(' ').toLowerCase()===words.slice(half).join(' ').toLowerCase())v=words.slice(0,half).join(' ');
+  }
+  v=v.replace(/\b(\w[\w&'.-]{1,})\s+\1\b/ig,'$1').trim();
+  return v.slice(0,80);
+}
+function receiptVendorPlausible(value) {
+  const v=String(value||'').trim();
+  if(v.length<2)return false;
+  if(!/[A-Za-z]/.test(v))return false;
+  if(/^[A-Za-z]$/.test(v))return false;
+  if(/^(?:R|A|T|S|C|D|N\/A|NA|UNKNOWN)$/i.test(v))return false;
+  return true;
 }
 function receiptExpenseSummary(parsed) {
   const doc=(Array.isArray(parsed?.ExpenseDocuments)?parsed.ExpenseDocuments[0]:null)||{};
@@ -1723,9 +1778,10 @@ function receiptExpenseSummary(parsed) {
   for(const f of (doc.SummaryFields||[])){
     const type=String(f?.Type?.Text||'').toUpperCase(); const value=String(f?.ValueDetection?.Text||'').trim(); if(type&&value&&!fields[type])fields[type]=value;
   }
-  const allText=[receiptAllBlockText(parsed),...Object.values(fields)].filter(Boolean).join('\n');
+  const allText=receiptExpenseAllText(parsed);
+  const vendor=receiptNormalizeVendor(fields.VENDOR_NAME || fields.RECEIVER_NAME || '',allText);
   return {
-    vendor: fields.VENDOR_NAME || fields.RECEIVER_NAME || '',
+    vendor,
     transactionDate: receiptNormalizeDate(fields.INVOICE_RECEIPT_DATE || fields.ORDER_DATE || ''),
     amount: receiptMoneyNumber(fields.TOTAL || fields.AMOUNT_DUE || ''),
     tax: receiptMoneyNumber(fields.TAX || ''),
@@ -1739,32 +1795,65 @@ function receiptDocumentSummary(parsed) {
   const text=receiptAllBlockText(parsed); const lines=text.split(/\n+/).map(x=>x.trim()).filter(Boolean);
   const totalLine=[...lines].reverse().find(x=>/\b(total|amount due|balance)\b/i.test(x)&&/\d/.test(x))||'';
   let date=''; for(const line of lines){const m=line.match(/\b(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\b/);if(m){date=receiptNormalizeDate(m[1]);break;}}
-  const vendor=(lines.find(x=>x.length>2&&!/receipt|invoice|thank|date|time|total/i.test(x)&&/[A-Za-z]/.test(x))||'').slice(0,80);
+  const known=receiptNormalizeVendor('',text);
+  const generic=(lines.find(x=>x.length>2&&x.length<80&&!/receipt|invoice|thank|date|time|total|subtotal|sales tax|auth|verified|return policy|how doers|get more done/i.test(x)&&!/^\d/.test(x)&&/[A-Za-z]{2,}/.test(x))||'').slice(0,80);
+  const vendor=receiptVendorPlausible(known)?known:receiptNormalizeVendor(generic,text);
   return {vendor,transactionDate:date,amount:receiptMoneyNumber(totalLine),tax:0,receiptNumber:'',cardLast4:receiptLast4FromText(text),rawText:text.slice(0,12000),confidence:'document'};
 }
-async function receiptAnalyzeImage(buffer) {
+function receiptMergeSummaries(primary, secondary, wantCard=false) {
+  const a={...(primary||{})},b=secondary||{};
+  if(!receiptVendorPlausible(a.vendor)&&receiptVendorPlausible(b.vendor))a.vendor=b.vendor;
+  a.vendor=receiptNormalizeVendor(a.vendor,[a.rawText,b.rawText].filter(Boolean).join('\n'));
+  if(!a.transactionDate&&b.transactionDate)a.transactionDate=b.transactionDate;
+  if(!(Number(a.amount||0)>0)&&Number(b.amount||0)>0)a.amount=Number(b.amount);
+  if(!(Number(a.tax||0)>0)&&Number(b.tax||0)>0)a.tax=Number(b.tax);
+  if(!a.receiptNumber&&b.receiptNumber)a.receiptNumber=b.receiptNumber;
+  if(wantCard&&!a.cardLast4&&b.cardLast4)a.cardLast4=b.cardLast4;
+  a.rawText=[a.rawText,b.rawText].filter(Boolean).join('\n').slice(0,12000);
+  return a;
+}
+async function receiptAnalyzeImage(buffer, opts={}) {
   const cfg=receiptRequireAws(); const host=`textract.${cfg.region}.amazonaws.com`; const bytes=Buffer.from(buffer).toString('base64');
+  let expense=null,expenseErr=null;
   try{
     const body=Buffer.from(JSON.stringify({Document:{Bytes:bytes}}),'utf8');
     const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeExpense'},body});
-    return receiptExpenseSummary(JSON.parse(out.text||'{}'));
-  }catch(err){
-    // AnalyzeExpense is purpose-built for receipts. Fall back to AnalyzeDocument so the flow still works until/if IAM is expanded.
+    expense=receiptExpenseSummary(JSON.parse(out.text||'{}'));
+  }catch(err){expenseErr=err;}
+  const needDocument=!expense || !receiptVendorPlausible(expense.vendor) || (!!opts.wantCard&&!expense.cardLast4);
+  if(!needDocument)return expense;
+  try{
     const body=Buffer.from(JSON.stringify({Document:{Bytes:bytes},FeatureTypes:['FORMS','TABLES']}),'utf8');
     const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeDocument'},body});
-    const parsed=JSON.parse(out.text||'{}'); const summary=receiptDocumentSummary(parsed); summary.fallbackReason=String(err.message||'AnalyzeExpense unavailable').slice(0,240); return summary;
+    const doc=receiptDocumentSummary(JSON.parse(out.text||'{}'));
+    const summary=receiptMergeSummaries(expense,doc,!!opts.wantCard);
+    if(expenseErr)summary.fallbackReason=String(expenseErr.message||'AnalyzeExpense unavailable').slice(0,240);
+    return summary;
+  }catch(docErr){
+    if(expense)return expense;
+    throw expenseErr||docErr;
   }
 }
-async function receiptAnalyzeS3Object(key) {
-  const cfg=receiptRequireAws(); const host=`textract.${cfg.region}.amazonaws.com`;
+async function receiptAnalyzeS3Object(key, opts={}) {
+  const cfg=receiptRequireAws(); const host=`textract.${cfg.region}.amazonaws.com`; const s3={Bucket:cfg.bucket,Name:String(key||'')};
+  let expense=null,expenseErr=null;
   try{
-    const body=Buffer.from(JSON.stringify({Document:{S3Object:{Bucket:cfg.bucket,Name:String(key||'')}}}),'utf8');
+    const body=Buffer.from(JSON.stringify({Document:{S3Object:s3}}),'utf8');
     const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeExpense'},body});
-    return receiptExpenseSummary(JSON.parse(out.text||'{}'));
-  }catch(err){
-    const body=Buffer.from(JSON.stringify({Document:{S3Object:{Bucket:cfg.bucket,Name:String(key||'')}},FeatureTypes:['FORMS','TABLES']}),'utf8');
+    expense=receiptExpenseSummary(JSON.parse(out.text||'{}'));
+  }catch(err){expenseErr=err;}
+  const needDocument=!expense || !receiptVendorPlausible(expense.vendor) || (!!opts.wantCard&&!expense.cardLast4);
+  if(!needDocument)return expense;
+  try{
+    const body=Buffer.from(JSON.stringify({Document:{S3Object:s3},FeatureTypes:['FORMS','TABLES']}),'utf8');
     const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeDocument'},body});
-    const parsed=JSON.parse(out.text||'{}'); const summary=receiptDocumentSummary(parsed); summary.fallbackReason=String(err.message||'AnalyzeExpense unavailable').slice(0,240); return summary;
+    const doc=receiptDocumentSummary(JSON.parse(out.text||'{}'));
+    const summary=receiptMergeSummaries(expense,doc,!!opts.wantCard);
+    if(expenseErr)summary.fallbackReason=String(expenseErr.message||'AnalyzeExpense unavailable').slice(0,240);
+    return summary;
+  }catch(docErr){
+    if(expense)return expense;
+    throw expenseErr||docErr;
   }
 }
 
@@ -1848,8 +1937,10 @@ function receiptHumanFileName(record) {
 }
 async function receiptProcessOne(recordId, buffer) {
   try{
-    const parsed=await receiptAnalyzeImage(buffer); const rows=receiptReadRecords(); const row=rows.find(x=>x.id===recordId); if(!row)return;
-    row.parsed=parsed; row.status=(parsed.vendor&&parsed.amount)?'ready':'needs_attention'; row.displayFileName=receiptHumanFileName(row); row.processedAt=new Date().toISOString(); row.error=''; tmSyncReceiptLink(row); receiptWriteRecords(rows);
+    const beforeRows=receiptReadRecords(); const before=beforeRows.find(x=>x.id===recordId); if(!before)return;
+    const parsed=await receiptAnalyzeImage(buffer,{wantCard:before.kind==='receipt'});
+    const rows=receiptReadRecords(); const row=rows.find(x=>x.id===recordId); if(!row)return;
+    row.parsed=parsed; row.status=(receiptVendorPlausible(parsed.vendor)&&parsed.amount)?'ready':'needs_attention'; row.displayFileName=receiptHumanFileName(row); row.processedAt=new Date().toISOString(); row.error=''; tmSyncReceiptLink(row); receiptWriteRecords(rows);
   }catch(err){const rows=receiptReadRecords();const row=rows.find(x=>x.id===recordId);if(row){row.status='needs_attention';row.error=String(err.message||'Textract failed').slice(0,500);row.processedAt=new Date().toISOString();receiptWriteRecords(rows);}}
 }
 function receiptRequestTokenOk(req) {
@@ -1943,6 +2034,27 @@ app.patch('/api/forms/receipts/:id', (req,res)=>{
     tmSyncReceiptLink(row);
   }
   row.updatedAt=new Date().toISOString();receiptWriteRecords(rows);res.json({ok:true,row});
+});
+
+app.post('/api/forms/receipts/:id/reread', async (req,res)=>{
+  if(!receiptRequestTokenOk(req))return res.status(403).json({ok:false,error:'Forms sync token required.'});
+  const rows=receiptReadRecords();const row=rows.find(r=>r.id===req.params.id&&!r.deletedAt);if(!row)return res.status(404).json({ok:false,error:'Receipt not found.'});
+  try{
+    const parsed=await receiptAnalyzeS3Object(row.s3Key,{wantCard:row.kind==='receipt'});
+    row.parsed=parsed;
+    row.status=(receiptVendorPlausible(parsed.vendor)&&Number(parsed.amount||0)>0)?'ready':'needs_attention';
+    row.displayFileName=receiptHumanFileName(row);
+    row.processedAt=new Date().toISOString();
+    row.updatedAt=row.processedAt;
+    row.error='';
+    row.history=Array.isArray(row.history)?row.history:[];
+    row.history.push({action:'Receipt details re-read with AWS Textract',by:String(req.body?.updatedBy||'Portal Office').slice(0,160),at:row.processedAt,vendor:parsed.vendor||'',cardLast4:parsed.cardLast4||''});
+    tmSyncReceiptLink(row);
+    receiptWriteRecords(rows);
+    res.json({ok:true,row});
+  }catch(err){
+    res.status(502).json({ok:false,error:String(err.message||'AWS Textract could not re-read this receipt.').slice(0,500)});
+  }
 });
 
 app.delete('/api/forms/receipts/:id', (req,res)=>{

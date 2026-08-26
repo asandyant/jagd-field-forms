@@ -125,3 +125,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - **Ironworker rules are intentionally untouched.** Trade-aware IW detection still requires Trade = Iron Worker plus Local 11/40/361. Day IW remains first 8 Straight, next 2 Over, over 10 Double; Night IW remains first 8 Over, after 8 Double, including existing manual Night Double support for legitimate all-Double situations.
 - No PDF geometry, Day/Night UI, Class/Local protection, PT/RT, No Lunch, multiline notes, Load Last Crew, revisioning, exact Portal PDF sync, or Save/Share behavior changed in this patch.
 
+
+## 2026-08-26 — Receipt Textract vendor + card-last-4 hardening
+- Receipts remain AWS Textract based. `AnalyzeExpense` is still the primary parser; this is not a return to browser/local OCR.
+- Fixed vendor extraction accepting one-letter garbage such as `R`. Vendor names now pass a plausibility/sanity layer, normalize obvious repeated names (for example `Speedway Speedway` -> `Speedway`), and recognize strong merchant text such as `THE HOME DEPOT` from Textract document text.
+- Fixed company-card last-four extraction. `AnalyzeExpense` responses are now scanned across all SummaryFields / labels / values / line-item fields instead of assuming a top-level `Blocks` array. Last-four matching accepts AMEX/American Express, card/account/ending/last-4 wording, and masked `XXXX` / `****` formats.
+- When `AnalyzeExpense` returns a suspicious vendor or a company receipt has no card last four, Forms makes a second AWS Textract `AnalyzeDocument` pass and merges only missing/bad fields. Date/amount from the expense parser are preserved unless absent.
+- Added token-protected `POST /api/forms/receipts/:id/reread` so Office can deliberately re-run AWS Textract on an existing private S3 receipt. Re-read updates parsed vendor/date/amount/card-last-4 and T&M receipt linkage without re-uploading the image.
+- Portal receipt search already searches `parsed.cardLast4`; once a receipt is re-read/populated, searches such as `2222` work without a separate search-index change.
