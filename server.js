@@ -1807,11 +1807,13 @@ function receiptNormalizeVendor(value, allText='') {
   return v.slice(0,80);
 }
 function receiptVendorPlausible(value) {
-  const v=String(value||'').trim();
+  const v=String(value||'').replace(/\s+/g,' ').trim();
   if(v.length<2)return false;
   if(!/[A-Za-z]/.test(v))return false;
   if(/^[A-Za-z]$/.test(v))return false;
-  if(/^(?:R|A|T|S|C|D|N\/A|NA|UNKNOWN)$/i.test(v))return false;
+  // Textract can occasionally promote a random receipt word or handwritten note to VENDOR_NAME.
+  // Treat obvious non-merchant tokens as low-confidence so AnalyzeDocument can inspect the full header text.
+  if(/^(?:R|A|T|S|C|D|N\/A|NA|UNKNOWN|WENT|STORE|SALE|SELF|CREDIT|DEBIT|TOTAL|SUBTOTAL|RECEIPT|WAREHOUSE)$/i.test(v))return false;
   return true;
 }
 function receiptExpenseSummary(parsed) {

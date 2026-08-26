@@ -156,3 +156,10 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Immediately after an `AMEX` / `American Express` / `Card` label, a mask/punctuation-only line or standalone four-digit line is accepted as the card ending only before AUTH/AID/REF/other transaction metadata. This remains deliberately position-scoped so random receipt numbers cannot become card endings.
 - The same AnalyzeDocument call now includes an AWS Textract Query asking specifically for the last four digits of the payment/credit card. The Query result is used only if the direct masked/adjacent-line parser did not find a card ending.
 - Existing false-positive exclusions remain in place. If neither direct receipt text nor the targeted AWS Query produces a usable ending, the field remains blank rather than guessing.
+
+## 2026-08-26 - Receipt Textract vendor sanity fallback
+- Receipt vendor extraction remains AWS Textract based.
+- Obvious non-merchant tokens returned as `VENDOR_NAME` (including the observed `WENT`/single-letter-style garbage cases) are treated as low-confidence rather than accepted as a vendor.
+- Low-confidence vendor output forces the existing AWS AnalyzeDocument fallback so strong full-header merchant text such as `THE HOME DEPOT` / `HOME DEPOT` can win.
+- Existing AMEX/card-last-four protections remain unchanged; do not reintroduce AID/AUTH/REF false matches.
+
