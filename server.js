@@ -1711,16 +1711,34 @@ function receiptMoneyNumber(value) {
 }
 function receiptLast4FromText(text) {
   const t=String(text||'');
-  const lines=t.split(/\n+/).map(x=>x.trim()).filter(Boolean);
-  const strong=lines.filter(x=>/(?:AMEX|AMERICAN\s*EXPRESS|CARD|ACCT|ACCOUNT|LAST\s*4|ENDING|ENDS\s*IN|X{4,}|\*{4,})/i.test(x));
-  const candidates=[...strong,t];
-  const pats=[
-    /(?:AMEX|AMERICAN\s*EXPRESS|CARD|ACCT|ACCOUNT|LAST\s*4|ENDING|ENDS\s*IN)[^\dX*]{0,24}(?:X{2,}|\*{2,}|\d[\s-]*)*?(\d{4})\b/i,
-    /\b(?:X{4,}|\*{4,})[\s-]?(\d{4})\b/i,
-    /\b(?:X[\s-]*){4,}(\d{4})\b/i
-  ];
-  for(const source of candidates){
-    for(const p of pats){const m=String(source).match(p);if(m)return m[1];}
+  const lines=t.split(/\n+/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const idLine=/\b(?:AID|AUTH(?:ORIZATION)?|AUTH\s*CODE|REF(?:ERENCE)?|BATCH|SEQ(?:UENCE)?|TRACE|APPROVAL|APPROVED|TERMINAL|MERCHANT\s*ID|STORE\s*#?|RECEIPT\s*#?)\b/i;
+  const masked=/(?:[Xx*#•·+][\s._:-]*){4,}(\d{4})\b/;
+  const explicit=/(?:AMEX|AMERICAN\s*EXPRESS|CREDIT\s*CARD|CARD|ACCT|ACCOUNT|LAST\s*4|ENDING|ENDS\s*IN)[^0-9]{0,32}(\d{4})\b/i;
+
+  // Highest confidence: a masked card number printed on the same receipt line.
+  for(const line of lines){
+    if(idLine.test(line))continue;
+    const m=line.match(masked);
+    if(m)return m[1];
+  }
+
+  // Next best: an explicit card/ending label and the four digits on that same line.
+  // Keep this line-scoped so AMERICAN EXPRESS followed by an EMV AID cannot become a fake card ending.
+  for(const line of lines){
+    if(idLine.test(line))continue;
+    const m=line.match(explicit);
+    if(m)return m[1];
+  }
+
+  // Some receipts print AMEX on one line and the masked number immediately below it.
+  for(let i=0;i<lines.length-1;i++){
+    if(!/^(?:AMEX|AMERICAN\s*EXPRESS|CREDIT\s*CARD|CARD)$/i.test(lines[i]))continue;
+    for(const next of lines.slice(i+1,i+3)){
+      if(idLine.test(next))break;
+      const m=next.match(masked);
+      if(m)return m[1];
+    }
   }
   return '';
 }
@@ -1808,7 +1826,7 @@ function receiptMergeSummaries(primary, secondary, wantCard=false) {
   if(!(Number(a.amount||0)>0)&&Number(b.amount||0)>0)a.amount=Number(b.amount);
   if(!(Number(a.tax||0)>0)&&Number(b.tax||0)>0)a.tax=Number(b.tax);
   if(!a.receiptNumber&&b.receiptNumber)a.receiptNumber=b.receiptNumber;
-  if(wantCard&&!a.cardLast4&&b.cardLast4)a.cardLast4=b.cardLast4;
+  if(wantCard&&b.cardLast4&&(!a.cardLast4||a.cardLast4!==b.cardLast4))a.cardLast4=b.cardLast4;
   a.rawText=[a.rawText,b.rawText].filter(Boolean).join('\n').slice(0,12000);
   return a;
 }

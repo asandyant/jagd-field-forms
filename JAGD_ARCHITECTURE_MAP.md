@@ -140,3 +140,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - The existing custom job/property/location field remains available for unusual one-off locations.
 - Receipt records keep `jobId=other:company-expense` and `jobName=Other / Company Expense`, so Portal search/export can filter them consistently.
 - This change builds on the AWS Textract vendor/card parsing hardening; receipt extraction remains AWS Textract based.
+
+## 2026-08-26 — Receipt card-ending false-positive guard
+- Live receipt re-read exposed a false AMEX ending: a Speedway receipt visibly showed a masked card ending in `2222`, but the parser saved `0801` from the EMV `AID ...0801` line.
+- Root cause: the earlier card matcher allowed `AMERICAN EXPRESS` in the full Textract text to reach a later 4-digit EMV identifier across line breaks. Because AnalyzeExpense had already populated a false last-four, the AnalyzeDocument fallback could not replace it.
+- Card-last-4 matching is now line-scoped and confidence-ordered: masked card number on the same line first, explicit card/ending label plus four digits on the same line second, or AMEX/card label followed immediately by a masked-number line.
+- EMV / transaction identifiers such as AID, AUTH, REF, BATCH, SEQ, TRACE, APPROVAL, TERMINAL and merchant/store IDs are explicitly excluded from card-ending candidates.
+- AnalyzeDocument may replace a conflicting AnalyzeExpense card ending when it finds a higher-confidence masked/explicit card ending. If Textract cannot read a real card ending, the field stays blank rather than saving an unrelated identifier.
+- Existing Portal `Re-read Details` can be used on affected receipts after this Forms patch is live; no Portal code change is required for this correction.
