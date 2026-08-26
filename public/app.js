@@ -3928,7 +3928,7 @@ async function receiptLoadJobs(selectId){
   const sel=document.getElementById(selectId); if(!sel)return;
   const renderNames=(names)=>{
     const clean=uniqueList(names||[]);
-    sel.innerHTML='<option value="">Choose job...</option>'+clean.map(name=>`<option value="${receiptEscapeAttr(name)}" data-job-name="${receiptEscapeAttr(name)}">${esc(name)}</option>`).join('');
+    sel.innerHTML='<option value="">Choose job...</option>'+clean.map(name=>`<option value="${receiptEscapeAttr(name)}" data-job-name="${receiptEscapeAttr(name)}">${esc(name)}</option>`).join('')+'<option value="other:company-expense" data-job-name="Other / Company Expense">Other / Company Expense</option>';
   };
   // Receipts must never wait on Portal before the field user can choose a job.
   // Fill immediately from the same cached/static list used by the proven Forms project fields.
@@ -4019,7 +4019,7 @@ function receiptScreen(kind='receipt'){
           <label><input type="radio" name="receiptPaymentMethod" value="Cash"> Cash</label>
           <label><input type="radio" name="receiptPaymentMethod" value="Personal Card"> Personal Card</label>
         </fieldset>`:''}
-      <label class="receiptField"><strong>Project / Job</strong><select id="receiptJob"><option value="">Loading jobs...</option></select></label>
+      <label class="receiptField"><strong>Project / Job</strong><select id="receiptJob"><option value="">Loading jobs...</option></select><span class="tiny">Use Other / Company Expense for fuel, vehicles, office purchases, or anything that does not belong to a specific job.</span></label>
       <label class="receiptField"><strong>Or type your own job / property / location</strong>
         <input id="receiptCustomJob" autocomplete="off" placeholder="Example: Deptford house">
         <span class="tiny">Use this only when the purchase is not for one of the jobs listed above.</span>

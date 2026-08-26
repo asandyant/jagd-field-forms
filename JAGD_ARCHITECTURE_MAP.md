@@ -133,3 +133,10 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - When `AnalyzeExpense` returns a suspicious vendor or a company receipt has no card last four, Forms makes a second AWS Textract `AnalyzeDocument` pass and merges only missing/bad fields. Date/amount from the expense parser are preserved unless absent.
 - Added token-protected `POST /api/forms/receipts/:id/reread` so Office can deliberately re-run AWS Textract on an existing private S3 receipt. Re-read updates parsed vendor/date/amount/card-last-4 and T&M receipt linkage without re-uploading the image.
 - Portal receipt search already searches `parsed.cardLast4`; once a receipt is re-read/populated, searches such as `2222` work without a separate search-index change.
+
+
+## 2026-08-26 — Receipts: Other / Company Expense
+- Field Forms Receipts and Reimbursements now include a fixed `Other / Company Expense` job choice for fuel, company vehicles, office purchases, and other legitimate non-job expenses.
+- The existing custom job/property/location field remains available for unusual one-off locations.
+- Receipt records keep `jobId=other:company-expense` and `jobName=Other / Company Expense`, so Portal search/export can filter them consistently.
+- This change builds on the AWS Textract vendor/card parsing hardening; receipt extraction remains AWS Textract based.
