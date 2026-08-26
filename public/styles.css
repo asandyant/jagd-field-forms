@@ -1229,3 +1229,6 @@
   .dwlPrintTable.dwlPrintHasDouble th:nth-child(11),.dwlPrintTable.dwlPrintHasDouble td:nth-child(11){width:.45in!important;text-align:center}
   .dwlPrintTable.dwlPrintHasDouble th:nth-child(12),.dwlPrintTable.dwlPrintHasDouble td:nth-child(12){width:.39in!important;text-align:center}
 }
+
+/* 2026-08-26 receipt batch receipt-vs-AWS status clarity */
+.receiptBatchSummary{gap:8px}.receiptStoredLine{font-weight:800;color:#166534}.receiptBatchItems{display:grid;gap:8px;margin-top:6px}.receiptBatchItem{display:grid;gap:3px;padding:10px 12px;border:1px solid #d8e1ee;border-radius:10px;background:#fff}.receiptBatchItem.ready{border-color:#a7d7b3;background:#f4fff7}.receiptBatchItem.reading{border-color:#bfd4f7;background:#f7fbff}.receiptBatchItem.review{border-color:#f5cf72;background:#fffaf0}.receiptBatchItem.failed{border-color:#f2a8a8;background:#fff5f5}.receiptBatchItem small{color:#667085}.receiptUploadWarning{padding:8px 10px;border-radius:9px;background:#fff0f0;color:#991b1b}.receiptProcessingNote{margin-top:8px;padding:8px 10px;border-radius:9px;background:#eef5ff;color:#1e3a5f}

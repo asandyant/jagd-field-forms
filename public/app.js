@@ -4103,7 +4103,8 @@ async function receiptSubmitBatch(){
         fd.append('data',JSON.stringify({
           kind:receiptCurrentKind,jobId,jobName,customJob,reimburseToId,reimburseToName,paymentMethod,
           clientBatchId,
-          batchExpectedCount:sourceFiles.length
+          batchExpectedCount:sourceFiles.length,
+          batchIndex:i+1
         }));
         fd.append('files',optimized);
         btn.textContent=`Receipt ${i+1} of ${sourceFiles.length}: uploading…`;
@@ -4142,28 +4143,59 @@ async function receiptSubmitBatch(){
       ${accepted.length?`<span>AWS is reading the ${accepted.length} new receipt${accepted.length===1?'':'s'} in the background.</span>`:''}
     </div>`;
 
+    const batchContext={
+      expectedCount:sourceFiles.length,
+      failed:failed.map((x,idx)=>({name:x.name,error:x.error,index:sourceFiles.findIndex(f=>(f.name||'')===x.name)+1||idx+1})),
+      duplicateCount:duplicates.length
+    };
     receiptSelectedFiles=[];
     receiptRenderSelected();
-    if(accepted.length)receiptPollBatch(clientBatchId);
+    if(accepted.length)receiptPollBatch(clientBatchId,batchContext);
   }catch(e){
     msg.innerHTML=receiptStatusHtml(e.message);
     btn.disabled=false;btn.classList.remove('is-busy');btn.textContent='Submit Receipts';
   }
 }
-async function receiptPollBatch(batchId){
+async function receiptPollBatch(batchId,context={}){
   const box=document.getElementById('receiptBatchStatus');if(!box)return;let tries=0;
+  const expectedFallback=Number(context.expectedCount||0);
+  const uploadFailures=Array.isArray(context.failed)?context.failed:[];
   const poll=async()=>{
     tries++;
     try{
       const r=await fetch('/api/receipts/status/'+encodeURIComponent(batchId),{cache:'no-store'});
       const j=await r.json();if(!r.ok||!j.ok)return;
-      const rows=j.rows||[];
-      const done=rows.filter(x=>x.status!=='processing').length;
-      box.innerHTML=`<div class="receiptSuccess"><strong>Batch ${esc(batchId)}</strong><span>${done} of ${rows.length} read by AWS</span>${rows.slice(0,8).map(x=>`<span>${esc(x.displayFileName||x.id)} — ${esc(x.status==='ready'?'Ready':x.status==='needs_attention'?'Needs attention':'Reading...')}</span>`).join('')}${rows.length>8?`<span>+ ${rows.length-8} more</span>`:''}</div>`;
-      if(done<rows.length&&tries<60)setTimeout(poll,2500);
-    }catch(_){}
+      const rows=(j.rows||[]).slice().sort((a,b)=>(Number(a.batchIndex||999)-Number(b.batchIndex||999))||String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
+      const expected=Math.max(Number(j.batch?.expectedCount||0),expectedFallback,rows.length+Number(j.batch?.duplicateCount||0)+uploadFailures.length);
+      const duplicates=Number(j.batch?.duplicateCount||context.duplicateCount||0);
+      const safelyStored=rows.length;
+      const ready=rows.filter(x=>x.status==='ready').length;
+      const needsReview=rows.filter(x=>x.status==='needs_attention').length;
+      const reading=rows.filter(x=>x.status==='processing').length;
+      const receivedLabel=uploadFailures.length
+        ? `${safelyStored} of ${expected} new receipts safely stored`
+        : `${safelyStored} of ${expected||safelyStored} receipts safely received`;
+      const cards=rows.map((x,idx)=>{
+        const n=Number(x.batchIndex||0)||idx+1;
+        const state=x.status==='ready'?'Ready ✓':x.status==='needs_attention'?'Needs Review':'Reading…';
+        const cls=x.status==='ready'?'ready':x.status==='needs_attention'?'review':'reading';
+        const parsed=x.parsed||{};
+        const detail=x.status==='ready'
+          ? [parsed.transactionDate,parsed.vendor,Number(parsed.amount||0)?`$${Number(parsed.amount).toFixed(2)}`:''].filter(Boolean).join(' · ')
+          : x.status==='needs_attention'
+            ? `Photo is safely stored. ${x.error?esc(x.error):'AWS could not confidently read all details; Office can review it.'}`
+            : 'Photo is safely stored. AWS is still reading the details.';
+        return `<div class="receiptBatchItem ${cls}"><strong>Receipt ${n}${expected?` of ${expected}`:''} — ${state}</strong><span>${esc(detail)}</span><small>${esc(x.originalName||x.displayFileName||x.id)}</small></div>`;
+      }).join('');
+      const failedCards=uploadFailures.map(x=>`<div class="receiptBatchItem failed"><strong>Receipt ${x.index||'?'}${expected?` of ${expected}`:''} — NOT RECEIVED</strong><span>This photo did not upload. Please select it again before leaving.</span><small>${esc(x.name||'Receipt photo')} — ${esc(x.error||'Upload failed')}</small></div>`).join('');
+      box.innerHTML=`<div class="receiptSuccess receiptBatchSummary"><strong>Batch ${esc(batchId)}</strong><span class="receiptStoredLine">✓ ${esc(receivedLabel)}</span>${duplicates?`<span>${duplicates} exact duplicate${duplicates===1?'':'s'} already safely stored and skipped.</span>`:''}<span><b>AWS details:</b> ${ready} ready · ${reading} reading · ${needsReview} needs review</span>${uploadFailures.length?`<span class="receiptUploadWarning"><b>${uploadFailures.length} photo${uploadFailures.length===1?'':'s'} NOT received.</b> Re-select the failed receipt${uploadFailures.length===1?'':'s'} before leaving.</span>`:'<span>You may leave this page. AWS reading can finish in the background.</span>'}<div class="receiptBatchItems">${cards}${failedCards}</div></div>`;
+      if(reading>0&&tries<60)setTimeout(poll,2500);
+      else if(reading>0&&tries>=60){
+        const note=document.createElement('div');note.className='receiptProcessingNote';note.textContent='Some safely stored receipts are still being read by AWS. Office can review them later; no photo was lost.';box.querySelector('.receiptSuccess')?.appendChild(note);
+      }
+    }catch(_){ }
   };
-  setTimeout(poll,1800);
+  setTimeout(poll,1200);
 }
 function receiptsForm(){receiptScreen('receipt');}
 function reimbursementsForm(){receiptScreen('reimbursement');}

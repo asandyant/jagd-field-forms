@@ -170,3 +170,12 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Added a conservative merchant fingerprint layer over Textract text for common high-confidence brands. Home Depot can be recognized from `HOME DEPOT`, common OCR `H0ME DEP0T`, `homedepot.com`, `1-800-HOME-DEPOT`, or the receipt slogan `How doers get more done`, even when Textract returns a garbage `VENDOR_NAME` such as `R`/`WENT` from the stylized logo area.
 - Initial fingerprints also normalize Speedway/Speedy Rewards, Lowe's, Wawa, Sunoco, Exxon/Mobil, Shell, 7-Eleven, Dunkin, and Starbucks when those brand strings are actually present in Textract text. Generic words never create a merchant match.
 - Existing AMEX/card-last-four safeguards remain unchanged: AID/AUTH/REF/transaction IDs must never be promoted to card endings, and unreadable card endings remain blank rather than guessed.
+
+
+## 2026-08-26 — Receipt batch received-vs-AWS status safeguard
+- Field receipt batches now distinguish **photo receipt/storage** from **AWS detail reading**. A batch no longer says `9 of 10 read by AWS` in a way that can be mistaken for a missing upload.
+- Every selected receipt is assigned a stable batch sequence number. Status shows `Receipt N of X` and one of `Ready`, `Reading`, `Needs Review`, or `NOT RECEIVED`.
+- `Ready`, `Reading`, and `Needs Review` all mean the photo itself is already safely stored; only `NOT RECEIVED` means the field user must select that photo again.
+- The batch summary explicitly shows `X of X receipts safely received` separately from `AWS details: ready / reading / needs review`. Field users may leave once all photos are safely received even if AWS is still processing.
+- A genuinely failed upload remains visible by receipt number/original filename and instructs the user to re-select it before leaving. Polling no longer hides that upload failure.
+- AWS detail extraction automatically retries once when Textract errors or cannot confidently read the required vendor + amount. After the retry, the photo remains stored and is marked `Needs Review` rather than being treated as a failed submission.

@@ -2025,12 +2025,18 @@ function receiptHumanFileName(record) {
   return `${shortDate} ${vendor} ${money} ${record.jobCode || 'JOB'} ${record.id}.jpg`;
 }
 async function receiptProcessOne(recordId, buffer) {
-  try{
-    const beforeRows=receiptReadRecords(); const before=beforeRows.find(x=>x.id===recordId); if(!before)return;
-    const parsed=await receiptAnalyzeImage(buffer,{wantCard:before.kind==='receipt'});
-    const rows=receiptReadRecords(); const row=rows.find(x=>x.id===recordId); if(!row)return;
-    row.parsed=parsed; row.status=(receiptVendorPlausible(parsed.vendor)&&parsed.amount)?'ready':'needs_attention'; row.displayFileName=receiptHumanFileName(row); row.processedAt=new Date().toISOString(); row.error=''; tmSyncReceiptLink(row); receiptWriteRecords(rows);
-  }catch(err){const rows=receiptReadRecords();const row=rows.find(x=>x.id===recordId);if(row){row.status='needs_attention';row.error=String(err.message||'Textract failed').slice(0,500);row.processedAt=new Date().toISOString();receiptWriteRecords(rows);}}
+  let lastErr=null;
+  for(let attempt=1;attempt<=2;attempt++){
+    try{
+      const beforeRows=receiptReadRecords(); const before=beforeRows.find(x=>x.id===recordId); if(!before)return;
+      const parsed=await receiptAnalyzeImage(buffer,{wantCard:before.kind==='receipt'});
+      const complete=receiptVendorPlausible(parsed.vendor)&&Number(parsed.amount||0)>0;
+      if(!complete&&attempt<2){await new Promise(resolve=>setTimeout(resolve,650));continue;}
+      const rows=receiptReadRecords(); const row=rows.find(x=>x.id===recordId); if(!row)return;
+      row.parsed=parsed; row.status=complete?'ready':'needs_attention'; row.displayFileName=receiptHumanFileName(row); row.processedAt=new Date().toISOString(); row.error=complete?'':'AWS could not confidently read the vendor and amount after an automatic retry.'; row.awsAttempts=attempt; tmSyncReceiptLink(row); receiptWriteRecords(rows); return;
+    }catch(err){lastErr=err;if(attempt<2){await new Promise(resolve=>setTimeout(resolve,650));continue;}}
+  }
+  const rows=receiptReadRecords();const row=rows.find(x=>x.id===recordId);if(row){row.status='needs_attention';row.error=String(lastErr?.message||'Textract failed after an automatic retry').slice(0,500);row.processedAt=new Date().toISOString();row.awsAttempts=2;receiptWriteRecords(rows);}
 }
 function receiptRequestTokenOk(req) {
   const configured=String(process.env.PORTAL_SYNC_TOKEN||process.env.FORMS_SYNC_TOKEN||'').trim();
@@ -2055,6 +2061,7 @@ app.post('/api/receipts/upload', upload.array('files', RECEIPT_MAX_FILES), async
     ? requestedBatchId
     : `RB-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${nanoid(6).toUpperCase()}`;
   const expectedCount=Math.max(0,Math.min(RECEIPT_MAX_FILES,Number(meta.batchExpectedCount||0)));
+  const batchIndex=Math.max(0,Math.min(RECEIPT_MAX_FILES,Number(meta.batchIndex||0)));
   const accepted=[],duplicates=[],jobs=readJsonSafe(JOBS_FILE,[]);
   const isCustomJob=jobId.startsWith('custom:')||!!customJob;
   const job=isCustomJob?{}:((jobs||[]).find(j=>String(j.id||j.contract||'')===jobId)||{});
@@ -2067,7 +2074,7 @@ app.post('/api/receipts/upload', upload.array('files', RECEIPT_MAX_FILES), async
     if(dupe){duplicates.push({originalName:f.originalname,existingId:dupe.id});continue;}
     const id=`RCP-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${nanoid(7).toUpperCase()}`; const now=new Date(); const key=`${kind==='reimbursement'?'reimbursements':'receipts'}/${now.getUTCFullYear()}/${String(now.getUTCMonth()+1).padStart(2,'0')}/${receiptSafePart(jobCode)}/${id}.jpg`;
     await receiptPutObject(key,buf,f.mimetype||'image/jpeg');
-    const row={id,batchId,kind,jobId:resolvedJobId,jobName:resolvedName,customJob:isCustomJob?resolvedName:'',jobCode,reimburseToId,reimburseToName,paymentMethod,createdAt:now.toISOString(),submittedAt:now.toISOString(),status:'processing',reimbursementStatus:kind==='reimbursement'?'Pending':'',s3Key:key,sha256:hash,mimeType:f.mimetype||'image/jpeg',sizeBytes:buf.length,originalName:f.originalname,displayFileName:`${id}.jpg`,parsed:{vendor:'',transactionDate:'',amount:0,tax:0,receiptNumber:'',cardLast4:''},error:''};
+    const row={id,batchId,batchIndex,kind,jobId:resolvedJobId,jobName:resolvedName,customJob:isCustomJob?resolvedName:'',jobCode,reimburseToId,reimburseToName,paymentMethod,createdAt:now.toISOString(),submittedAt:now.toISOString(),status:'processing',reimbursementStatus:kind==='reimbursement'?'Pending':'',s3Key:key,sha256:hash,mimeType:f.mimetype||'image/jpeg',sizeBytes:buf.length,originalName:f.originalname,displayFileName:`${id}.jpg`,parsed:{vendor:'',transactionDate:'',amount:0,tax:0,receiptNumber:'',cardLast4:''},error:''};
     tmSyncReceiptLink(row);
     rows.unshift(row); accepted.push({id,status:'processing',originalName:f.originalname,tmLinked:!!row.tmLinked,tmProjectId:row.tmProjectId||''}); buffers.push({id,buf});
   }
@@ -2089,7 +2096,9 @@ app.post('/api/receipts/upload', upload.array('files', RECEIPT_MAX_FILES), async
 });
 
 app.get('/api/receipts/status/:batchId',(req,res)=>{
-  const rows=receiptReadRecords().filter(r=>r.batchId===req.params.batchId); res.json({ok:true,rows:rows.map(r=>({id:r.id,status:r.status,displayFileName:r.displayFileName,parsed:r.parsed,error:r.error}))});
+  const rows=receiptReadRecords().filter(r=>r.batchId===req.params.batchId);
+  const batch=receiptReadBatches().find(b=>b.id===req.params.batchId)||null;
+  res.json({ok:true,batch:batch?{expectedCount:Number(batch.expectedCount||0),duplicateCount:Number(batch.duplicateCount||0),count:Number(batch.count||0)}:null,rows:rows.map(r=>({id:r.id,batchIndex:Number(r.batchIndex||0),status:r.status,originalName:r.originalName,displayFileName:r.displayFileName,createdAt:r.createdAt,parsed:r.parsed,error:r.error,awsAttempts:Number(r.awsAttempts||0)}))});
 });
 
 app.get('/api/admin/receipts', requireAdmin, (req,res)=>{
