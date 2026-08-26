@@ -103,11 +103,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Guard is re-applied immediately when the Portal worker/local is populated, reducing field-entry error risk.
 
 
-### 2026-08-23 — DWL trade-aware Ironworker detection + Painter Saturday OT
+### 2026-08-23 — DWL trade-aware Ironworker detection + Painter Saturday OT (Saturday portion superseded 2026-08-26)
 - Corrected Ironworker detection so Locals 11/40/361 are **not** sufficient by themselves. Ironworker payroll rules now require both an Ironworker trade value from the Portal worker record and one of those IW locals. This prevents Painter Local 11 (including Connecticut) from being misclassified as Ironworker.
 - The same trade-aware check is used by live field guardrails, including night 10% blocking, Over-to-Double splitting, and manual night Double handling.
-- Painter Saturday rule is explicit: all Saturday hours are time-and-a-half (Over), with no Double. If the date is one of the six configured Painter holidays, the holiday Double rule takes precedence even when it falls on a Saturday.
-- Example: Painter Local 11 on Saturday with 11 total hours -> Straight 0 / Over 11 / Double 0. Ironworker Local 11 with 11 daytime hours remains 8 Straight / 2 Over / 1 Double.
+- Historical rule only (superseded 2026-08-26): painters were previously forced to all Over on Saturday. Do not restore this blanket Saturday rewrite.
+- The trade-aware Ironworker example remains valid: Ironworker Local 11 with 11 daytime hours resolves to 8 Straight / 2 Over / 1 Double under the existing IW rule.
 - Existing night IW rules, Painter holiday rules, one-page PDF layout, exact Portal PDF sync, multiline notes, Class override, long-name fit, Load Last Crew, revisioning, and Save/Share behavior remain unchanged.
 
 
@@ -117,3 +117,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - There is intentionally no fallback to a project-wide latest crew. If a person has never saved a crew on that project, the UI says no previous crew was found for that person.
 - Foreman / Field Person must be entered before Load Last Crew. Crew remains optional.
 - Cross-device server storage uses v2 preparer-scoped keys; localStorage uses matching v2 keys. Existing old project-wide caches are not reused because they cannot be safely attributed to a person.
+
+## 2026-08-26 — DWL Saturday manual hours for Painter / general rows
+- Removed the automatic **Painter Saturday = all Over** rewrite. A Saturday report date by itself no longer changes field-entered Straight/Over hours for Painter or general/non-Ironworker rows.
+- Field users are responsible for entering Saturday hours in the correct **Straight / Over** columns based on the worker's actual agreement. This supports cases such as drivers or other workers who may legitimately receive Straight time on Saturday.
+- Existing Painter holiday Double rules remain unchanged: New Year's Day, Memorial Day, July 4, Labor Day, Thanksgiving, and Christmas still force Painter holiday hours to Double when the report date is that holiday.
+- **Ironworker rules are intentionally untouched.** Trade-aware IW detection still requires Trade = Iron Worker plus Local 11/40/361. Day IW remains first 8 Straight, next 2 Over, over 10 Double; Night IW remains first 8 Over, after 8 Double, including existing manual Night Double support for legitimate all-Double situations.
+- No PDF geometry, Day/Night UI, Class/Local protection, PT/RT, No Lunch, multiline notes, Load Last Crew, revisioning, exact Portal PDF sync, or Save/Share behavior changed in this patch.
+

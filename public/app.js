@@ -2396,12 +2396,6 @@ function dwlPainterHoliday(reportDate){
   if(month===11 && date.getDay()===4 && day>=22 && day<=28) return 'Thanksgiving';
   return '';
 }
-function dwlReportDayOfWeek(reportDate){
-  const raw=String(reportDate||'').trim();
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return -1;
-  const [year,month,day]=raw.split('-').map(Number);
-  return new Date(year,month-1,day).getDay();
-}
 function applyDwlPayrollRulesToRow(row, data={}){
   const next={...row};
   next.trade=dwlWorkerTradeForRow(next);
@@ -2446,15 +2440,10 @@ function applyDwlPayrollRulesToRow(row, data={}){
     next.payrollHoliday=holiday;
     return next;
   }
-  // Painters are time-and-a-half for all Saturday hours. This is intentionally
-  // evaluated after the holiday rule so a listed holiday still wins if it falls on Saturday.
-  if(isDwlPainterRow(next) && dwlReportDayOfWeek(data.reportDate)===6){
-    next.straight='';
-    next.over=dwlHourText(total);
-    next.double='';
-    next.payrollRule='painter_saturday_ot';
-    return next;
-  }
+  // Saturday is intentionally manual for painters/general rows. A Saturday report
+  // date must not rewrite field-entered Straight/Over hours because some workers
+  // legitimately receive Straight time on Saturday. Ironworker rules above remain
+  // automatic and unchanged; Painter holiday Double rules above still take precedence.
   // Non-IW normal rows keep the field-entered Straight/Over split. Double is reserved
   // for the explicit union rules above so a normal night shift can never become all Double by mistake.
   next.double='';
