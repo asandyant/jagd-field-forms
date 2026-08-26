@@ -1713,8 +1713,10 @@ function receiptLast4FromText(text) {
   const t=String(text||'');
   const lines=t.split(/\n+/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
   const idLine=/\b(?:AID|AUTH(?:ORIZATION)?|AUTH\s*CODE|REF(?:ERENCE)?|BATCH|SEQ(?:UENCE)?|TRACE|APPROVAL|APPROVED|TERMINAL|MERCHANT\s*ID|STORE\s*#?|RECEIPT\s*#?)\b/i;
+  const cardLabel=/^(?:AMEX|AMERICAN\s*EXPRESS|CREDIT\s*CARD|CARD)$/i;
   const masked=/(?:[Xx*#•·+][\s._:-]*){4,}(\d{4})\b/;
   const explicit=/(?:AMEX|AMERICAN\s*EXPRESS|CREDIT\s*CARD|CARD|ACCT|ACCOUNT|LAST\s*4|ENDING|ENDS\s*IN)[^0-9]{0,32}(\d{4})\b/i;
+  const maskishOnly=/^[^A-Za-z0-9]*(\d{4})\s*$/;
 
   // Highest confidence: a masked card number printed on the same receipt line.
   for(const line of lines){
@@ -1731,19 +1733,41 @@ function receiptLast4FromText(text) {
     if(m)return m[1];
   }
 
-  // Some receipts print AMEX on one line and the masked number immediately below it.
+  // Some receipts (including Speedway) print AMEX on one line and the masked number immediately below it.
+  // Textract can drop the asterisks entirely and return only the final four digits, so accept a punctuation/mask-only
+  // line or a standalone four-digit line only when it is immediately after a card label and before AUTH/AID/REF metadata.
   for(let i=0;i<lines.length-1;i++){
-    if(!/^(?:AMEX|AMERICAN\s*EXPRESS|CREDIT\s*CARD|CARD)$/i.test(lines[i]))continue;
-    for(const next of lines.slice(i+1,i+3)){
+    if(!cardLabel.test(lines[i]))continue;
+    for(const next of lines.slice(i+1,i+5)){
       if(idLine.test(next))break;
-      const m=next.match(masked);
-      if(m)return m[1];
+      const maskedMatch=next.match(masked);
+      if(maskedMatch)return maskedMatch[1];
+      const compact=next.match(maskishOnly);
+      if(compact)return compact[1];
+      // Do not walk through unrelated merchant text searching for a random four-digit value.
+      if(/[A-Za-z]{2,}/.test(next))break;
     }
   }
   return '';
 }
+function receiptDocumentLines(parsed) {
+  const blocks=Array.isArray(parsed?.Blocks)?parsed.Blocks:[];
+  const lines=blocks.filter(b=>b&&b.BlockType==='LINE'&&b.Text).map(b=>String(b.Text).trim()).filter(Boolean);
+  if(lines.length)return lines;
+  return blocks.filter(b=>b&&b.Text).map(b=>String(b.Text).trim()).filter(Boolean);
+}
+function receiptQueryLast4(parsed) {
+  const blocks=Array.isArray(parsed?.Blocks)?parsed.Blocks:[];
+  for(const b of blocks){
+    if(!b||b.BlockType!=='QUERY_RESULT'||!b.Text)continue;
+    const text=String(b.Text).trim();
+    const direct=text.match(/(\d{4})\s*$/);
+    if(direct)return direct[1];
+  }
+  return '';
+}
 function receiptAllBlockText(parsed) {
-  return (Array.isArray(parsed?.Blocks)?parsed.Blocks:[]).filter(b=>b&&b.Text).map(b=>String(b.Text)).join('\n');
+  return receiptDocumentLines(parsed).join('\n');
 }
 function receiptExpenseAllText(parsed) {
   const parts=[receiptAllBlockText(parsed)];
@@ -1810,13 +1834,14 @@ function receiptExpenseSummary(parsed) {
   };
 }
 function receiptDocumentSummary(parsed) {
-  const text=receiptAllBlockText(parsed); const lines=text.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  const lines=receiptDocumentLines(parsed); const text=lines.join('\n');
   const totalLine=[...lines].reverse().find(x=>/\b(total|amount due|balance)\b/i.test(x)&&/\d/.test(x))||'';
   let date=''; for(const line of lines){const m=line.match(/\b(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\b/);if(m){date=receiptNormalizeDate(m[1]);break;}}
   const known=receiptNormalizeVendor('',text);
   const generic=(lines.find(x=>x.length>2&&x.length<80&&!/receipt|invoice|thank|date|time|total|subtotal|sales tax|auth|verified|return policy|how doers|get more done/i.test(x)&&!/^\d/.test(x)&&/[A-Za-z]{2,}/.test(x))||'').slice(0,80);
   const vendor=receiptVendorPlausible(known)?known:receiptNormalizeVendor(generic,text);
-  return {vendor,transactionDate:date,amount:receiptMoneyNumber(totalLine),tax:0,receiptNumber:'',cardLast4:receiptLast4FromText(text),rawText:text.slice(0,12000),confidence:'document'};
+  const cardLast4=receiptLast4FromText(text)||receiptQueryLast4(parsed);
+  return {vendor,transactionDate:date,amount:receiptMoneyNumber(totalLine),tax:0,receiptNumber:'',cardLast4,rawText:text.slice(0,12000),confidence:'document'};
 }
 function receiptMergeSummaries(primary, secondary, wantCard=false) {
   const a={...(primary||{})},b=secondary||{};
@@ -1841,7 +1866,7 @@ async function receiptAnalyzeImage(buffer, opts={}) {
   const needDocument=!expense || !receiptVendorPlausible(expense.vendor) || (!!opts.wantCard&&!expense.cardLast4);
   if(!needDocument)return expense;
   try{
-    const body=Buffer.from(JSON.stringify({Document:{Bytes:bytes},FeatureTypes:['FORMS','TABLES']}),'utf8');
+    const body=Buffer.from(JSON.stringify({Document:{Bytes:bytes},FeatureTypes:['FORMS','TABLES','QUERIES'],QueriesConfig:{Queries:[{Text:'What are the last four digits of the payment card or credit card used on this receipt?',Alias:'CARD_LAST4'}]}}),'utf8');
     const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeDocument'},body});
     const doc=receiptDocumentSummary(JSON.parse(out.text||'{}'));
     const summary=receiptMergeSummaries(expense,doc,!!opts.wantCard);
@@ -1863,7 +1888,7 @@ async function receiptAnalyzeS3Object(key, opts={}) {
   const needDocument=!expense || !receiptVendorPlausible(expense.vendor) || (!!opts.wantCard&&!expense.cardLast4);
   if(!needDocument)return expense;
   try{
-    const body=Buffer.from(JSON.stringify({Document:{S3Object:s3},FeatureTypes:['FORMS','TABLES']}),'utf8');
+    const body=Buffer.from(JSON.stringify({Document:{S3Object:s3},FeatureTypes:['FORMS','TABLES','QUERIES'],QueriesConfig:{Queries:[{Text:'What are the last four digits of the payment card or credit card used on this receipt?',Alias:'CARD_LAST4'}]}}),'utf8');
     const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeDocument'},body});
     const doc=receiptDocumentSummary(JSON.parse(out.text||'{}'));
     const summary=receiptMergeSummaries(expense,doc,!!opts.wantCard);

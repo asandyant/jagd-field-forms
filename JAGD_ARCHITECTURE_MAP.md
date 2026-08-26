@@ -148,3 +148,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - EMV / transaction identifiers such as AID, AUTH, REF, BATCH, SEQ, TRACE, APPROVAL, TERMINAL and merchant/store IDs are explicitly excluded from card-ending candidates.
 - AnalyzeDocument may replace a conflicting AnalyzeExpense card ending when it finds a higher-confidence masked/explicit card ending. If Textract cannot read a real card ending, the field stays blank rather than saving an unrelated identifier.
 - Existing Portal `Re-read Details` can be used on affected receipts after this Forms patch is live; no Portal code change is required for this correction.
+
+## 2026-08-26 — Receipt card-last-4 Speedway line/Query recovery
+- Follow-up live testing showed the false EMV/AID endings were correctly removed, but some Speedway AMEX receipts still returned a blank card ending even though the printed receipt visibly showed a masked number ending in `2222`.
+- Root cause: the strict parser only accepted a conventional masked-number pattern. AWS Textract can omit or fragment the asterisks and return the four card digits as a standalone line immediately after `AMEX`; additionally, combining LINE and WORD blocks can disturb adjacency.
+- AnalyzeDocument receipt parsing now uses Textract `LINE` blocks for receipt line order instead of mixing LINE/WORD text.
+- Immediately after an `AMEX` / `American Express` / `Card` label, a mask/punctuation-only line or standalone four-digit line is accepted as the card ending only before AUTH/AID/REF/other transaction metadata. This remains deliberately position-scoped so random receipt numbers cannot become card endings.
+- The same AnalyzeDocument call now includes an AWS Textract Query asking specifically for the last four digits of the payment/credit card. The Query result is used only if the direct masked/adjacent-line parser did not find a card ending.
+- Existing false-positive exclusions remain in place. If neither direct receipt text nor the targeted AWS Query produces a usable ending, the field remains blank rather than guessing.
