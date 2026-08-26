@@ -1756,7 +1756,29 @@ function receiptDocumentLines(parsed) {
   if(lines.length)return lines;
   return blocks.filter(b=>b&&b.Text).map(b=>String(b.Text).trim()).filter(Boolean);
 }
+function receiptQueryAnswer(parsed, alias) {
+  const blocks=Array.isArray(parsed?.Blocks)?parsed.Blocks:[];
+  const wanted=String(alias||'').trim().toUpperCase();
+  if(!wanted)return '';
+  const byId=new Map(blocks.filter(Boolean).map(b=>[String(b.Id||''),b]));
+  for(const b of blocks){
+    if(!b||b.BlockType!=='QUERY')continue;
+    if(String(b?.Query?.Alias||'').trim().toUpperCase()!==wanted)continue;
+    for(const rel of (Array.isArray(b.Relationships)?b.Relationships:[])){
+      if(String(rel?.Type||'').toUpperCase()!=='ANSWER')continue;
+      for(const id of (Array.isArray(rel?.Ids)?rel.Ids:[])){
+        const answer=byId.get(String(id||''));
+        if(answer?.BlockType==='QUERY_RESULT'&&answer.Text)return String(answer.Text).trim();
+      }
+    }
+  }
+  return '';
+}
 function receiptQueryLast4(parsed) {
+  const targeted=receiptQueryAnswer(parsed,'CARD_LAST4');
+  const targetedMatch=String(targeted||'').match(/(\d{4})\s*$/);
+  if(targetedMatch)return targetedMatch[1];
+  // Backward-compatible fallback for older Textract responses that may not expose the QUERY relationship as expected.
   const blocks=Array.isArray(parsed?.Blocks)?parsed.Blocks:[];
   for(const b of blocks){
     if(!b||b.BlockType!=='QUERY_RESULT'||!b.Text)continue;
@@ -1791,12 +1813,33 @@ function receiptExpenseAllText(parsed) {
   }
   return parts.filter(Boolean).join('\n');
 }
+function receiptVendorFingerprint(text) {
+  const full=String(text||'').replace(/\s+/g,' ').trim();
+  if(!full)return '';
+  // Merchant fingerprints are intentionally strong/brand-specific. They are only used to clean AWS Textract output,
+  // not to guess from generic words. Home Depot is especially useful when Textract misses the stylized square logo
+  // but reads the receipt slogan / website elsewhere on the page.
+  if(/\b(?:THE\s+)?H[O0]ME\s*DEP[O0]T\b/i.test(full)
+    ||/\bH[O0]MEDEP[O0]T\.C[O0]M\b/i.test(full)
+    ||/\bHOW\s+D[O0]ERS\s+GET\s+M[O0]RE\s+D[O0]NE\b/i.test(full)
+    ||/\b1[-\s]?800[-\s]?H[O0]ME[-\s]?DEP[O0]T\b/i.test(full))return 'Home Depot';
+  if(/\bSPEEDWAY\b/i.test(full)||/\bSPEEDY\s+REWARDS\b/i.test(full))return 'Speedway';
+  if(/\bLOWE'?S(?:\s+HOME\s+CENTERS?)?\b/i.test(full)||/\bLOWES\.COM\b/i.test(full))return "Lowe's";
+  if(/\bWAWA\b/i.test(full))return 'Wawa';
+  if(/\bSUNOCO\b/i.test(full))return 'Sunoco';
+  if(/\b(?:EXXON|MOBIL)\b/i.test(full))return /\bEXXON\b/i.test(full)?'Exxon':'Mobil';
+  if(/\bSHELL\b/i.test(full))return 'Shell';
+  if(/\b7[-\s]?ELEVEN\b/i.test(full))return '7-Eleven';
+  if(/\bDUNKIN(?:'|’)?\b/i.test(full))return 'Dunkin';
+  if(/\bSTARBUCKS\b/i.test(full))return 'Starbucks';
+  return '';
+}
 function receiptNormalizeVendor(value, allText='') {
   let v=String(value||'').replace(/\s+/g,' ').trim();
   const full=String(allText||'');
-  if(/\bTHE\s+HOME\s+DEPOT\b|\bHOME\s+DEPOT\b/i.test(full))return 'Home Depot';
-  if(/\bSPEEDWAY\b/i.test(full))return 'Speedway';
-  if(/^the\s+home\s+depot$/i.test(v))return 'Home Depot';
+  const fingerprint=receiptVendorFingerprint(full);
+  if(fingerprint)return fingerprint;
+  if(/^(?:the\s+)?h[o0]me\s*dep[o0]t$/i.test(v))return 'Home Depot';
   if(/^speedway(?:\s+speedway)+$/i.test(v))return 'Speedway';
   const words=v.split(/\s+/).filter(Boolean);
   if(words.length>=2 && words.length%2===0){
@@ -1840,8 +1883,9 @@ function receiptDocumentSummary(parsed) {
   const totalLine=[...lines].reverse().find(x=>/\b(total|amount due|balance)\b/i.test(x)&&/\d/.test(x))||'';
   let date=''; for(const line of lines){const m=line.match(/\b(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\b/);if(m){date=receiptNormalizeDate(m[1]);break;}}
   const known=receiptNormalizeVendor('',text);
+  const queryVendor=receiptNormalizeVendor(receiptQueryAnswer(parsed,'VENDOR_NAME'),text);
   const generic=(lines.find(x=>x.length>2&&x.length<80&&!/receipt|invoice|thank|date|time|total|subtotal|sales tax|auth|verified|return policy|how doers|get more done/i.test(x)&&!/^\d/.test(x)&&/[A-Za-z]{2,}/.test(x))||'').slice(0,80);
-  const vendor=receiptVendorPlausible(known)?known:receiptNormalizeVendor(generic,text);
+  const vendor=receiptVendorPlausible(known)?known:(receiptVendorPlausible(queryVendor)?queryVendor:receiptNormalizeVendor(generic,text));
   const cardLast4=receiptLast4FromText(text)||receiptQueryLast4(parsed);
   return {vendor,transactionDate:date,amount:receiptMoneyNumber(totalLine),tax:0,receiptNumber:'',cardLast4,rawText:text.slice(0,12000),confidence:'document'};
 }
@@ -1868,7 +1912,7 @@ async function receiptAnalyzeImage(buffer, opts={}) {
   const needDocument=!expense || !receiptVendorPlausible(expense.vendor) || (!!opts.wantCard&&!expense.cardLast4);
   if(!needDocument)return expense;
   try{
-    const body=Buffer.from(JSON.stringify({Document:{Bytes:bytes},FeatureTypes:['FORMS','TABLES','QUERIES'],QueriesConfig:{Queries:[{Text:'What are the last four digits of the payment card or credit card used on this receipt?',Alias:'CARD_LAST4'}]}}),'utf8');
+    const body=Buffer.from(JSON.stringify({Document:{Bytes:bytes},FeatureTypes:['FORMS','TABLES','QUERIES'],QueriesConfig:{Queries:[{Text:'What store, merchant, gas station, restaurant, or business issued this receipt?',Alias:'VENDOR_NAME'},{Text:'What are the last four digits of the payment card or credit card used on this receipt?',Alias:'CARD_LAST4'}]}}),'utf8');
     const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeDocument'},body});
     const doc=receiptDocumentSummary(JSON.parse(out.text||'{}'));
     const summary=receiptMergeSummaries(expense,doc,!!opts.wantCard);
@@ -1890,7 +1934,7 @@ async function receiptAnalyzeS3Object(key, opts={}) {
   const needDocument=!expense || !receiptVendorPlausible(expense.vendor) || (!!opts.wantCard&&!expense.cardLast4);
   if(!needDocument)return expense;
   try{
-    const body=Buffer.from(JSON.stringify({Document:{S3Object:s3},FeatureTypes:['FORMS','TABLES','QUERIES'],QueriesConfig:{Queries:[{Text:'What are the last four digits of the payment card or credit card used on this receipt?',Alias:'CARD_LAST4'}]}}),'utf8');
+    const body=Buffer.from(JSON.stringify({Document:{S3Object:s3},FeatureTypes:['FORMS','TABLES','QUERIES'],QueriesConfig:{Queries:[{Text:'What store, merchant, gas station, restaurant, or business issued this receipt?',Alias:'VENDOR_NAME'},{Text:'What are the last four digits of the payment card or credit card used on this receipt?',Alias:'CARD_LAST4'}]}}),'utf8');
     const out=await receiptAwsSignedRequest({service:'textract',region:cfg.region,host,method:'POST',pathname:'/',headers:{'content-type':'application/x-amz-json-1.1','x-amz-target':'Textract.AnalyzeDocument'},body});
     const doc=receiptDocumentSummary(JSON.parse(out.text||'{}'));
     const summary=receiptMergeSummaries(expense,doc,!!opts.wantCard);

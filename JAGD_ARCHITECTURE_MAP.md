@@ -163,3 +163,10 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Low-confidence vendor output forces the existing AWS AnalyzeDocument fallback so strong full-header merchant text such as `THE HOME DEPOT` / `HOME DEPOT` can win.
 - Existing AMEX/card-last-four protections remain unchanged; do not reintroduce AID/AUTH/REF false matches.
 
+
+## 2026-08-26 — Receipt merchant fingerprint + Textract vendor Query fallback
+- Receipt vendor extraction remains AWS Textract based; no browser/local OCR and no image-logo matching library was introduced.
+- `AnalyzeDocument` now asks a targeted Textract Query for the merchant/business name in addition to the existing card-last-four Query. Query answers are resolved by Alias/relationship so merchant and card responses cannot be confused.
+- Added a conservative merchant fingerprint layer over Textract text for common high-confidence brands. Home Depot can be recognized from `HOME DEPOT`, common OCR `H0ME DEP0T`, `homedepot.com`, `1-800-HOME-DEPOT`, or the receipt slogan `How doers get more done`, even when Textract returns a garbage `VENDOR_NAME` such as `R`/`WENT` from the stylized logo area.
+- Initial fingerprints also normalize Speedway/Speedy Rewards, Lowe's, Wawa, Sunoco, Exxon/Mobil, Shell, 7-Eleven, Dunkin, and Starbucks when those brand strings are actually present in Textract text. Generic words never create a merchant match.
+- Existing AMEX/card-last-four safeguards remain unchanged: AID/AUTH/REF/transaction IDs must never be promoted to card endings, and unreadable card endings remain blank rather than guessed.
