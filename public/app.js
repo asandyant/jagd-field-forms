@@ -229,7 +229,7 @@ function updatePirAmbientRow(i){
   }
 }
 function setupPirAmbientCalcs(){
-  [1,2,3,4].forEach(i=>{
+  Array.from({length:Math.max(pirAmbientCount,4)},(_,idx)=>idx+1).forEach(i=>{
     ['pirDry','pirWet','pirSurf','pirDew'].forEach(prefix=>{
       const el=document.getElementById(prefix+i);
       if(el){
@@ -250,7 +250,7 @@ function renderPirAmbientBlocks(){
   const holder=document.getElementById('pirAmbientBlocks');
   if(!holder) return;
   const existing={};
-  [1,2,3,4].forEach(i=>{
+  Array.from({length:Math.max(pirAmbientCount,4)},(_,idx)=>idx+1).forEach(i=>{
     ['pirAmbLoc','pirAmbTime','pirDry','pirWet','pirRH','pirSurf','pirDew','pirDiff'].forEach(prefix=>{
       const el=document.getElementById(prefix+i);
       if(el) existing[prefix+i]=el.value;
@@ -266,6 +266,8 @@ const PRINT_SHEET_SELECTOR = [
   '.pirSheetV7',
   '.pirMixExtraSheet',
   '.pirNotesSheet',
+  '.pirTestexExtraSheet',
+  '.pirAmbientExtraSheet',
   '.dailyPrintSheet',
   '.dsifSheet',
   '.weeklySheet',
@@ -1409,7 +1411,7 @@ function pirForm(){
   const pirLoadSerialsBtn=document.getElementById('pirLoadSerialsBtn');
   if(pirLoadSerialsBtn){pirLoadSerialsBtn.onclick=loadPirInstrumentSerials;}
   document.getElementById('addPirMixBlock').onclick=()=>{pirMixCount=Math.min(PIR_MIX_MAX_BLOCKS,pirMixCount+1); renderPirMixBlocks();};
-  document.getElementById('addPirAmbientBlock').onclick=()=>{pirAmbientCount=Math.min(4,pirAmbientCount+1); renderPirAmbientBlocks(); if(pirAmbientCount>=4) document.getElementById('addPirAmbientBlock').disabled=true;};
+  document.getElementById('addPirAmbientBlock').onclick=()=>{pirAmbientCount=Math.min(20,pirAmbientCount+1); renderPirAmbientBlocks();};
   initSignatureButtons();
   pirTestexCount=3;
   pirTestexIndexes().forEach(setupPirTestexPhoto);
@@ -1430,7 +1432,7 @@ function collectPir(){
  ].filter(Boolean).join(', ');
  const data={project:projectValue('pirProject'),reportDate:val('pirReportDate'),day:val('pirDay'),weatherAM:val('pirWeatherAM'),weatherPM:val('pirWeatherPM'),inspectionReport:val('pirInspectionReport'),attachedPages,page:'1',pageOf:'1',holdPoints:pirHoldPoints.map((q,i)=>({q,status:checked('pirHold'+i)})),sspc:val('pirSSPC'),specifiedProfile:val('pirSpecifiedProfile'),profileCheck:val('pirProfileCheck'),abrasiveTest:val('pirAbrasiveTest'),blotterTest:val('pirBlotterTest'),chloride1:val('pirChloride1'),chloride2:val('pirChloride2'),illumination:val('pirIllumination'),testex:pirTestexIndexes().map(i=>({index:i,location:val('pirTestexLoc'+i),reading:val('pirTestexReading'+i),notes:val('pirTestexNotes'+i),photoUrl:pirTestexPhotoUrl(i)})),posiAdjust:val('pirPosiAdjust'),generalNotes:val('pirGeneralNotes'),qcPrint:val('pirQCPrint'),qcSignature:val('pirQCSignature'),qcsSignature:val('pirQCSSignature'),caulking:{location:val('pirCaulkLocation'),nameBatch:val('pirCaulkNameBatch'),tubeSize:val('pirTubeSize'),shelf:val('pirCaulkShelf'),totalUsed:val('pirTotalUsed')}};
  data.instruments=pirInstrumentNames().map((n,i)=>({name:n,status:val('pirInstYes'+i),serial:val('pirInstSerial'+i)}));
- data.ambient=[1,2,3,4].map(i=>({location:val('pirAmbLoc'+i),time:val('pirAmbTime'+i),dry:val('pirDry'+i),wet:val('pirWet'+i),rh:val('pirRH'+i),surface:val('pirSurf'+i),dew:val('pirDew'+i),diff:val('pirDiff'+i)}));
+ data.ambient=Array.from({length:pirAmbientCount},(_,idx)=>idx+1).map(i=>({index:i,location:val('pirAmbLoc'+i),time:val('pirAmbTime'+i),dry:val('pirDry'+i),wet:val('pirWet'+i),rh:val('pirRH'+i),surface:val('pirSurf'+i),dew:val('pirDew'+i),diff:val('pirDiff'+i)}));
  data.mixing=Array.from({length:pirMixCount},(_,idx)=>idx+1).map(i=>({location:val('pirMixLoc'+i),time:val('pirMixTime'+i),witness:val('pirMixWitness'+i),customCoaA:val('pirCustomCoaA'+i),customCoaB:val('pirCustomCoaB'+i),batchA:val('pirBatchA'+i),mfgA:val('pirMfgA'+i),shelfA:val('pirShelfA'+i),batchB:val('pirBatchB'+i),mfgB:val('pirMfgB'+i),shelfB:val('pirShelfB'+i),dust:val('pirDust'+i),thinner:val('pirThinner'+i),volume:val('pirVolume'+i),mfr:val('pirMfr'+i),prod:val('pirProd'+i),color:val('pirColor'+i),kit:val('pirKit'+i),pot:val('pirPot'+i),shelf:val('pirShelf'+i),induction:val('pirInduction'+i),temp:val('pirTemp'+i),qty:val('pirQty'+i),start:val('pirStart'+i),finish:val('pirFinish'+i),gallons:val('pirGallons'+i),system:val('pirSystem'+i),method:val('pirMethod'+i),gunTip:val('pirGunTip'+i),elapsed:val('pirElapsed'+i),dftPrev:val('pirDFTPrev'+i)}));
  data.qcSignatureData=signatureStore.pirQCSignature || ''; data.qcsSignatureData=signatureStore.pirQCSSignature || ''; data.mixingCount=pirMixCount;
  data.additionalNotesOpen=pirAdditionalNotesOpen || !!document.getElementById('pirAdditionalNotesPanel')?.offsetParent;
@@ -1442,13 +1444,23 @@ function buildPirPrint(data=collectPir(), files=[]){
  const hp = data.holdPoints || [];
  const inst = data.instruments || [];
  const amb = data.ambient || [];
+ const mainAmb=Array.from({length:4},(_,idx)=>amb[idx]||{});
  const mix = data.mixing || [];
  const cell=(x)=>esc(x||'');
  const instRows=pirInstrumentNames().map((n,i)=>{
    const row=inst[i]||{}; return `<div class="pirCell tinyCell">${cell(row.status||'YES')}</div><div class="pirCell tinyCell">${cell(n)}</div><div class="pirCell tinyCell">${cell(row.serial)}</div>`;
  }).join('') + `<div class="pirCell tinyCell">YES</div><div class="pirCell tinyCell">Posi verified as per PA-2?</div><div class="pirCell tinyCell">Adjustment made: ${cell(data.posiAdjust)}</div>`;
- const ambHead=`<div class="pirCell tinyCell"></div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a.location)}</div>`).join('')}`;
- const ambRows=[['Time','time'],['Dry Bulb Temp','dry'],['Wet Bulb Temp','wet'],['% Relative Humidity','rh'],['Surface Temp.','surface'],['Dew Point','dew'],['Surface Temp. - Dew Point Spread','diff']].map(([label,key])=>`<div class="pirCell tinyCell">${label}</div>${amb.map(a=>`<div class="pirCell tinyCell center">${cell(a[key])}</div>`).join('')}`).join('');
+ const ambHead=`<div class="pirCell tinyCell"></div>${mainAmb.map(a=>`<div class="pirCell tinyCell center">${cell(a.location)}</div>`).join('')}`;
+ const ambRows=[['Time','time'],['Dry Bulb Temp','dry'],['Wet Bulb Temp','wet'],['% Relative Humidity','rh'],['Surface Temp.','surface'],['Dew Point','dew'],['Surface Temp. - Dew Point Spread','diff']].map(([label,key])=>`<div class="pirCell tinyCell">${label}</div>${mainAmb.map(a=>`<div class="pirCell tinyCell center">${cell(a[key])}</div>`).join('')}`).join('');
+ const extraAmb=amb.slice(4).filter(a=>a&&Object.values(a).some((v,k)=>k!==0&&String(v||'').trim()));
+ const ambientAttachmentPages=[];
+ for(let start=0;start<extraAmb.length;start+=4){
+   const chunk=extraAmb.slice(start,start+4);
+   const pageNo=Math.floor(start/4)+1;
+   const rows=[['Location / Area','location'],['Time','time'],['Dry Bulb Temp','dry'],['Wet Bulb Temp','wet'],['% Relative Humidity','rh'],['Surface Temp.','surface'],['Dew Point','dew'],['Surface Temp. - Dew Point Spread','diff']];
+   ambientAttachmentPages.push(`<div class="pirAmbientExtraSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Attached Ambient Conditions</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)} &nbsp; | &nbsp; Page ${pageNo} of ${Math.ceil(extraAmb.length/4)}</p></div></div><table class="pirAmbientExtraTable"><tr><th>Reading</th>${chunk.map(a=>`<th>Ambient ${cell(a.index)}</th>`).join('')}</tr>${rows.map(([label,key])=>`<tr><th>${label}</th>${chunk.map(a=>`<td>${cell(a[key])}</td>`).join('')}</tr>`).join('')}</table></div>`);
+ }
+
  const mixBlock=(m={})=>`<div class="mixPrintBlock"><div class="mixRow"><span><b>Location:</b> ${cell(m.location)}</span><span><b>Time:</b> ${cell(m.time)}</span></div><div class="mixHead">Batch #'s <span>Mix Witnessed and Acceptable ${cell(m.witness)}</span></div><div class="mixGrid">${m.customCoaA?`<span><b>Custom COA A:</b> ${cell(m.customCoaA)}</span>`:''}${m.customCoaB?`<span><b>Custom COA B:</b> ${cell(m.customCoaB)}</span>`:''}<span>(A) ${cell(m.batchA)}</span><span>Mfg Date ${cell(m.mfgA)}</span><span>Shelf Life ${cell(m.shelfA)}</span><span>(B) ${cell(m.batchB)}</span><span>Mfg Date ${cell(m.mfgB)}</span><span>Shelf Life ${cell(m.shelfB)}</span><span>Dust ${cell(m.dust)}</span><span>Thinner Type ${cell(m.thinner)}</span><span>% By Volume ${cell(m.volume)}</span><span>Mfr: ${cell(m.mfr)}</span><span>Prod. Name: ${cell(m.prod)}</span><span>Color: ${cell(m.color)}</span><span>Kit Sz/Cond.: ${cell(m.kit)}</span><span>Pot Life: ${cell(m.pot)}</span><span>Shelf Life: ${cell(m.shelf)}</span><span>Induction Time: ${cell(m.induction)}</span><span>Temperature: ${cell(m.temp)}</span><span>Quantity Mixed: ${cell(m.qty)}</span></div><div class="mixHead">Application</div><div class="mixGrid app"><span>Start: ${cell(m.start)}</span><span>Finish/Stop: ${cell(m.finish)}</span><span>Total Gallons: ${cell(m.gallons)}</span><span>Coat: ${cell(m.system)}</span><span>Method: ${cell(m.method)}</span><span>Gun/Tip Size: ${cell(m.gunTip)}</span><span>DFT Avg. Previous Coat: ${cell(m.dftPrev)}</span><span>Time elapsed between coats: ${cell(m.elapsed)}</span></div></div>`;
  const firstMix=[0,1].map(i=>mixBlock(mix[i]||{})).join('');
  const extraMixRows=mix.slice(2).filter(m=>Object.values(m||{}).some(v=>String(v||'').trim()));
@@ -1459,10 +1471,10 @@ function buildPirPrint(data=collectPir(), files=[]){
  for(let start=0;start<extraTestex.length;start+=3){
    const chunk=extraTestex.slice(start,start+3);
    const pageNo=Math.floor(start/3)+1;
-   testexAttachmentPages.push(`<div class="pirTestexExtraSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Attached Testex Tape Photos</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)} &nbsp; | &nbsp; Page ${pageNo} of ${Math.ceil(extraTestex.length/3)}</p></div></div><div class="pirTestexExtraGrid">${chunk.map((t,idx)=>{const tapeNo=t.index||start+idx+4;return `<section class="pirTestexExtraCard"><h2>Testex Tape ${tapeNo}</h2><div class="pirTestexExtraPhoto">${t.photoUrl?`<img src="${t.photoUrl}" alt="Testex Tape ${tapeNo}">`:'<span>No photo attached</span>'}</div><div class="pirTestexExtraMeta"><b>Location / Area:</b> ${cell(t.location)}<br><b>Profile Reading:</b> ${cell(t.reading)}<br><b>Notes:</b> ${cell(t.notes)}</div></section>`;}).join('')}</div></div>`);
+   testexAttachmentPages.push(`<div class="pirTestexExtraSheet pirAttachmentSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Attached Testex Tape Photos</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)} &nbsp; | &nbsp; Page ${pageNo} of ${Math.ceil(extraTestex.length/3)}</p></div></div><div class="pirTestexExtraGrid">${chunk.map((t,idx)=>{const tapeNo=t.index||start+idx+4;return `<section class="pirTestexExtraCard"><h2>Testex Tape ${tapeNo}</h2><div class="pirTestexExtraPhoto">${t.photoUrl?`<img src="${t.photoUrl}" alt="Testex Tape ${tapeNo}">`:'<span>No photo attached</span>'}</div><div class="pirTestexExtraMeta"><b>Location / Area:</b> ${cell(t.location)}<br><b>Profile Reading:</b> ${cell(t.reading)}<br><b>Notes:</b> ${cell(t.notes)}</div></section>`;}).join('')}</div></div>`);
  }
  const holdText=pirHoldPoints.map((q,i)=>`${cell(q)} ${cell(hp[i]?.status)}`).join('<br>');
- const computedAttachedPages=[data.attachedPages,extraTestex.length?`Testex Tape Photos (${Math.ceil(extraTestex.length/3)} page${Math.ceil(extraTestex.length/3)===1?'':'s'})`:'' ].filter(Boolean).join(', ');
+ const computedAttachedPages=[data.attachedPages,extraTestex.length?`Testex Tape Photos (${Math.ceil(extraTestex.length/3)} page${Math.ceil(extraTestex.length/3)===1?'':'s'})`:'',extraAmb.length?`Ambient Conditions (${Math.ceil(extraAmb.length/4)} page${Math.ceil(extraAmb.length/4)===1?'':'s'})`:'' ].filter(Boolean).join(', ');
  const html=`<div class="pirSheetV7">
    <div class="pirHeaderV7">
      <div class="pirHLeft"><b>Project:</b> ${cell(data.project)}<br><b>Report Date:</b> ${cell(data.reportDate)}<br><b>Attached Pages:</b> ${cell(computedAttachedPages)}</div>
@@ -1504,7 +1516,7 @@ function buildPirPrint(data=collectPir(), files=[]){
   const hasNotes=hasGeneralNotes || hasAdditionalNotesContent;
  const notesRows=(notes.rows||Array.from({length:8},()=>({}))).map(r=>`<tr><td>${cell(r.time)}</td><td>${cell(r.location)}</td><td>${cell(r.activity)}</td><td>${cell(r.notes)}</td></tr>`).join('');
  const notesPage=hasNotes?`<div class="pirNotesSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional QC Notes</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><table class="extraPrintTable"><tr><th>Date</th><td>${cell(notes.date||data.reportDate)}</td><th>Location / Area</th><td>${cell(notes.location)}</td><th>QC</th><td>${cell(notes.qc||data.qcPrint)}</td></tr></table>${hasGeneralNotes?extraPrintBox('General Notes / Nonconformance / Corrective Actions',data.generalNotes,1.05):''}<table class="extraPrintTable pirNotesTable"><tr><th>Time</th><th>Location / Area</th><th>Activity / What Happened</th><th>Notes</th></tr>${notesRows}</table>${extraPrintBox('Additional Summary / QC Comments',notes.summary||'',1.35)}<div class="extraSigGrid two"><div><b>QC Print:</b> ${cell(notes.print||notes.qc||data.qcPrint)}</div><div><b>QC Signature:</b> ${sigPrint(notes.signatureData,notes.signature||'')}</div></div></div>`:'';
- const pages=[html, extraMixPage, ...testexAttachmentPages, notesPage].filter(Boolean);
+ const pages=[html, extraMixPage, ...testexAttachmentPages, ...ambientAttachmentPages, notesPage].filter(Boolean);
  const finalHtml=pages.join('');
  setPrintPages(pages); return finalHtml;
 }
