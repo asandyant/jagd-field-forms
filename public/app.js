@@ -771,6 +771,55 @@ function radioBlock(name){return `<div class="choiceBtns"><label><input type="ra
 function photoInput(id,label='Photos / PDF attachments'){
   return `<div><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/*,.pdf" multiple><p class="tiny"><b>Photos:</b> Take/select a photo, then tap Choose File again to add another. Photos print on photo pages. <b>PDFs:</b> Use Open PDF to check the file. PDF pages are merged at the end of the saved report packet when the clean PDF builder is available.</p><div id="${id}Count" class="tiny"></div><div id="${id}Preview" class="photoGrid"></div></div>`;
 }
+
+function pirTestexPhotoUrl(i){
+  const inputId='pirTestexPhoto'+i;
+  const files=getPhotoFileStore(inputId).filter(f=>f && f.type && f.type.startsWith('image/'));
+  return files.length ? URL.createObjectURL(files[files.length-1]) : '';
+}
+function renderPirTestexPhoto(i){
+  const inputId='pirTestexPhoto'+i;
+  const box=document.getElementById('pirTestexBox'+i);
+  const remove=document.getElementById('pirTestexRemove'+i);
+  const label=document.getElementById('pirTestexPhotoLabel'+i);
+  if(!box) return;
+  const url=pirTestexPhotoUrl(i);
+  if(url){
+    box.classList.add('hasPhoto');
+    box.innerHTML=`<img class="testexScreenPhoto" src="${url}" alt="Testex Tape ${i} photo">`;
+    if(remove) remove.style.display='';
+    if(label) label.textContent='Replace Tape Photo';
+  }else{
+    box.classList.remove('hasPhoto');
+    box.innerHTML='<span>Insert Testex Tape Here</span>';
+    if(remove) remove.style.display='none';
+    if(label) label.textContent='Take / Choose Tape Photo';
+  }
+}
+function setupPirTestexPhoto(i){
+  const inputId='pirTestexPhoto'+i;
+  const input=document.getElementById(inputId);
+  if(!input || input.dataset.testexPhotoReady==='1') return;
+  input.dataset.testexPhotoReady='1';
+  input.addEventListener('change',()=>{
+    const chosen=[...(input.files||[])].filter(f=>f && f.type && f.type.startsWith('image/'));
+    if(chosen.length){
+      const store=getPhotoFileStore(inputId);
+      store.splice(0,store.length,chosen[chosen.length-1]);
+    }
+    input.value='';
+    renderPirTestexPhoto(i);
+  });
+  const remove=document.getElementById('pirTestexRemove'+i);
+  if(remove){
+    remove.onclick=()=>{
+      const store=getPhotoFileStore(inputId);
+      store.splice(0,store.length);
+      renderPirTestexPhoto(i);
+    };
+  }
+  renderPirTestexPhoto(i);
+}
 function renderPhotoPreview(inputId){
   const preview=document.getElementById(inputId+'Preview');
   const count=document.getElementById(inputId+'Count');
@@ -1248,7 +1297,7 @@ function pirForm(){
     <div id="pir-attached" class="panel"><h2>Attached / Generated Today</h2><p class="tiny">Check any extra JAGD form that was created for this report day. This prints in the PIR header; the blank PDFs are available on the home page.</p><div class="checkGrid">${checkboxField('pirAttachSafety','Safety Report')}${checkboxField('pirAttachPaint','Paint Inspection')}${checkboxField('pirAttachAccident','Accident Report')}${checkboxField('pirAttachIncident','Incident Report')}${checkboxField('pirAttachDisciplinary','Disciplinary Report')}${checkboxField('pirAttachBol','Bill of Lading')}</div></div>
     <div id="pir-hold" class="panel"><h2>Hold Point Inspections Performed</h2><div class="grid two">${pirHoldPoints.map((q,i)=>`<div class="checkrow"><div class="questionTitle">${q}</div>${radioBlock('pirHold'+i)}</div>`).join('')}</div></div>
     <div id="pir-surface" class="panel"><h2>Surface Cleanliness / Profile Measurement</h2><div class="grid three">${field('pirSSPC','SSPC/NACE SP')} ${field('pirSpecifiedProfile','Specified Profile')} ${field('pirProfileCheck','Profile Check')} ${selectField('pirAbrasiveTest','Abrasive Test Acceptable',['','YES','NO','N/A'])} ${selectField('pirBlotterTest','Blotter Test Acceptable',['','YES','NO','N/A'])} ${field('pirChloride1','Chloride ug/cm²')} ${field('pirChloride2','Chloride ug/cm²')} ${selectField('pirIllumination','Illumination Acceptable',['','YES','NO','N/A'])}</div></div>
-    <div id="pir-testex" class="panel"><h2>Testex Tape Inserts</h2><div class="testexScreenGrid">${[1,2,3].map(i=>`<div class="testexCard"><div class="testexBox screen"><span>Insert Testex Tape Here</span></div>${field('pirTestexLoc'+i,'Tape '+i+' Location / Area')}${field('pirTestexReading'+i,'Tape '+i+' Profile Reading')}${field('pirTestexNotes'+i,'Tape '+i+' Notes')}</div>`).join('')}</div></div>
+    <div id="pir-testex" class="panel"><h2>Testex Tape Inserts</h2><p class="tiny">Take or choose a photo of each Testex tape and it will print inside the matching Profile Measurement box.</p><div class="testexScreenGrid">${[1,2,3].map(i=>`<div class="testexCard"><div class="testexBox screen" id="pirTestexBox${i}"><span>Insert Testex Tape Here</span></div><div class="pirTestexPhotoActions"><label class="btn small" for="pirTestexPhoto${i}" id="pirTestexPhotoLabel${i}">Take / Choose Tape Photo</label><input id="pirTestexPhoto${i}" class="hiddenFileInput" type="file" accept="image/*" capture="environment"><button type="button" class="btn small light" id="pirTestexRemove${i}" style="display:none">Remove Photo</button></div>${field('pirTestexLoc'+i,'Tape '+i+' Location / Area')}${field('pirTestexReading'+i,'Tape '+i+' Profile Reading')}${field('pirTestexNotes'+i,'Tape '+i+' Notes')}</div>`).join('')}</div></div>
     <div id="pir-instruments" class="panel"><div class="sectionTitleRow"><h2>Calibrated QC Equipment</h2><button type="button" class="btn light small" id="pirLoadSerialsBtn">Load Yesterday's Serial Numbers</button></div><p class="tiny">Loads the last saved PIR serial numbers from this same device. Use when the same QC equipment is used again.</p><div id="pirSerialMsg"></div><div class="grid three">${pirInstrumentNames().map((n,i)=>`<div class="checkrow"><label>${n}</label>${selectField('pirInstYes'+i,'Status',['YES','NO','N/A'])}${field('pirInstSerial'+i,'Serial Number')}${i===4?field('pirPosiAdjust','PA-2 Adjustment made') : ''}</div>`).join('')}</div></div>
     <div id="pir-ambient" class="panel"><h2>Ambient Conditions</h2><p class="tiny"><b>Auto-calc:</b> Enter Dry Bulb + Wet Bulb to calculate % Relative Humidity and Dew Point. Enter Surface Temp to calculate Surface Temp. - Dew Point Spread.</p><p class="tiny noticeInline"><b>Note:</b> Typical field practice is four ambient readings. Add readings as needed; blank readings still print as empty columns.</p><div id="pirAmbientBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirAmbientBlock">+ Add another Ambient Reading</button></div></div>
     <div id="pir-mixing" class="panel"><h2>Mixing / Application</h2><div id="pirMixBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirMixBlock">+ Add another Mix / Application Block</button></div></div>
@@ -1275,6 +1324,7 @@ function pirForm(){
   document.getElementById('addPirMixBlock').onclick=()=>{pirMixCount=Math.min(PIR_MIX_MAX_BLOCKS,pirMixCount+1); renderPirMixBlocks();};
   document.getElementById('addPirAmbientBlock').onclick=()=>{pirAmbientCount=Math.min(4,pirAmbientCount+1); renderPirAmbientBlocks(); if(pirAmbientCount>=4) document.getElementById('addPirAmbientBlock').disabled=true;};
   initSignatureButtons();
+  [1,2,3].forEach(setupPirTestexPhoto);
   document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); savePirInstrumentSerials(data); document.title = formSaveTitle('pir', data.reportDate, data.project); logGeneratedForm('pir', data.project, data.reportDate, document.title); buildPirPrint(data); openPrintNow('pirMsg');}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
 }
 
@@ -1287,7 +1337,7 @@ function collectPir(){
    isChecked('pirAttachDisciplinary')?'Disciplinary Report':'',
    isChecked('pirAttachBol')?'Bill of Lading':''
  ].filter(Boolean).join(', ');
- const data={project:projectValue('pirProject'),reportDate:val('pirReportDate'),day:val('pirDay'),weatherAM:val('pirWeatherAM'),weatherPM:val('pirWeatherPM'),inspectionReport:val('pirInspectionReport'),attachedPages,page:'1',pageOf:'1',holdPoints:pirHoldPoints.map((q,i)=>({q,status:checked('pirHold'+i)})),sspc:val('pirSSPC'),specifiedProfile:val('pirSpecifiedProfile'),profileCheck:val('pirProfileCheck'),abrasiveTest:val('pirAbrasiveTest'),blotterTest:val('pirBlotterTest'),chloride1:val('pirChloride1'),chloride2:val('pirChloride2'),illumination:val('pirIllumination'),testex:[1,2,3].map(i=>({location:val('pirTestexLoc'+i),reading:val('pirTestexReading'+i),notes:val('pirTestexNotes'+i)})),posiAdjust:val('pirPosiAdjust'),generalNotes:val('pirGeneralNotes'),qcPrint:val('pirQCPrint'),qcSignature:val('pirQCSignature'),qcsSignature:val('pirQCSSignature'),caulking:{location:val('pirCaulkLocation'),nameBatch:val('pirCaulkNameBatch'),tubeSize:val('pirTubeSize'),shelf:val('pirCaulkShelf'),totalUsed:val('pirTotalUsed')}};
+ const data={project:projectValue('pirProject'),reportDate:val('pirReportDate'),day:val('pirDay'),weatherAM:val('pirWeatherAM'),weatherPM:val('pirWeatherPM'),inspectionReport:val('pirInspectionReport'),attachedPages,page:'1',pageOf:'1',holdPoints:pirHoldPoints.map((q,i)=>({q,status:checked('pirHold'+i)})),sspc:val('pirSSPC'),specifiedProfile:val('pirSpecifiedProfile'),profileCheck:val('pirProfileCheck'),abrasiveTest:val('pirAbrasiveTest'),blotterTest:val('pirBlotterTest'),chloride1:val('pirChloride1'),chloride2:val('pirChloride2'),illumination:val('pirIllumination'),testex:[1,2,3].map(i=>({location:val('pirTestexLoc'+i),reading:val('pirTestexReading'+i),notes:val('pirTestexNotes'+i),photoUrl:pirTestexPhotoUrl(i)})),posiAdjust:val('pirPosiAdjust'),generalNotes:val('pirGeneralNotes'),qcPrint:val('pirQCPrint'),qcSignature:val('pirQCSignature'),qcsSignature:val('pirQCSSignature'),caulking:{location:val('pirCaulkLocation'),nameBatch:val('pirCaulkNameBatch'),tubeSize:val('pirTubeSize'),shelf:val('pirCaulkShelf'),totalUsed:val('pirTotalUsed')}};
  data.instruments=pirInstrumentNames().map((n,i)=>({name:n,status:val('pirInstYes'+i),serial:val('pirInstSerial'+i)}));
  data.ambient=[1,2,3,4].map(i=>({location:val('pirAmbLoc'+i),time:val('pirAmbTime'+i),dry:val('pirDry'+i),wet:val('pirWet'+i),rh:val('pirRH'+i),surface:val('pirSurf'+i),dew:val('pirDew'+i),diff:val('pirDiff'+i)}));
  data.mixing=Array.from({length:pirMixCount},(_,idx)=>idx+1).map(i=>({location:val('pirMixLoc'+i),time:val('pirMixTime'+i),witness:val('pirMixWitness'+i),customCoaA:val('pirCustomCoaA'+i),customCoaB:val('pirCustomCoaB'+i),batchA:val('pirBatchA'+i),mfgA:val('pirMfgA'+i),shelfA:val('pirShelfA'+i),batchB:val('pirBatchB'+i),mfgB:val('pirMfgB'+i),shelfB:val('pirShelfB'+i),dust:val('pirDust'+i),thinner:val('pirThinner'+i),volume:val('pirVolume'+i),mfr:val('pirMfr'+i),prod:val('pirProd'+i),color:val('pirColor'+i),kit:val('pirKit'+i),pot:val('pirPot'+i),shelf:val('pirShelf'+i),induction:val('pirInduction'+i),temp:val('pirTemp'+i),qty:val('pirQty'+i),start:val('pirStart'+i),finish:val('pirFinish'+i),gallons:val('pirGallons'+i),system:val('pirSystem'+i),method:val('pirMethod'+i),gunTip:val('pirGunTip'+i),elapsed:val('pirElapsed'+i),dftPrev:val('pirDFTPrev'+i)}));
@@ -1312,7 +1362,7 @@ function buildPirPrint(data=collectPir(), files=[]){
  const firstMix=[0,1].map(i=>mixBlock(mix[i]||{})).join('');
  const extraMixRows=mix.slice(2).filter(m=>Object.values(m||{}).some(v=>String(v||'').trim()));
  const extraMixPage=extraMixRows.length?`<div class="pirMixExtraSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional Mix / Application Blocks</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><div class="pirExtraMixGrid">${extraMixRows.map(mixBlock).join('')}</div></div>`:'';
- const testex=[0,1,2].map(i=>`<div class="testexBox pirTestexPrint"><span>Insert Testex Tape Here</span></div><div class="testexMeta">${cell(data.testex?.[i]?.location)} ${cell(data.testex?.[i]?.reading)} ${cell(data.testex?.[i]?.notes)}</div>`).join('');
+ const testex=[0,1,2].map(i=>{const photo=data.testex?.[i]?.photoUrl||''; return `<div class="testexBox pirTestexPrint${photo?' pirTestexHasPhoto':''}">${photo?`<img class="pirTestexPhotoPrint" src="${photo}" alt="Testex Tape ${i+1} photo">`:'<span>Insert Testex Tape Here</span>'}</div><div class="testexMeta">${cell(data.testex?.[i]?.location)} ${cell(data.testex?.[i]?.reading)} ${cell(data.testex?.[i]?.notes)}</div>`;}).join('');
  const holdText=pirHoldPoints.map((q,i)=>`${cell(q)} ${cell(hp[i]?.status)}`).join('<br>');
  const html=`<div class="pirSheetV7">
    <div class="pirHeaderV7">
@@ -1322,7 +1372,6 @@ function buildPirPrint(data=collectPir(), files=[]){
      <div class="pirHRight"><b>Weather:</b> AM ${cell(data.weatherAM)} &nbsp; PM ${cell(data.weatherPM)}</div>
      <div class="pirHDay"><b>DAY:</b> ${cell(data.day)}</div>
      <div class="pirHReport"><b>Inspection Report #:</b> ${cell(data.inspectionReport)}</div>
-     <div class="pirHPage"><b>Page:</b> 1 of 1</div>
    </div>
    <div class="pirTopV7">
      <div class="pirTopCol"><div class="pirBar">Hold Point Inspections Performed</div><div class="pirTopBody">${holdText}</div></div>

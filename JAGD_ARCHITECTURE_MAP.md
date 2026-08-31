@@ -187,3 +187,10 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Clean-PDF capture is explicitly allowed to measure the full generated PIR instead of clipping fixed-height overflow.
 - Top project/report information, filled PIR cells, caulking, QC/QCS signatures, and revision footer are protected from print/PDF clipping.
 - Live phone/desktop data-entry layout and all non-PIR forms are unchanged.
+
+### 2026-08-31 — PIR Testex photo capture + printer-safe page inset
+- Field Forms PIR only; `public/app.js` + `public/styles.css`.
+- Each of the three Testex Tape slots now accepts one camera/library photo with Replace/Remove controls; the selected photo prints inside the corresponding Profile Measurement/Testex box.
+- The fixed PIR header no longer renders the redundant `Page: 1 of 1` cell that created an implicit third grid row and overlapped the `Profile Measurement` heading.
+- PIR print/clean-PDF content is inset about 0.14 in inside Letter size so printers with larger non-printable edge margins (including office printers) do not clip the outer report border/content.
+- No changes to PIR calculations, signatures, mixing/application logic, or any other Field Forms workflow.

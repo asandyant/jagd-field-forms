@@ -1389,3 +1389,92 @@
 .pdfCaptureBody:has(.pirSheetV7) .pirSigGridV7>div{
   overflow:visible!important;
 }
+
+
+/* v71 PIR Testex photo capture + cross-printer safe margins + header overlap fix (2026-08-31).
+   Field entry: each Testex slot can take/choose one photo and replace/remove it.
+   Print/PDF: photo fills the matching Profile Measurement box; PIR content is inset slightly
+   so office printers with larger non-printable margins do not clip the page. */
+.pirTestexPhotoActions{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  margin:0 0 10px;
+  flex-wrap:wrap;
+}
+.pirTestexPhotoActions .btn{margin:0;}
+.testexBox.screen.hasPhoto:before,
+.testexBox.screen.hasPhoto:after{display:none!important;}
+.testexScreenPhoto{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+  background:#fff;
+}
+.pirTestexHasPhoto:before,
+.pirTestexHasPhoto:after{display:none!important;}
+.pirTestexPhotoPrint{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+  background:#fff;
+}
+@media(max-width:850px){
+  .pirTestexPhotoActions{display:grid;grid-template-columns:1fr 1fr;}
+  .pirTestexPhotoActions .btn{width:100%;text-align:center;}
+}
+
+@media print{
+  @page{size:Letter portrait;margin:0!important;}
+  body:has(.pirSheetV7) .printPage{
+    width:8.5in!important;
+    height:11in!important;
+    max-height:11in!important;
+    padding:.14in!important;
+    box-sizing:border-box!important;
+    overflow:hidden!important;
+  }
+  body:has(.pirSheetV7) .pirSheetV7{
+    width:8.22in!important;
+    height:10.72in!important;
+    max-height:10.72in!important;
+    margin:0!important;
+    box-sizing:border-box!important;
+  }
+  /* Page used to create an implicit third header row and overlap Profile Measurement. */
+  body:has(.pirSheetV7) .pirHPage{display:none!important;}
+  body:has(.pirSheetV7) .pirTestexHasPhoto{
+    padding:0!important;
+    background:#fff!important;
+  }
+  body:has(.pirSheetV7) .pirTestexPhotoPrint{
+    width:100%!important;
+    height:100%!important;
+    object-fit:contain!important;
+  }
+}
+
+/* The clean-PDF builder uses screen media inside its capture iframe, so apply the same
+   physical safe area there. This gives the resulting Letter PDF a small white edge. */
+.pdfCaptureBody:has(.pirSheetV7) .printPage{
+  width:8.5in!important;
+  min-height:11in!important;
+  padding:.14in!important;
+  box-sizing:border-box!important;
+  background:#fff!important;
+}
+.pdfCaptureBody:has(.pirSheetV7) .pirSheetV7{
+  width:8.22in!important;
+  min-height:10.72in!important;
+  margin:0!important;
+  box-sizing:border-box!important;
+}
+.pdfCaptureBody:has(.pirSheetV7) .pirHPage{display:none!important;}
+.pdfCaptureBody:has(.pirSheetV7) .pirTestexHasPhoto{padding:0!important;background:#fff!important;}
+.pdfCaptureBody:has(.pirSheetV7) .pirTestexPhotoPrint{
+  width:100%!important;
+  height:100%!important;
+  object-fit:contain!important;
+}
