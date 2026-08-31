@@ -1478,3 +1478,47 @@
   height:100%!important;
   object-fit:contain!important;
 }
+
+
+/* v72 PIR Testex dynamic tape workflow + readable crop editor (2026-08-31).
+   - Starts with 3 tape slots; field users can add one slot at a time up to 50.
+   - Photo selection opens a crop/rotate editor so the actual tape can fill the printable box.
+   - Tapes 4+ print on dedicated attached Testex Tape Photos pages instead of shrinking page 1. */
+.pirTestexAddActions{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;}
+.pirTestexAddActions .btn{margin:0;}
+.pirTestexCropModal{position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;padding:18px;}
+.pirTestexCropDialog{width:min(1100px,96vw);max-height:96vh;overflow:auto;background:#fff;border-radius:14px;padding:18px;box-shadow:0 20px 70px rgba(0,0,0,.35);}
+.pirTestexCropHead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:12px;}
+.pirTestexCropHead h2{margin:0 0 4px;font-size:24px;}
+.pirTestexCropHead p{margin:0;color:#475467;}
+#pirTestexCropCanvas{display:block;width:100%;height:auto;aspect-ratio:25/9;background:#fff;border:3px solid #111;touch-action:none;cursor:grab;}
+#pirTestexCropCanvas:active{cursor:grabbing;}
+.pirTestexCropControls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;}
+.pirTestexCropControls label{display:flex;align-items:center;gap:8px;font-weight:700;min-width:260px;}
+.pirTestexCropControls input[type="range"]{min-width:190px;}
+.pirTestexExtraSheet{width:8.05in;min-height:10.55in;margin:.12in auto 0;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;border:1px solid #000;padding:.16in;box-sizing:border-box;page-break-before:auto;break-before:auto;page-break-inside:avoid;break-inside:avoid;}
+.pirTestexExtraGrid{display:grid;grid-template-rows:repeat(3,1fr);gap:.12in;height:9.45in;margin-top:.10in;}
+.pirTestexExtraCard{border:1.4px solid #000;display:grid;grid-template-columns:2.25in 1fr;grid-template-rows:.30in 1fr;min-height:0;overflow:hidden;}
+.pirTestexExtraCard h2{grid-column:1/-1;margin:0;padding:4px 7px;border-bottom:1px solid #000;background:#eee;font-size:12px;line-height:.22in;}
+.pirTestexExtraPhoto{display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;border-right:1px solid #000;padding:3px;min-height:0;}
+.pirTestexExtraPhoto img{width:100%;height:100%;object-fit:contain;display:block;}
+.pirTestexExtraPhoto span{font-size:12px;font-weight:700;color:#666;}
+.pirTestexExtraMeta{padding:9px 12px;font-size:12px;line-height:1.45;overflow:hidden;}
+@media(max-width:850px){
+  .pirTestexAddActions{display:grid;grid-template-columns:1fr;}
+  .pirTestexAddActions .btn{width:100%;}
+  .pirTestexCropModal{padding:8px;align-items:flex-start;}
+  .pirTestexCropDialog{padding:12px;margin-top:6px;}
+  .pirTestexCropHead h2{font-size:20px;}
+  .pirTestexCropControls{display:grid;grid-template-columns:1fr 1fr;}
+  .pirTestexCropControls label{grid-column:1/-1;min-width:0;}
+  .pirTestexCropControls .btn:last-child{grid-column:1/-1;}
+}
+@media print{
+  .pirTestexCropModal{display:none!important;}
+  .pirTestexExtraSheet{width:8.05in!important;height:10.55in!important;max-height:10.55in!important;margin:.12in auto 0!important;padding:.16in!important;overflow:hidden!important;}
+  .pirTestexExtraGrid{height:9.35in!important;}
+  .pirTestexExtraCard h2{font-size:11px!important;}
+  .pirTestexExtraMeta{font-size:11px!important;line-height:1.35!important;}
+}
+.pdfCaptureBody .pirTestexExtraSheet{width:8.05in!important;min-height:10.55in!important;margin:.12in auto 0!important;padding:.16in!important;box-sizing:border-box!important;}

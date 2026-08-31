@@ -772,6 +772,87 @@ function photoInput(id,label='Photos / PDF attachments'){
   return `<div><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/*,.pdf" multiple><p class="tiny"><b>Photos:</b> Take/select a photo, then tap Choose File again to add another. Photos print on photo pages. <b>PDFs:</b> Use Open PDF to check the file. PDF pages are merged at the end of the saved report packet when the clean PDF builder is available.</p><div id="${id}Count" class="tiny"></div><div id="${id}Preview" class="photoGrid"></div></div>`;
 }
 
+let pirTestexCount=3;
+const PIR_TESTEX_MAX=50;
+function pirTestexCardHtml(i){
+  return `<div class="testexCard" data-testex-index="${i}"><div class="testexBox screen" id="pirTestexBox${i}"><span>Insert Testex Tape Here</span></div><div class="pirTestexPhotoActions"><label class="btn small" for="pirTestexPhoto${i}" id="pirTestexPhotoLabel${i}">Take / Choose Tape Photo</label><input id="pirTestexPhoto${i}" class="hiddenFileInput" type="file" accept="image/*" capture="environment"><button type="button" class="btn small light" id="pirTestexEdit${i}" style="display:none">Crop / Rotate</button><button type="button" class="btn small light" id="pirTestexRemove${i}" style="display:none">Remove Photo</button></div>${field('pirTestexLoc'+i,'Tape '+i+' Location / Area')}${field('pirTestexReading'+i,'Tape '+i+' Profile Reading')}${field('pirTestexNotes'+i,'Tape '+i+' Notes')}</div>`;
+}
+function pirTestexIndexes(){
+  return Array.from({length:pirTestexCount},(_,idx)=>idx+1);
+}
+function refreshPirTestexButtons(){
+  const add=document.getElementById('pirAddTestexBtn');
+  const remove=document.getElementById('pirRemoveTestexBtn');
+  if(add) add.disabled=pirTestexCount>=PIR_TESTEX_MAX;
+  if(remove) remove.disabled=pirTestexCount<=3;
+  const msg=document.getElementById('pirTestexCountMsg');
+  if(msg) msg.textContent=`${pirTestexCount} Testex tape slot${pirTestexCount===1?'':'s'} available. Tapes 4+ print on attached Testex Tape Photos pages.`;
+}
+function addPirTestexTape(){
+  if(pirTestexCount>=PIR_TESTEX_MAX) return;
+  pirTestexCount+=1;
+  const grid=document.getElementById('pirTestexGrid');
+  if(grid){
+    grid.insertAdjacentHTML('beforeend',pirTestexCardHtml(pirTestexCount));
+    setupPirTestexPhoto(pirTestexCount);
+  }
+  refreshPirTestexButtons();
+  document.querySelector(`[data-testex-index="${pirTestexCount}"]`)?.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function removeLastPirTestexTape(){
+  if(pirTestexCount<=3) return;
+  const i=pirTestexCount;
+  const card=document.querySelector(`[data-testex-index="${i}"]`);
+  card?.remove();
+  const store=getPhotoFileStore('pirTestexPhoto'+i); store.splice(0,store.length);
+  pirTestexCount-=1;
+  refreshPirTestexButtons();
+}
+let pirTestexEditor=null;
+function closePirTestexEditor(){
+  const modal=document.getElementById('pirTestexCropModal');
+  if(modal) modal.remove();
+  pirTestexEditor=null;
+}
+function editPirTestexPhoto(i){
+  const inputId='pirTestexPhoto'+i;
+  const files=getPhotoFileStore(inputId).filter(f=>f&&f.type&&f.type.startsWith('image/'));
+  const file=files[files.length-1];
+  if(!file) return;
+  closePirTestexEditor();
+  document.body.insertAdjacentHTML('beforeend',`<div class="pirTestexCropModal" id="pirTestexCropModal"><div class="pirTestexCropDialog"><div class="pirTestexCropHead"><div><h2>Crop Testex Tape ${i}</h2><p>Zoom and drag until the actual Testex tape fills the box. This cropped view is what prints.</p></div><button type="button" class="btn light small" id="pirTestexCropCancel">Cancel</button></div><canvas id="pirTestexCropCanvas" width="1000" height="360"></canvas><div class="pirTestexCropControls"><label>Zoom <input id="pirTestexCropZoom" type="range" min="1" max="8" step="0.05" value="1"></label><button type="button" class="btn light" id="pirTestexRotateLeft">↶ Rotate</button><button type="button" class="btn light" id="pirTestexRotateRight">Rotate ↷</button><button type="button" class="btn" id="pirTestexCropSave">Use This Crop</button></div><p class="tiny">Tip: drag the picture with your finger/mouse to center the tape. Zoom in enough that the inspector can read the scale.</p></div></div>`);
+  const canvas=document.getElementById('pirTestexCropCanvas');
+  const ctx=canvas.getContext('2d');
+  const img=new Image();
+  const url=URL.createObjectURL(file);
+  const state={i,file,img,canvas,ctx,zoom:1,rotation:0,panX:0,panY:0,drag:false,lastX:0,lastY:0,url};
+  pirTestexEditor=state;
+  const render=()=>{
+    const cw=canvas.width,ch=canvas.height;
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,cw,ch);
+    if(!img.naturalWidth) return;
+    const rot=((state.rotation%360)+360)%360;
+    const swapped=rot===90||rot===270;
+    const iw=swapped?img.naturalHeight:img.naturalWidth;
+    const ih=swapped?img.naturalWidth:img.naturalHeight;
+    const base=Math.max(cw/iw,ch/ih);
+    const scale=base*state.zoom;
+    ctx.save();ctx.translate(cw/2+state.panX,ch/2+state.panY);ctx.rotate(state.rotation*Math.PI/180);ctx.scale(scale,scale);ctx.drawImage(img,-img.naturalWidth/2,-img.naturalHeight/2);ctx.restore();
+    ctx.strokeStyle='#111';ctx.lineWidth=4;ctx.strokeRect(2,2,cw-4,ch-4);
+  };
+  img.onload=()=>{render();URL.revokeObjectURL(url);}; img.src=url;
+  document.getElementById('pirTestexCropZoom').oninput=e=>{state.zoom=Number(e.target.value)||1;render();};
+  document.getElementById('pirTestexRotateLeft').onclick=()=>{state.rotation-=90;render();};
+  document.getElementById('pirTestexRotateRight').onclick=()=>{state.rotation+=90;render();};
+  const point=e=>{const r=canvas.getBoundingClientRect();const t=e.touches?.[0]||e;return {x:(t.clientX-r.left)*(canvas.width/r.width),y:(t.clientY-r.top)*(canvas.height/r.height)};};
+  const down=e=>{e.preventDefault();canvas.setPointerCapture?.(e.pointerId);const q=point(e);state.drag=true;state.lastX=q.x;state.lastY=q.y;};
+  const move=e=>{if(!state.drag)return;e.preventDefault();const q=point(e);state.panX+=q.x-state.lastX;state.panY+=q.y-state.lastY;state.lastX=q.x;state.lastY=q.y;render();};
+  const up=e=>{state.drag=false;try{canvas.releasePointerCapture?.(e.pointerId);}catch(_){}};
+  canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);
+  document.getElementById('pirTestexCropCancel').onclick=closePirTestexEditor;
+  document.getElementById('pirTestexCropSave').onclick=()=>{canvas.toBlob(blob=>{if(!blob)return;const cropped=new File([blob],`testex-tape-${i}-cropped.jpg`,{type:'image/jpeg',lastModified:Date.now()});const store=getPhotoFileStore(inputId);store.splice(0,store.length,cropped);closePirTestexEditor();renderPirTestexPhoto(i);},'image/jpeg',0.94);};
+}
+
 function pirTestexPhotoUrl(i){
   const inputId='pirTestexPhoto'+i;
   const files=getPhotoFileStore(inputId).filter(f=>f && f.type && f.type.startsWith('image/'));
@@ -782,17 +863,20 @@ function renderPirTestexPhoto(i){
   const box=document.getElementById('pirTestexBox'+i);
   const remove=document.getElementById('pirTestexRemove'+i);
   const label=document.getElementById('pirTestexPhotoLabel'+i);
+  const edit=document.getElementById('pirTestexEdit'+i);
   if(!box) return;
   const url=pirTestexPhotoUrl(i);
   if(url){
     box.classList.add('hasPhoto');
     box.innerHTML=`<img class="testexScreenPhoto" src="${url}" alt="Testex Tape ${i} photo">`;
     if(remove) remove.style.display='';
+    if(edit) edit.style.display='';
     if(label) label.textContent='Replace Tape Photo';
   }else{
     box.classList.remove('hasPhoto');
     box.innerHTML='<span>Insert Testex Tape Here</span>';
     if(remove) remove.style.display='none';
+    if(edit) edit.style.display='none';
     if(label) label.textContent='Take / Choose Tape Photo';
   }
 }
@@ -809,7 +893,10 @@ function setupPirTestexPhoto(i){
     }
     input.value='';
     renderPirTestexPhoto(i);
+    if(chosen.length) setTimeout(()=>editPirTestexPhoto(i),0);
   });
+  const edit=document.getElementById('pirTestexEdit'+i);
+  if(edit) edit.onclick=()=>editPirTestexPhoto(i);
   const remove=document.getElementById('pirTestexRemove'+i);
   if(remove){
     remove.onclick=()=>{
@@ -1297,7 +1384,7 @@ function pirForm(){
     <div id="pir-attached" class="panel"><h2>Attached / Generated Today</h2><p class="tiny">Check any extra JAGD form that was created for this report day. This prints in the PIR header; the blank PDFs are available on the home page.</p><div class="checkGrid">${checkboxField('pirAttachSafety','Safety Report')}${checkboxField('pirAttachPaint','Paint Inspection')}${checkboxField('pirAttachAccident','Accident Report')}${checkboxField('pirAttachIncident','Incident Report')}${checkboxField('pirAttachDisciplinary','Disciplinary Report')}${checkboxField('pirAttachBol','Bill of Lading')}</div></div>
     <div id="pir-hold" class="panel"><h2>Hold Point Inspections Performed</h2><div class="grid two">${pirHoldPoints.map((q,i)=>`<div class="checkrow"><div class="questionTitle">${q}</div>${radioBlock('pirHold'+i)}</div>`).join('')}</div></div>
     <div id="pir-surface" class="panel"><h2>Surface Cleanliness / Profile Measurement</h2><div class="grid three">${field('pirSSPC','SSPC/NACE SP')} ${field('pirSpecifiedProfile','Specified Profile')} ${field('pirProfileCheck','Profile Check')} ${selectField('pirAbrasiveTest','Abrasive Test Acceptable',['','YES','NO','N/A'])} ${selectField('pirBlotterTest','Blotter Test Acceptable',['','YES','NO','N/A'])} ${field('pirChloride1','Chloride ug/cm²')} ${field('pirChloride2','Chloride ug/cm²')} ${selectField('pirIllumination','Illumination Acceptable',['','YES','NO','N/A'])}</div></div>
-    <div id="pir-testex" class="panel"><h2>Testex Tape Inserts</h2><p class="tiny">Take or choose a photo of each Testex tape and it will print inside the matching Profile Measurement box.</p><div class="testexScreenGrid">${[1,2,3].map(i=>`<div class="testexCard"><div class="testexBox screen" id="pirTestexBox${i}"><span>Insert Testex Tape Here</span></div><div class="pirTestexPhotoActions"><label class="btn small" for="pirTestexPhoto${i}" id="pirTestexPhotoLabel${i}">Take / Choose Tape Photo</label><input id="pirTestexPhoto${i}" class="hiddenFileInput" type="file" accept="image/*" capture="environment"><button type="button" class="btn small light" id="pirTestexRemove${i}" style="display:none">Remove Photo</button></div>${field('pirTestexLoc'+i,'Tape '+i+' Location / Area')}${field('pirTestexReading'+i,'Tape '+i+' Profile Reading')}${field('pirTestexNotes'+i,'Tape '+i+' Notes')}</div>`).join('')}</div></div>
+    <div id="pir-testex" class="panel"><h2>Testex Tape Inserts</h2><p class="tiny">Take or choose each tape photo, then use <b>Crop / Rotate</b> so the actual tape fills the box and stays readable for the inspector. The first 3 print on the PIR; Tape 4+ print automatically on attached Testex Tape Photos pages.</p><div class="testexScreenGrid" id="pirTestexGrid">${[1,2,3].map(pirTestexCardHtml).join('')}</div><div class="actions pirTestexAddActions"><button type="button" class="btn light" id="pirAddTestexBtn">+ Add Another Testex Tape</button><button type="button" class="btn light" id="pirRemoveTestexBtn" disabled>Remove Last Tape</button></div><div id="pirTestexCountMsg" class="tiny"></div></div>
     <div id="pir-instruments" class="panel"><div class="sectionTitleRow"><h2>Calibrated QC Equipment</h2><button type="button" class="btn light small" id="pirLoadSerialsBtn">Load Yesterday's Serial Numbers</button></div><p class="tiny">Loads the last saved PIR serial numbers from this same device. Use when the same QC equipment is used again.</p><div id="pirSerialMsg"></div><div class="grid three">${pirInstrumentNames().map((n,i)=>`<div class="checkrow"><label>${n}</label>${selectField('pirInstYes'+i,'Status',['YES','NO','N/A'])}${field('pirInstSerial'+i,'Serial Number')}${i===4?field('pirPosiAdjust','PA-2 Adjustment made') : ''}</div>`).join('')}</div></div>
     <div id="pir-ambient" class="panel"><h2>Ambient Conditions</h2><p class="tiny"><b>Auto-calc:</b> Enter Dry Bulb + Wet Bulb to calculate % Relative Humidity and Dew Point. Enter Surface Temp to calculate Surface Temp. - Dew Point Spread.</p><p class="tiny noticeInline"><b>Note:</b> Typical field practice is four ambient readings. Add readings as needed; blank readings still print as empty columns.</p><div id="pirAmbientBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirAmbientBlock">+ Add another Ambient Reading</button></div></div>
     <div id="pir-mixing" class="panel"><h2>Mixing / Application</h2><div id="pirMixBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirMixBlock">+ Add another Mix / Application Block</button></div></div>
@@ -1324,7 +1411,11 @@ function pirForm(){
   document.getElementById('addPirMixBlock').onclick=()=>{pirMixCount=Math.min(PIR_MIX_MAX_BLOCKS,pirMixCount+1); renderPirMixBlocks();};
   document.getElementById('addPirAmbientBlock').onclick=()=>{pirAmbientCount=Math.min(4,pirAmbientCount+1); renderPirAmbientBlocks(); if(pirAmbientCount>=4) document.getElementById('addPirAmbientBlock').disabled=true;};
   initSignatureButtons();
-  [1,2,3].forEach(setupPirTestexPhoto);
+  pirTestexCount=3;
+  pirTestexIndexes().forEach(setupPirTestexPhoto);
+  document.getElementById('pirAddTestexBtn').onclick=addPirTestexTape;
+  document.getElementById('pirRemoveTestexBtn').onclick=removeLastPirTestexTape;
+  refreshPirTestexButtons();
   document.getElementById('pirPrintBtn').onclick=(e)=>{e.preventDefault(); try{const data=collectPir(); savePirInstrumentSerials(data); document.title = formSaveTitle('pir', data.reportDate, data.project); logGeneratedForm('pir', data.project, data.reportDate, document.title); buildPirPrint(data); openPrintNow('pirMsg');}catch(err){const msg=document.getElementById('pirMsg'); if(msg) msg.innerHTML=`<div class="notice">Print preview could not open: ${esc(err.message)}.</div>`; console.error(err);} };
 }
 
@@ -1337,7 +1428,7 @@ function collectPir(){
    isChecked('pirAttachDisciplinary')?'Disciplinary Report':'',
    isChecked('pirAttachBol')?'Bill of Lading':''
  ].filter(Boolean).join(', ');
- const data={project:projectValue('pirProject'),reportDate:val('pirReportDate'),day:val('pirDay'),weatherAM:val('pirWeatherAM'),weatherPM:val('pirWeatherPM'),inspectionReport:val('pirInspectionReport'),attachedPages,page:'1',pageOf:'1',holdPoints:pirHoldPoints.map((q,i)=>({q,status:checked('pirHold'+i)})),sspc:val('pirSSPC'),specifiedProfile:val('pirSpecifiedProfile'),profileCheck:val('pirProfileCheck'),abrasiveTest:val('pirAbrasiveTest'),blotterTest:val('pirBlotterTest'),chloride1:val('pirChloride1'),chloride2:val('pirChloride2'),illumination:val('pirIllumination'),testex:[1,2,3].map(i=>({location:val('pirTestexLoc'+i),reading:val('pirTestexReading'+i),notes:val('pirTestexNotes'+i),photoUrl:pirTestexPhotoUrl(i)})),posiAdjust:val('pirPosiAdjust'),generalNotes:val('pirGeneralNotes'),qcPrint:val('pirQCPrint'),qcSignature:val('pirQCSignature'),qcsSignature:val('pirQCSSignature'),caulking:{location:val('pirCaulkLocation'),nameBatch:val('pirCaulkNameBatch'),tubeSize:val('pirTubeSize'),shelf:val('pirCaulkShelf'),totalUsed:val('pirTotalUsed')}};
+ const data={project:projectValue('pirProject'),reportDate:val('pirReportDate'),day:val('pirDay'),weatherAM:val('pirWeatherAM'),weatherPM:val('pirWeatherPM'),inspectionReport:val('pirInspectionReport'),attachedPages,page:'1',pageOf:'1',holdPoints:pirHoldPoints.map((q,i)=>({q,status:checked('pirHold'+i)})),sspc:val('pirSSPC'),specifiedProfile:val('pirSpecifiedProfile'),profileCheck:val('pirProfileCheck'),abrasiveTest:val('pirAbrasiveTest'),blotterTest:val('pirBlotterTest'),chloride1:val('pirChloride1'),chloride2:val('pirChloride2'),illumination:val('pirIllumination'),testex:pirTestexIndexes().map(i=>({index:i,location:val('pirTestexLoc'+i),reading:val('pirTestexReading'+i),notes:val('pirTestexNotes'+i),photoUrl:pirTestexPhotoUrl(i)})),posiAdjust:val('pirPosiAdjust'),generalNotes:val('pirGeneralNotes'),qcPrint:val('pirQCPrint'),qcSignature:val('pirQCSignature'),qcsSignature:val('pirQCSSignature'),caulking:{location:val('pirCaulkLocation'),nameBatch:val('pirCaulkNameBatch'),tubeSize:val('pirTubeSize'),shelf:val('pirCaulkShelf'),totalUsed:val('pirTotalUsed')}};
  data.instruments=pirInstrumentNames().map((n,i)=>({name:n,status:val('pirInstYes'+i),serial:val('pirInstSerial'+i)}));
  data.ambient=[1,2,3,4].map(i=>({location:val('pirAmbLoc'+i),time:val('pirAmbTime'+i),dry:val('pirDry'+i),wet:val('pirWet'+i),rh:val('pirRH'+i),surface:val('pirSurf'+i),dew:val('pirDew'+i),diff:val('pirDiff'+i)}));
  data.mixing=Array.from({length:pirMixCount},(_,idx)=>idx+1).map(i=>({location:val('pirMixLoc'+i),time:val('pirMixTime'+i),witness:val('pirMixWitness'+i),customCoaA:val('pirCustomCoaA'+i),customCoaB:val('pirCustomCoaB'+i),batchA:val('pirBatchA'+i),mfgA:val('pirMfgA'+i),shelfA:val('pirShelfA'+i),batchB:val('pirBatchB'+i),mfgB:val('pirMfgB'+i),shelfB:val('pirShelfB'+i),dust:val('pirDust'+i),thinner:val('pirThinner'+i),volume:val('pirVolume'+i),mfr:val('pirMfr'+i),prod:val('pirProd'+i),color:val('pirColor'+i),kit:val('pirKit'+i),pot:val('pirPot'+i),shelf:val('pirShelf'+i),induction:val('pirInduction'+i),temp:val('pirTemp'+i),qty:val('pirQty'+i),start:val('pirStart'+i),finish:val('pirFinish'+i),gallons:val('pirGallons'+i),system:val('pirSystem'+i),method:val('pirMethod'+i),gunTip:val('pirGunTip'+i),elapsed:val('pirElapsed'+i),dftPrev:val('pirDFTPrev'+i)}));
@@ -1363,10 +1454,18 @@ function buildPirPrint(data=collectPir(), files=[]){
  const extraMixRows=mix.slice(2).filter(m=>Object.values(m||{}).some(v=>String(v||'').trim()));
  const extraMixPage=extraMixRows.length?`<div class="pirMixExtraSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional Mix / Application Blocks</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><div class="pirExtraMixGrid">${extraMixRows.map(mixBlock).join('')}</div></div>`:'';
  const testex=[0,1,2].map(i=>{const photo=data.testex?.[i]?.photoUrl||''; return `<div class="testexBox pirTestexPrint${photo?' pirTestexHasPhoto':''}">${photo?`<img class="pirTestexPhotoPrint" src="${photo}" alt="Testex Tape ${i+1} photo">`:'<span>Insert Testex Tape Here</span>'}</div><div class="testexMeta">${cell(data.testex?.[i]?.location)} ${cell(data.testex?.[i]?.reading)} ${cell(data.testex?.[i]?.notes)}</div>`;}).join('');
+ const extraTestex=(data.testex||[]).slice(3).filter(t=>t&&(t.photoUrl||String(t.location||'').trim()||String(t.reading||'').trim()||String(t.notes||'').trim()));
+ const testexAttachmentPages=[];
+ for(let start=0;start<extraTestex.length;start+=3){
+   const chunk=extraTestex.slice(start,start+3);
+   const pageNo=Math.floor(start/3)+1;
+   testexAttachmentPages.push(`<div class="pirTestexExtraSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Attached Testex Tape Photos</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)} &nbsp; | &nbsp; Page ${pageNo} of ${Math.ceil(extraTestex.length/3)}</p></div></div><div class="pirTestexExtraGrid">${chunk.map((t,idx)=>{const tapeNo=t.index||start+idx+4;return `<section class="pirTestexExtraCard"><h2>Testex Tape ${tapeNo}</h2><div class="pirTestexExtraPhoto">${t.photoUrl?`<img src="${t.photoUrl}" alt="Testex Tape ${tapeNo}">`:'<span>No photo attached</span>'}</div><div class="pirTestexExtraMeta"><b>Location / Area:</b> ${cell(t.location)}<br><b>Profile Reading:</b> ${cell(t.reading)}<br><b>Notes:</b> ${cell(t.notes)}</div></section>`;}).join('')}</div></div>`);
+ }
  const holdText=pirHoldPoints.map((q,i)=>`${cell(q)} ${cell(hp[i]?.status)}`).join('<br>');
+ const computedAttachedPages=[data.attachedPages,extraTestex.length?`Testex Tape Photos (${Math.ceil(extraTestex.length/3)} page${Math.ceil(extraTestex.length/3)===1?'':'s'})`:'' ].filter(Boolean).join(', ');
  const html=`<div class="pirSheetV7">
    <div class="pirHeaderV7">
-     <div class="pirHLeft"><b>Project:</b> ${cell(data.project)}<br><b>Report Date:</b> ${cell(data.reportDate)}<br><b>Attached Pages:</b> ${cell(data.attachedPages)}</div>
+     <div class="pirHLeft"><b>Project:</b> ${cell(data.project)}<br><b>Report Date:</b> ${cell(data.reportDate)}<br><b>Attached Pages:</b> ${cell(computedAttachedPages)}</div>
      <div class="pirHLogo"><img src="${logo}"></div>
      <div class="pirHTitle"><b>Paint Inspection Report</b></div>
      <div class="pirHRight"><b>Weather:</b> AM ${cell(data.weatherAM)} &nbsp; PM ${cell(data.weatherPM)}</div>
@@ -1405,7 +1504,7 @@ function buildPirPrint(data=collectPir(), files=[]){
   const hasNotes=hasGeneralNotes || hasAdditionalNotesContent;
  const notesRows=(notes.rows||Array.from({length:8},()=>({}))).map(r=>`<tr><td>${cell(r.time)}</td><td>${cell(r.location)}</td><td>${cell(r.activity)}</td><td>${cell(r.notes)}</td></tr>`).join('');
  const notesPage=hasNotes?`<div class="pirNotesSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional QC Notes</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><table class="extraPrintTable"><tr><th>Date</th><td>${cell(notes.date||data.reportDate)}</td><th>Location / Area</th><td>${cell(notes.location)}</td><th>QC</th><td>${cell(notes.qc||data.qcPrint)}</td></tr></table>${hasGeneralNotes?extraPrintBox('General Notes / Nonconformance / Corrective Actions',data.generalNotes,1.05):''}<table class="extraPrintTable pirNotesTable"><tr><th>Time</th><th>Location / Area</th><th>Activity / What Happened</th><th>Notes</th></tr>${notesRows}</table>${extraPrintBox('Additional Summary / QC Comments',notes.summary||'',1.35)}<div class="extraSigGrid two"><div><b>QC Print:</b> ${cell(notes.print||notes.qc||data.qcPrint)}</div><div><b>QC Signature:</b> ${sigPrint(notes.signatureData,notes.signature||'')}</div></div></div>`:'';
- const pages=[html, extraMixPage, notesPage].filter(Boolean);
+ const pages=[html, extraMixPage, ...testexAttachmentPages, notesPage].filter(Boolean);
  const finalHtml=pages.join('');
  setPrintPages(pages); return finalHtml;
 }

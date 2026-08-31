@@ -194,3 +194,5 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - The fixed PIR header no longer renders the redundant `Page: 1 of 1` cell that created an implicit third grid row and overlapped the `Profile Measurement` heading.
 - PIR print/clean-PDF content is inset about 0.14 in inside Letter size so printers with larger non-printable edge margins (including office printers) do not clip the outer report border/content.
 - No changes to PIR calculations, signatures, mixing/application logic, or any other Field Forms workflow.
+
+- 2026-08-31 PIR Testex workflow: starts with 3 tape slots and supports + Add Another Testex Tape one at a time (up to 50). Testex photo selection opens a crop/rotate/zoom/drag editor so the tape can be made inspector-readable without stretching. Tapes 1-3 remain in the official PIR Profile Measurement area; Tape 4+ automatically print on attached Testex Tape Photos pages with location, reading, and notes.
