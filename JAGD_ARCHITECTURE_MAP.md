@@ -179,3 +179,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - The batch summary explicitly shows `X of X receipts safely received` separately from `AWS details: ready / reading / needs review`. Field users may leave once all photos are safely received even if AWS is still processing.
 - A genuinely failed upload remains visible by receipt number/original filename and instructs the user to re-select it before leaving. Polling no longer hides that upload failure.
 - AWS detail extraction automatically retries once when Textract errors or cannot confidently read the required vendor + amount. After the retry, the photo remains stored and is marked `Needs Review` rather than being treated as a failed submission.
+
+
+### 2026-08-31 — PIR print/PDF completeness regression fix
+- Field Forms only; `public/styles.css`.
+- PIR print section heights are constrained to fit inside one Letter page again.
+- Clean-PDF capture is explicitly allowed to measure the full generated PIR instead of clipping fixed-height overflow.
+- Top project/report information, filled PIR cells, caulking, QC/QCS signatures, and revision footer are protected from print/PDF clipping.
+- Live phone/desktop data-entry layout and all non-PIR forms are unchanged.

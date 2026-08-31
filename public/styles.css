@@ -1232,3 +1232,160 @@
 
 /* 2026-08-26 receipt batch receipt-vs-AWS status clarity */
 .receiptBatchSummary{gap:8px}.receiptStoredLine{font-weight:800;color:#166534}.receiptBatchItems{display:grid;gap:8px;margin-top:6px}.receiptBatchItem{display:grid;gap:3px;padding:10px 12px;border:1px solid #d8e1ee;border-radius:10px;background:#fff}.receiptBatchItem.ready{border-color:#a7d7b3;background:#f4fff7}.receiptBatchItem.reading{border-color:#bfd4f7;background:#f7fbff}.receiptBatchItem.review{border-color:#f5cf72;background:#fffaf0}.receiptBatchItem.failed{border-color:#f2a8a8;background:#fff5f5}.receiptBatchItem small{color:#667085}.receiptUploadWarning{padding:8px 10px;border-radius:9px;background:#fff0f0;color:#991b1b}.receiptProcessingNote{margin-top:8px;padding:8px 10px;border-radius:9px;background:#eef5ff;color:#1e3a5f}
+
+
+/* 2026-08-31 PIR emergency print completeness fix.
+   Regression guard: the prior readability pass made the fixed PIR section heights add up
+   taller than the printable sheet, so the bottom/signature area and some filled values
+   could be clipped. Keep the live entry form unchanged; fit every PIR print section inside
+   one Letter page and let the clean-PDF capture measure the complete generated sheet. */
+@media print{
+  body:has(.pirSheetV7) .printPage{
+    width:8.5in!important;
+    height:11in!important;
+    max-height:11in!important;
+    overflow:visible!important;
+    margin:0!important;
+    padding:0!important;
+    page-break-inside:avoid!important;
+    break-inside:avoid!important;
+  }
+  body:has(.pirSheetV7) .pirSheetV7{
+    width:8.32in!important;
+    height:10.72in!important;
+    max-height:10.72in!important;
+    margin:.04in auto 0 auto!important;
+    overflow:visible!important;
+    font-size:8.55px!important;
+    line-height:1.10!important;
+  }
+  body:has(.pirSheetV7) .pirHeaderV7{
+    height:.72in!important;
+    grid-template-rows:.35in .37in!important;
+  }
+  body:has(.pirSheetV7) .pirHeaderV7>div{
+    padding:3px 5px!important;
+  }
+  body:has(.pirSheetV7) .pirHLeft,
+  body:has(.pirSheetV7) .pirHRight,
+  body:has(.pirSheetV7) .pirHDay,
+  body:has(.pirSheetV7) .pirHReport,
+  body:has(.pirSheetV7) .pirHPage{
+    font-size:7.9px!important;
+    line-height:1.08!important;
+    overflow:visible!important;
+  }
+  body:has(.pirSheetV7) .pirHTitle{
+    font-size:14px!important;
+    line-height:1.05!important;
+    overflow:visible!important;
+  }
+  body:has(.pirSheetV7) .pirHLogo img{
+    max-width:.90in!important;
+    max-height:.57in!important;
+  }
+
+  body:has(.pirSheetV7) .pirTopV7{height:1.95in!important;}
+  body:has(.pirSheetV7) .pirBar,
+  body:has(.pirSheetV7) .pirIAHead,
+  body:has(.pirSheetV7) .pirMixHeadV7,
+  body:has(.pirSheetV7) .pirCaulkHeadV7{
+    height:.18in!important;
+    line-height:.18in!important;
+    font-size:7.8px!important;
+  }
+  body:has(.pirSheetV7) .pirTopBody{
+    height:1.77in!important;
+    padding:3px 5px!important;
+    font-size:7.8px!important;
+    line-height:1.10!important;
+    overflow:visible!important;
+  }
+  body:has(.pirSheetV7) .pirTestexStackV7{
+    height:1.77in!important;
+    padding:2px!important;
+  }
+  body:has(.pirSheetV7) .pirTestexPrint{font-size:9.6px!important;}
+  body:has(.pirSheetV7) .testexMeta{font-size:5.9px!important;}
+
+  body:has(.pirSheetV7) .pirIAV7{height:1.40in!important;}
+  body:has(.pirSheetV7) .pirInstGrid{grid-auto-rows:.155in!important;}
+  body:has(.pirSheetV7) .pirAmbGrid{grid-auto-rows:.175in!important;}
+  body:has(.pirSheetV7) .pirCell{
+    padding:1px 3px!important;
+    overflow:visible!important;
+  }
+  body:has(.pirSheetV7) .tinyCell{
+    font-size:6.8px!important;
+    line-height:1.02!important;
+  }
+
+  body:has(.pirSheetV7) .pirMixGridV7{
+    height:5.42in!important;
+    grid-template-columns:1fr 1fr!important;
+    grid-template-rows:1fr!important;
+  }
+  body:has(.pirSheetV7) .mixPrintBlock{overflow:visible!important;}
+  body:has(.pirSheetV7) .mixRow{
+    height:.25in!important;
+    font-size:7.8px!important;
+  }
+  body:has(.pirSheetV7) .mixRow span{padding:2px 3px!important;}
+  body:has(.pirSheetV7) .mixHead{
+    height:.20in!important;
+    line-height:.20in!important;
+    font-size:7.7px!important;
+  }
+  body:has(.pirSheetV7) .mixGrid{
+    grid-auto-rows:minmax(.18in,auto)!important;
+    font-size:7.45px!important;
+    line-height:1.02!important;
+  }
+  body:has(.pirSheetV7) .mixGrid span{
+    padding:1px 3px!important;
+    white-space:normal!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    min-width:0!important;
+  }
+
+  body:has(.pirSheetV7) .pirCaulkGridV7{
+    height:.26in!important;
+    font-size:7.6px!important;
+  }
+  body:has(.pirSheetV7) .pirSigGridV7{
+    height:.36in!important;
+    font-size:7.8px!important;
+    overflow:visible!important;
+  }
+  body:has(.pirSheetV7) .pirSigGridV7>div{overflow:visible!important;}
+  body:has(.pirSheetV7) .pirSigGridV7 .sigPrint{
+    max-width:1.38in!important;
+    max-height:.29in!important;
+    display:inline-block!important;
+  }
+  body:has(.pirSheetV7) .pirRevV7{font-size:6px!important;}
+}
+
+/* Clean-PDF iframe safety: never crop a generated PIR before html2canvas sees it. */
+.pdfCaptureBody:has(.pirSheetV7) .printPage{
+  height:auto!important;
+  max-height:none!important;
+  min-height:11in!important;
+  overflow:visible!important;
+}
+.pdfCaptureBody:has(.pirSheetV7) .pirSheetV7{
+  height:auto!important;
+  max-height:none!important;
+  min-height:10.72in!important;
+  overflow:visible!important;
+}
+.pdfCaptureBody:has(.pirSheetV7) .pirHeaderV7>div,
+.pdfCaptureBody:has(.pirSheetV7) .pirTopBody,
+.pdfCaptureBody:has(.pirSheetV7) .pirCell,
+.pdfCaptureBody:has(.pirSheetV7) .mixPrintBlock,
+.pdfCaptureBody:has(.pirSheetV7) .mixGrid span,
+.pdfCaptureBody:has(.pirSheetV7) .pirSigGridV7,
+.pdfCaptureBody:has(.pirSheetV7) .pirSigGridV7>div{
+  overflow:visible!important;
+}
