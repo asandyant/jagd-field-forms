@@ -1883,7 +1883,10 @@ async function weeklySignForm(id){
 
 function buildWeeklyPrint(meeting){
   const attendees = Array.isArray(meeting.attendees) ? meeting.attendees : [];
-  const perPage = 18;
+  // Keep weekly sign-in rows within the printable Letter-page height.
+  // 18 rows fit on screen but can clip at the printer/PDF page boundary on some systems.
+  // Paginate at 14 rows so every attendee and signature is preserved on a real second page.
+  const perPage = 14;
   const chunks = [];
   for(let i=0;i<attendees.length;i+=perPage) chunks.push(attendees.slice(i,i+perPage));
   if(!chunks.length) chunks.push([]);

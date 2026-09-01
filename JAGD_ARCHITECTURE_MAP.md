@@ -202,3 +202,5 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - PIR Testex tapes 4+ are forced into explicit attachment print pages and included in clean PDF/browser print.
 - PIR ambient readings now support up to 20 entries; first 4 stay on the official PIR page and readings 5+ print on Attached Ambient Conditions pages.
 - Attached Pages header now reports generated Testex and Ambient attachment pages.
+
+- 2026-09-01 Weekly Safety Meeting print safeguard: attendee PDF pagination is capped at 14 workers per printed Letter page instead of 18. This prevents rows/signatures at the bottom of page 1 from being clipped by browser/printer printable-height differences; meetings with 15+ attendees automatically generate page 2+ with repeated header/topic/table structure and continuous row numbering.
