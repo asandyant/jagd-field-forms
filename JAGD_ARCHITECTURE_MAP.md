@@ -204,3 +204,11 @@ Verify `server.js` static path before patching. Anthony prefers one Windows CMD 
 - Attached Pages header now reports generated Testex and Ambient attachment pages.
 
 - 2026-09-01 Weekly Safety Meeting print safeguard: attendee PDF pagination is capped at 14 workers per printed Letter page instead of 18. This prevents rows/signatures at the bottom of page 1 from being clipped by browser/printer printable-height differences; meetings with 15+ attendees automatically generate page 2+ with repeated header/topic/table structure and continuous row numbering.
+
+## 2026-09-03 — PIR QC report photo attachments + blank-extra print safeguard
+- Field Forms PIR now has an optional `Report Photo Attachments` section at the bottom of the field questionnaire.
+- QC can add report photos one at a time with `+ Add Photo`; each photo has its own optional Photo Note and can be removed before generating the report.
+- Print/save inclusion is content-driven: a photo attachment prints only when it has an actual photo or a nonblank note. Unused blank photo controls do not create PDF pages.
+- Each used report photo/note prints on its own Letter attachment page after the normal PIR generated pages. This deliberately avoids squeezing photos/notes into the main PIR and reduces clipping/cutoff risk in both browser print and clean-PDF capture.
+- Extra Ambient Conditions remain content-driven: readings 5+ print only when at least one actual ambient field contains information. Merely opening extra blank ambient boxes does not create blank attachment columns/pages. The main PIR's existing four ambient columns remain unchanged.
+- Existing Testex tape attachments, Additional Mix/Application pages, Additional QC Notes page rules, signatures, and main PIR layout remain unchanged.

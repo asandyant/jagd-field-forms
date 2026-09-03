@@ -1523,3 +1523,25 @@
 }
 .pdfCaptureBody .pirTestexExtraSheet{width:8.05in!important;min-height:10.55in!important;margin:.12in auto 0!important;padding:.16in!important;box-sizing:border-box!important;}
 \n\n/* v2026-08-31 PIR extra-reading print reliability.\n   Main PIR keeps 4 ambient columns. Ambient readings 5+ and Testex tapes 4+ become\n   explicit Letter attachment pages so clean-PDF and browser print both include them. */\n.pirAmbientExtraSheet{width:8.05in;min-height:10.55in;margin:.12in auto 0;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;border:1px solid #000;padding:.16in;box-sizing:border-box;page-break-inside:avoid;break-inside:avoid;}\n.pirAmbientExtraTable{width:100%;border-collapse:collapse;margin-top:.18in;font-size:12px;}\n.pirAmbientExtraTable th,.pirAmbientExtraTable td{border:1px solid #000;padding:10px 8px;text-align:center;vertical-align:middle;}\n.pirAmbientExtraTable th:first-child{text-align:left;width:2.1in;background:#eee;}\n.pirAttachmentSheet{display:block!important;}\n@media print{\n  body:has(.pirSheetV7) .printPage:has(.pirTestexExtraSheet),\n  body:has(.pirSheetV7) .printPage:has(.pirAmbientExtraSheet){overflow:visible!important;}\n  .pirTestexExtraSheet,.pirAmbientExtraSheet{display:block!important;width:8.05in!important;height:10.55in!important;max-height:10.55in!important;margin:.12in auto 0!important;overflow:hidden!important;}\n}\n.pdfCaptureBody .pirTestexExtraSheet,.pdfCaptureBody .pirAmbientExtraSheet{display:block!important;width:8.05in!important;min-height:10.55in!important;margin:.12in auto 0!important;box-sizing:border-box!important;}\n
+/* 2026-09-03 PIR QC report photo attachments.
+   Blank attachment controls never print; each used photo/note receives its own Letter page
+   so image/note content is not squeezed into or clipped by the main PIR. */
+.pirAttachmentSection{margin-top:14px;}
+#pirAttachmentList{display:grid;gap:12px;margin-top:10px;}
+.pirAttachmentCard{border:1px solid var(--line,#d8dee8);border-radius:14px;padding:12px;background:#fff;}
+.pirAttachmentCard h3{margin:0;}
+.pirAttachmentPreview{margin:10px 0;min-height:120px;max-height:280px;border:1px dashed #94a3b8;border-radius:12px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#64748b;font-size:12px;}
+.pirAttachmentPreview img{display:block;width:100%;max-height:280px;object-fit:contain;background:#fff;}
+.pirAttachmentCard textarea{min-height:76px;resize:vertical;}
+.pirPhotoAttachmentSheet{width:8.05in;height:10.55in;max-height:10.55in;margin:.12in auto 0;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;border:1px solid #000;padding:.16in;box-sizing:border-box;overflow:hidden;page-break-inside:avoid;break-inside:avoid;}
+.pirPhotoAttachmentBody{height:9.38in;display:flex;flex-direction:column;gap:.12in;min-height:0;}
+.pirPhotoAttachmentImage{height:7.55in;min-height:0;border:1px solid #000;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:.08in;box-sizing:border-box;}
+.pirPhotoAttachmentImage img{display:block;width:100%;height:100%;object-fit:contain;}
+.pirPhotoMissing{font-size:14px;color:#555;text-align:center;}
+.pirPhotoAttachmentNote{min-height:1.35in;max-height:1.55in;border:1px solid #000;padding:.10in;font-size:12px;line-height:1.25;box-sizing:border-box;overflow:hidden;overflow-wrap:anywhere;white-space:normal;}
+.pirPhotoAttachmentNote>div{margin-top:6px;white-space:pre-wrap;}
+@media print{
+  body:has(.pirSheetV7) .printPage:has(.pirPhotoAttachmentSheet){overflow:visible!important;}
+  .pirPhotoAttachmentSheet{display:block!important;width:8.05in!important;height:10.55in!important;max-height:10.55in!important;margin:.12in auto 0!important;padding:.16in!important;overflow:hidden!important;}
+}
+.pdfCaptureBody .pirPhotoAttachmentSheet{display:block!important;width:8.05in!important;height:10.55in!important;max-height:10.55in!important;margin:.12in auto 0!important;padding:.16in!important;box-sizing:border-box!important;overflow:hidden!important;}

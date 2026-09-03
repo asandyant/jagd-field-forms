@@ -6,6 +6,8 @@ const PIR_MIX_MAX_BLOCKS = 8;
 const PIR_MIX_FIELD_SUFFIXES = ['MixLoc','MixTime','MixWitness','CustomCoaA','CustomCoaB','BatchA','MfgA','ShelfA','BatchB','MfgB','ShelfB','Dust','Thinner','Volume','Mfr','Prod','Color','Kit','Pot','Shelf','Induction','Temp','Qty','Start','Finish','Gallons','System','Method','GunTip','Elapsed','DFTPrev'];
 let pirAmbientCount = 1;
 let pirAdditionalNotesOpen = false;
+let pirAttachmentCount = 0;
+const PIR_ATTACHMENT_MAX = 30;
 const signatureStore = {};
 
 const PROJECT_OPTIONS = [
@@ -268,6 +270,7 @@ const PRINT_SHEET_SELECTOR = [
   '.pirNotesSheet',
   '.pirTestexExtraSheet',
   '.pirAmbientExtraSheet',
+  '.pirPhotoAttachmentSheet',
   '.dailyPrintSheet',
   '.dsifSheet',
   '.weeklySheet',
@@ -1380,6 +1383,68 @@ function home(){
   </div>`;
 }
 
+function pirAttachmentCardHtml(i){
+  return `<div class="pirAttachmentCard" data-pir-attachment-index="${i}"><div class="sectionTitleRow"><h3>Report Photo ${i}</h3><button type="button" class="btn small danger" data-remove-pir-attachment="${i}">Remove</button></div><label class="btn light small" for="pirAttachmentPhoto${i}">Take / Choose Photo</label><input id="pirAttachmentPhoto${i}" class="hiddenFileInput" type="file" accept="image/*" capture="environment"><div id="pirAttachmentPreview${i}" class="pirAttachmentPreview"><span>No photo selected</span></div><div><label for="pirAttachmentNote${i}">Photo Note</label><textarea id="pirAttachmentNote${i}" maxlength="600" placeholder="Optional note for this photo"></textarea></div></div>`;
+}
+function renderPirAttachmentPhoto(i){
+  const box=document.getElementById('pirAttachmentPreview'+i);
+  if(!box) return;
+  const files=getPhotoFileStore('pirAttachmentPhoto'+i).filter(f=>f&&f.type&&f.type.startsWith('image/'));
+  const file=files[files.length-1];
+  if(!file){box.innerHTML='<span>No photo selected</span>';return;}
+  const old=box.dataset.objectUrl;
+  if(old){try{URL.revokeObjectURL(old);}catch(e){}}
+  const url=URL.createObjectURL(file);
+  box.dataset.objectUrl=url;
+  box.innerHTML=`<img src="${url}" alt="Report Photo ${i} preview">`;
+}
+function setupPirAttachmentPhoto(i){
+  const input=document.getElementById('pirAttachmentPhoto'+i);
+  if(!input || input.dataset.ready==='1') return;
+  input.dataset.ready='1';
+  input.addEventListener('change',()=>{
+    const chosen=[...(input.files||[])].filter(f=>f&&f.type&&f.type.startsWith('image/'));
+    const store=getPhotoFileStore(input.id);
+    store.splice(0,store.length,...chosen.slice(-1));
+    renderPirAttachmentPhoto(i);
+  });
+  renderPirAttachmentPhoto(i);
+}
+function addPirAttachment(){
+  if(pirAttachmentCount>=PIR_ATTACHMENT_MAX) return;
+  pirAttachmentCount+=1;
+  const holder=document.getElementById('pirAttachmentList');
+  if(holder){
+    holder.insertAdjacentHTML('beforeend',pirAttachmentCardHtml(pirAttachmentCount));
+    setupPirAttachmentPhoto(pirAttachmentCount);
+    holder.querySelector(`[data-pir-attachment-index="${pirAttachmentCount}"]`)?.scrollIntoView({behavior:'smooth',block:'center'});
+  }
+  const add=document.getElementById('pirAddAttachmentBtn');
+  if(add) add.disabled=pirAttachmentCount>=PIR_ATTACHMENT_MAX;
+}
+function removePirAttachment(i){
+  const n=Number(i);
+  if(!n) return;
+  const store=getPhotoFileStore('pirAttachmentPhoto'+n); store.splice(0,store.length);
+  document.querySelector(`[data-pir-attachment-index="${n}"]`)?.remove();
+}
+function collectPirAttachments(){
+  return Array.from({length:pirAttachmentCount},(_,idx)=>idx+1).map(i=>{
+    const files=getPhotoFileStore('pirAttachmentPhoto'+i).filter(f=>f&&f.type&&f.type.startsWith('image/'));
+    const file=files[files.length-1];
+    let photoUrl='';
+    if(file){
+      const preview=document.getElementById('pirAttachmentPreview'+i);
+      photoUrl=preview?.dataset?.objectUrl || '';
+      if(!photoUrl){photoUrl=URL.createObjectURL(file); if(preview) preview.dataset.objectUrl=photoUrl;}
+    }
+    return {index:i,note:val('pirAttachmentNote'+i),photoUrl,hasPhoto:Boolean(file)};
+  }).filter(row=>row.hasPhoto || String(row.note||'').trim());
+}
+function pirAmbientHasContent(a={}){
+  return ['location','time','dry','wet','rh','surface','dew','diff'].some(key=>String(a?.[key]||'').trim());
+}
+
 function pirForm(){
   app.innerHTML=`<div class="container printOnly"><h1>Paint Inspection Report Questionnaire</h1><div class="pirOnePage">
     <div id="pir-project" class="panel"><h2>Project Information</h2><div class="grid three">${projectField('pirProject','Project')} ${field('pirReportDate','Report Date','date')} ${field('pirDay','Day','text','readonly')} ${field('pirWeatherAM','Weather AM')} ${field('pirWeatherPM','Weather PM')} ${field('pirInspectionReport','Inspection Report #')}</div></div>
@@ -1388,9 +1453,9 @@ function pirForm(){
     <div id="pir-surface" class="panel"><h2>Surface Cleanliness / Profile Measurement</h2><div class="grid three">${field('pirSSPC','SSPC/NACE SP')} ${field('pirSpecifiedProfile','Specified Profile')} ${field('pirProfileCheck','Profile Check')} ${selectField('pirAbrasiveTest','Abrasive Test Acceptable',['','YES','NO','N/A'])} ${selectField('pirBlotterTest','Blotter Test Acceptable',['','YES','NO','N/A'])} ${field('pirChloride1','Chloride ug/cm²')} ${field('pirChloride2','Chloride ug/cm²')} ${selectField('pirIllumination','Illumination Acceptable',['','YES','NO','N/A'])}</div></div>
     <div id="pir-testex" class="panel"><h2>Testex Tape Inserts</h2><p class="tiny">Take or choose each tape photo, then use <b>Crop / Rotate</b> so the actual tape fills the box and stays readable for the inspector. The first 3 print on the PIR; Tape 4+ print automatically on attached Testex Tape Photos pages.</p><div class="testexScreenGrid" id="pirTestexGrid">${[1,2,3].map(pirTestexCardHtml).join('')}</div><div class="actions pirTestexAddActions"><button type="button" class="btn light" id="pirAddTestexBtn">+ Add Another Testex Tape</button><button type="button" class="btn light" id="pirRemoveTestexBtn" disabled>Remove Last Tape</button></div><div id="pirTestexCountMsg" class="tiny"></div></div>
     <div id="pir-instruments" class="panel"><div class="sectionTitleRow"><h2>Calibrated QC Equipment</h2><button type="button" class="btn light small" id="pirLoadSerialsBtn">Load Yesterday's Serial Numbers</button></div><p class="tiny">Loads the last saved PIR serial numbers from this same device. Use when the same QC equipment is used again.</p><div id="pirSerialMsg"></div><div class="grid three">${pirInstrumentNames().map((n,i)=>`<div class="checkrow"><label>${n}</label>${selectField('pirInstYes'+i,'Status',['YES','NO','N/A'])}${field('pirInstSerial'+i,'Serial Number')}${i===4?field('pirPosiAdjust','PA-2 Adjustment made') : ''}</div>`).join('')}</div></div>
-    <div id="pir-ambient" class="panel"><h2>Ambient Conditions</h2><p class="tiny"><b>Auto-calc:</b> Enter Dry Bulb + Wet Bulb to calculate % Relative Humidity and Dew Point. Enter Surface Temp to calculate Surface Temp. - Dew Point Spread.</p><p class="tiny noticeInline"><b>Note:</b> Typical field practice is four ambient readings. Add readings as needed; blank readings still print as empty columns.</p><div id="pirAmbientBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirAmbientBlock">+ Add another Ambient Reading</button></div></div>
+    <div id="pir-ambient" class="panel"><h2>Ambient Conditions</h2><p class="tiny"><b>Auto-calc:</b> Enter Dry Bulb + Wet Bulb to calculate % Relative Humidity and Dew Point. Enter Surface Temp to calculate Surface Temp. - Dew Point Spread.</p><p class="tiny noticeInline"><b>Note:</b> Typical field practice is four ambient readings. Add readings as needed. Extra readings print only when at least one field contains information; unused blank extra boxes are ignored.</p><div id="pirAmbientBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirAmbientBlock">+ Add another Ambient Reading</button></div></div>
     <div id="pir-mixing" class="panel"><h2>Mixing / Application</h2><div id="pirMixBlocks"></div><div class="actions"><button type="button" class="btn light" id="addPirMixBlock">+ Add another Mix / Application Block</button></div></div>
-    <div id="pir-caulk" class="panel"><h2>Caulking / Signatures</h2><div class="grid three">${field('pirCaulkLocation','Caulking Location')} ${field('pirCaulkNameBatch','Name / Batch')} ${field('pirTubeSize','Tube Size')} ${field('pirCaulkShelf','Shelf Life')} ${field('pirTotalUsed','Total Amount Used')} ${field('pirQCPrint','QC Print')} ${sigField('pirQCSignature','QC Signature')} ${sigField('pirQCSSignature','QCS Signature')}</div>${textarea('pirGeneralNotes','General Notes / Nonconformance / Corrective Actions')}<div class="actions"><button class="btn light" id="pirAddNotesPageBtn" type="button">+ Add Additional QC Notes Page</button></div><div id="pirAdditionalNotesPanel" class="panel innerPanel" style="display:none"><h2>Additional QC Notes Page</h2><p class="tiny">Optional second page for side notes, cleaned/completed areas, activity times, or anything QC wants to track. This only prints when opened.</p><div class="grid three">${field('pirNotesLocation','Notes Location / Area')} ${field('pirNotesDate','Notes Date','date')} ${field('pirNotesQC','QC Print Name')}</div><div class="extraTableWrap"><table class="table extraEntryTable"><thead><tr><th>Time</th><th>Location / Area</th><th>Activity / What Happened</th><th>Notes</th></tr></thead><tbody>${Array.from({length:8},(_,idx)=>{const i=idx+1;return `<tr><td><input id="pirNoteTime${i}" type="time"></td><td><input id="pirNoteLoc${i}"></td><td><input id="pirNoteAct${i}"></td><td><input id="pirNoteText${i}"></td></tr>`}).join('')}</tbody></table></div>${textarea('pirNotesSummary','Additional Summary / QC Comments')}<div class="grid two">${field('pirNotesPrint','QC Print')} ${sigField('pirNotesSignature','QC Signature')}</div></div><div class="actions"><button class="btn" id="pirPrintBtn">Save PDF / Print PIR</button></div>${printPdfHelp('pir')}<div id="pirMsg"></div></div>
+    <div id="pir-caulk" class="panel"><h2>Caulking / Signatures</h2><div class="grid three">${field('pirCaulkLocation','Caulking Location')} ${field('pirCaulkNameBatch','Name / Batch')} ${field('pirTubeSize','Tube Size')} ${field('pirCaulkShelf','Shelf Life')} ${field('pirTotalUsed','Total Amount Used')} ${field('pirQCPrint','QC Print')} ${sigField('pirQCSignature','QC Signature')} ${sigField('pirQCSSignature','QCS Signature')}</div>${textarea('pirGeneralNotes','General Notes / Nonconformance / Corrective Actions')}<div class="actions"><button class="btn light" id="pirAddNotesPageBtn" type="button">+ Add Additional QC Notes Page</button></div><div id="pirAdditionalNotesPanel" class="panel innerPanel" style="display:none"><h2>Additional QC Notes Page</h2><p class="tiny">Optional second page for side notes, cleaned/completed areas, activity times, or anything QC wants to track. This only prints when opened.</p><div class="grid three">${field('pirNotesLocation','Notes Location / Area')} ${field('pirNotesDate','Notes Date','date')} ${field('pirNotesQC','QC Print Name')}</div><div class="extraTableWrap"><table class="table extraEntryTable"><thead><tr><th>Time</th><th>Location / Area</th><th>Activity / What Happened</th><th>Notes</th></tr></thead><tbody>${Array.from({length:8},(_,idx)=>{const i=idx+1;return `<tr><td><input id="pirNoteTime${i}" type="time"></td><td><input id="pirNoteLoc${i}"></td><td><input id="pirNoteAct${i}"></td><td><input id="pirNoteText${i}"></td></tr>`}).join('')}</tbody></table></div>${textarea('pirNotesSummary','Additional Summary / QC Comments')}<div class="grid two">${field('pirNotesPrint','QC Print')} ${sigField('pirNotesSignature','QC Signature')}</div></div><div class="panel innerPanel pirAttachmentSection"><h2>Report Photo Attachments</h2><p class="tiny">Optional. Tap <b>+ Add Photo</b> for each report picture and add a short note if needed. Only photos or notes with actual information print; unused blank attachment boxes are ignored.</p><div id="pirAttachmentList"></div><div class="actions"><button type="button" class="btn light" id="pirAddAttachmentBtn">+ Add Photo</button></div></div><div class="actions"><button class="btn" id="pirPrintBtn">Save PDF / Print PIR</button></div>${printPdfHelp('pir')}<div id="pirMsg"></div></div>
   </div></div>`;
   const dateEl=document.getElementById('pirReportDate');
   const dayEl=document.getElementById('pirDay');
@@ -1406,6 +1471,10 @@ function pirForm(){
   pirMixCount=1; renderPirMixBlocks();
   pirAmbientCount=1; renderPirAmbientBlocks();
   pirAdditionalNotesOpen=false;
+  pirAttachmentCount=0;
+  const pirAddAttachmentBtn=document.getElementById('pirAddAttachmentBtn');
+  if(pirAddAttachmentBtn) pirAddAttachmentBtn.onclick=addPirAttachment;
+  document.getElementById('pirAttachmentList')?.addEventListener('click',e=>{const btn=e.target.closest('[data-remove-pir-attachment]'); if(btn) removePirAttachment(btn.dataset.removePirAttachment);});
   const pirNotesBtn=document.getElementById('pirAddNotesPageBtn');
   if(pirNotesBtn){pirNotesBtn.onclick=()=>{pirAdditionalNotesOpen=true; const panel=document.getElementById('pirAdditionalNotesPanel'); if(panel) panel.style.display='block'; pirNotesBtn.textContent='Additional QC Notes Page Added'; pirNotesBtn.disabled=true; const d=document.getElementById('pirNotesDate'); if(d && !d.value) d.value=val('pirReportDate'); const qc=document.getElementById('pirNotesQC'); if(qc && !qc.value) qc.value=val('pirQCPrint'); panel&&panel.scrollIntoView({behavior:'smooth',block:'start'});};}
   const pirLoadSerialsBtn=document.getElementById('pirLoadSerialsBtn');
@@ -1437,6 +1506,7 @@ function collectPir(){
  data.qcSignatureData=signatureStore.pirQCSignature || ''; data.qcsSignatureData=signatureStore.pirQCSSignature || ''; data.mixingCount=pirMixCount;
  data.additionalNotesOpen=pirAdditionalNotesOpen || !!document.getElementById('pirAdditionalNotesPanel')?.offsetParent;
  data.additionalNotes={location:val('pirNotesLocation'),date:val('pirNotesDate'),qc:val('pirNotesQC'),summary:val('pirNotesSummary'),print:val('pirNotesPrint'),signature:val('pirNotesSignature'),signatureData:signatureStore.pirNotesSignature||'',rows:Array.from({length:8},(_,idx)=>{const i=idx+1; return {time:val('pirNoteTime'+i),location:val('pirNoteLoc'+i),activity:val('pirNoteAct'+i),notes:val('pirNoteText'+i)};})};
+ data.photoAttachments=collectPirAttachments();
  return data;
 }
 
@@ -1452,7 +1522,7 @@ function buildPirPrint(data=collectPir(), files=[]){
  }).join('') + `<div class="pirCell tinyCell">YES</div><div class="pirCell tinyCell">Posi verified as per PA-2?</div><div class="pirCell tinyCell">Adjustment made: ${cell(data.posiAdjust)}</div>`;
  const ambHead=`<div class="pirCell tinyCell"></div>${mainAmb.map(a=>`<div class="pirCell tinyCell center">${cell(a.location)}</div>`).join('')}`;
  const ambRows=[['Time','time'],['Dry Bulb Temp','dry'],['Wet Bulb Temp','wet'],['% Relative Humidity','rh'],['Surface Temp.','surface'],['Dew Point','dew'],['Surface Temp. - Dew Point Spread','diff']].map(([label,key])=>`<div class="pirCell tinyCell">${label}</div>${mainAmb.map(a=>`<div class="pirCell tinyCell center">${cell(a[key])}</div>`).join('')}`).join('');
- const extraAmb=amb.slice(4).filter(a=>a&&Object.values(a).some((v,k)=>k!==0&&String(v||'').trim()));
+ const extraAmb=amb.slice(4).filter(pirAmbientHasContent);
  const ambientAttachmentPages=[];
  for(let start=0;start<extraAmb.length;start+=4){
    const chunk=extraAmb.slice(start,start+4);
@@ -1516,7 +1586,8 @@ function buildPirPrint(data=collectPir(), files=[]){
   const hasNotes=hasGeneralNotes || hasAdditionalNotesContent;
  const notesRows=(notes.rows||Array.from({length:8},()=>({}))).map(r=>`<tr><td>${cell(r.time)}</td><td>${cell(r.location)}</td><td>${cell(r.activity)}</td><td>${cell(r.notes)}</td></tr>`).join('');
  const notesPage=hasNotes?`<div class="pirNotesSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Additional QC Notes</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)}</p></div></div><table class="extraPrintTable"><tr><th>Date</th><td>${cell(notes.date||data.reportDate)}</td><th>Location / Area</th><td>${cell(notes.location)}</td><th>QC</th><td>${cell(notes.qc||data.qcPrint)}</td></tr></table>${hasGeneralNotes?extraPrintBox('General Notes / Nonconformance / Corrective Actions',data.generalNotes,1.05):''}<table class="extraPrintTable pirNotesTable"><tr><th>Time</th><th>Location / Area</th><th>Activity / What Happened</th><th>Notes</th></tr>${notesRows}</table>${extraPrintBox('Additional Summary / QC Comments',notes.summary||'',1.35)}<div class="extraSigGrid two"><div><b>QC Print:</b> ${cell(notes.print||notes.qc||data.qcPrint)}</div><div><b>QC Signature:</b> ${sigPrint(notes.signatureData,notes.signature||'')}</div></div></div>`:'';
- const pages=[html, extraMixPage, ...testexAttachmentPages, ...ambientAttachmentPages, notesPage].filter(Boolean);
+ const photoAttachmentPages=(data.photoAttachments||[]).filter(row=>row&&(row.photoUrl||String(row.note||'').trim())).map((row,idx)=>`<div class="pirPhotoAttachmentSheet pirAttachmentSheet"><div class="pirNotesHeader"><img src="${logo}"><div><h1>Paint Inspection Report - Photo Attachment</h1><p>Project: ${cell(data.project)} &nbsp; | &nbsp; Report Date: ${cell(data.reportDate)} &nbsp; | &nbsp; Inspection Report #: ${cell(data.inspectionReport)} &nbsp; | &nbsp; Photo ${idx+1} of ${(data.photoAttachments||[]).filter(r=>r&&(r.photoUrl||String(r.note||'').trim())).length}</p></div></div><div class="pirPhotoAttachmentBody"><div class="pirPhotoAttachmentImage">${row.photoUrl?`<img src="${row.photoUrl}" alt="PIR report photo ${idx+1}">`:'<div class="pirPhotoMissing">No photo attached - note only</div>'}</div><div class="pirPhotoAttachmentNote"><b>Photo Note:</b><div>${cell(row.note)}</div></div></div></div>`);
+ const pages=[html, extraMixPage, ...testexAttachmentPages, ...ambientAttachmentPages, notesPage, ...photoAttachmentPages].filter(Boolean);
  const finalHtml=pages.join('');
  setPrintPages(pages); return finalHtml;
 }
